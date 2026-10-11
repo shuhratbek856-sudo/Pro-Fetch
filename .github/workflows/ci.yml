@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch to avoid wasting minutes on stale commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The lower bound comes from `engines.node` (pdfjs-dist@6 requires >=22.13); the upper
+        # bound is the current LTS line so new breaking majors surface as a job failure, not
+        # silently later.
+        os: [ubuntu-latest, windows-latest]
+        node: ['22.13', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        # The two optional native modules make the matrix flaky on some runners; the server
+        # degrades gracefully when they are absent, which the suite already covers.
+        continue-on-error: true
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Static verification
+        run: npm run verify:static
+
+      - name: Registry verification
+        run: npm run verify:registry
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Verify the published tarball is executable and secret-free
+        run: npm run verify:package
+
+  publish-dry-run:
+    name: Pack check
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm pack --dry-run

@@ -1,0 +1,100 @@
+/**
+ * Single source of truth for how a tool is classified as mutating.
+ *
+ * These two answers used to be computed by two independent regexes — one in `defineTool()` for
+ * the MCP `annotations`, another in `security-policy.ts` for `PRO_FETCH_READ_ONLY`. They drifted:
+ * 44 tools were annotated write-capable without matching the read-only filter, and 2 tools that
+ * the policy blocks (`cache_tune`, `knowledge_rebuild`) were advertised as `readOnlyHint: true`.
+ * A client that trusts `readOnlyHint` to pre-approve a call would have auto-approved a tool that
+ * changes server state.
+ *
+ * Both call sites now read from this module, so the annotation a model sees and the rule the
+ * policy engine enforces cannot disagree.
+ *
+ * Intentionally dependency-free: it is imported by both `tool.ts` and `security-policy.ts`, and
+ * must not create an import cycle between the registry and the policy engine.
+ */
+
+/** Tool names that mutate state but do not match the generic verb pattern below. */
+const EXPLICIT_MUTATION_TOOLS: readonly RegExp[] = [
+  /^cache_(?:put|delete|clear)$/,
+  /^session_(?:save|revoke)$/,
+  /^api_key_set$/,
+  /^cookie_jar_manage$/,
+  /^crawl_(?:pause_resume|stop|control)$/,
+  /^config_set$/,
+  /^profile_switch$/,
+  /^cache_tune$/,
+  /^batch_schedule$/,
+  /^archive_org_save$/,
+  /^git_stash_pop$/,
+  /^github_pr_merge$/,
+  /^knowledge_(?:ingest|ingest_url|import|tag|update|delete|rebuild)$/,
+];
+
+/** Verb anywhere in a tool name that implies a write. */
+const MUTATION_VERBS =
+  /(?:^|_)(?:create|update|delete|remove|write|save|set|push|approve|close|reopen|revoke|upload|submit|send|schedule|pause|resume|stop|clear|mock|respond|tune|switch|edit|modify|post|put|patch|dispatch|cancel)(?:_|$)/i;
+
+/**
+ * Categories whose tools may write to a remote system purely because of what they call.
+ *
+ * `http` is deliberately excluded: most of its tools are plain GETs, and annotating every fetch
+ * as destructive made the hint useless. HTTP writes are already caught by the verb pattern
+ * (`post_*`, `put_*`) and, for the `method` argument, by the read-only gate in `assertToolAllowed`.
+ */
+const WRITE_CAPABLE_CATEGORIES: ReadonlySet<string> = new Set(['apitest', 'auth']);
+
+/** Categories that reach the public internet or an external API. */
+const REMOTE_CATEGORIES: ReadonlySet<string> = new Set([
+  'http',
+  'github',
+  'search',
+  'extract',
+  'crawl',
+  'media',
+  'browser',
+  'docs',
+  'apitest',
+  'auth',
+  'research',
+  'monitoring',
+  'archive',
+  'codehost',
+  'security',
+  'collaboration',
+  'storage',
+  'productivity',
+]);
+
+/** Whether a tool may change local or remote state. */
+export function isMutationTool(name: string): boolean {
+  const normalized = name.replace(/^pro_(?:fetch|research)_/, '');
+  return EXPLICIT_MUTATION_TOOLS.some((pattern) => pattern.test(normalized)) || MUTATION_VERBS.test(normalized);
+}
+
+/** Whether the tool belongs to a category that reaches an external system. */
+export function isRemoteCategory(category: string): boolean {
+  return REMOTE_CATEGORIES.has(category);
+}
+
+/** MCP tool annotations, derived from the same rules that `assertToolAllowed` enforces. */
+export function deriveAnnotations(
+  name: string,
+  category: string,
+): {
+  title: string;
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+} {
+  const destructive = WRITE_CAPABLE_CATEGORIES.has(category) || isMutationTool(name);
+  return {
+    title: name,
+    readOnlyHint: !destructive,
+    destructiveHint: destructive,
+    idempotentHint: !destructive,
+    openWorldHint: isRemoteCategory(category),
+  };
+}

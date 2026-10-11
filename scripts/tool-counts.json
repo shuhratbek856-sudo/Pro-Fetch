@@ -1,0 +1,37 @@
+{
+  "total": 559,
+  "categories": {
+    "http": 18,
+    "convert": 30,
+    "search": 20,
+    "research": 25,
+    "github": 47,
+    "crawl": 20,
+    "extract": 23,
+    "media": 15,
+    "archive": 15,
+    "admin": 21,
+    "auth": 12,
+    "apitest": 12,
+    "data": 25,
+    "docs": 15,
+    "browser": 41,
+    "monitoring": 10,
+    "i18n": 12,
+    "git": 22,
+    "codehost": 24,
+    "devops": 24,
+    "database": 24,
+    "security": 24,
+    "knowledge": 18,
+    "collaboration": 28,
+    "storage": 16,
+    "productivity": 18
+  },
+  "profiles": {
+    "smart": 5,
+    "minimal": 69,
+    "standard": 171,
+    "full": 559
+  }
+}

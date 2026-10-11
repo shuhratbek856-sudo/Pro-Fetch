@@ -1,0 +1,22 @@
+{
+  "$comment": [
+    "Copy this file and adjust `args` before use: point it at your installed server and set",
+    "absolute paths for your machine. Do NOT commit a filled-in copy — it carries your user name",
+    "and your local PATH.",
+    "Run the server via the published package with:  npx -y pro-fetch-mcp",
+    "or from a local clone with:                      npx -y tsx <absolute-path-to>/src/server.ts"
+  ],
+  "mcpServers": {
+    "pro-fetch": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "pro-fetch-mcp"
+      ],
+      "env": {
+        "PRO_FETCH_PROFILE": "smart",
+        "OPENAI_BASE_URL": "https://api.openai.com/v1"
+      }
+    }
+  }
+}

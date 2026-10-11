@@ -1,0 +1,91 @@
+{
+  "name": "pro-fetch-mcp",
+  "version": "0.3.0",
+  "description": "Professional fetch, deep-research va GitHub MCP serveri — 559 MCP tool, shared domain handlers, tool-pack profillari",
+  "type": "module",
+  "license": "MIT",
+  "author": "Shuhratbek",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "fetch",
+    "scraping",
+    "crawl",
+    "deep-research",
+    "github",
+    "http-client",
+    "ssrf-protection"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pro-fetch-mcp/pro-fetch-mcp.git"
+  },
+  "homepage": "https://github.com/pro-fetch-mcp/pro-fetch-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/pro-fetch-mcp/pro-fetch-mcp/issues"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "bin": {
+    "pro-fetch-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "!dist/**/*.d.ts",
+    "!dist/**/*.d.ts.map",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
+    "lint": "tsc --noEmit",
+    "verify:static": "node scripts/verify-static.mjs",
+    "verify:registry": "tsx scripts/verify-registry.mts",
+    "verify:package": "npm run build && node scripts/verify-package.mjs",
+    "check": "npm run verify:static && npm run verify:registry && npm run build && npm test && npm run verify:package && npm run format:check",
+    "prepublishOnly": "npm run check"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@napi-rs/canvas": "^1.0.10",
+    "@xmldom/xmldom": "^0.9.12",
+    "cheerio": "^1.0.0",
+    "domhandler": "^5.0.3",
+    "exifr": "^7.1.3",
+    "ipaddr.js": "^2.5.0",
+    "jsqr": "^1.4.0",
+    "jszip": "^3.10.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
+    "sharp": "^0.35.5",
+    "tesseract.js": "^7.0.0",
+    "tldts": "^7.4.18",
+    "turndown": "^7.2.0",
+    "undici": "^7.0.0",
+    "ws": "^8.18.0",
+    "xpath": "^0.0.35",
+    "yaml": "^2.9.1"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.5",
+    "@types/ws": "^8.5.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "prettier": "^3.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,39 @@
+node_modules/
+dist/
+*.zip
+*.tar.gz
+.pro-fetch-cache/
+coverage/
+
+# Secrets — never commit these, in any form.
+# `.env` holds real local API keys on developer machines and is excluded from every commit.
+# Ship `.env.example` (empty values) instead. `<NAME>_FILE` pointers are supported for
+# credentials you prefer to keep outside the project folder entirely.
+.env
+.env.*
+!.env.example
+.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+# Machine-specific MCP client config (contains absolute paths and host PATH).
+# Commit `qwen-mcp.example.json` instead and copy it locally.
+qwen-mcp.json
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs and scratch output
+*.log
+npm-debug.log*
+.npm/
+.pro-fetch-cache/
