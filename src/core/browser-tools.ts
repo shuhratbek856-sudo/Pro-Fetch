@@ -52,6 +52,21 @@ function sessionId(input: Input): string {
   return string(input, 'session_id', 'default');
 }
 
+/** Whether the optional Playwright dependency can be loaded on this platform.
+ *
+ * Playwright is an `optionalDependencies` entry, so it is legitimately absent — for example on a
+ * slim container, or when `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` is set. Reporting that explicitly is
+ * better than surfacing `ERR_MODULE_NOT_FOUND` at the moment a browser tool is first called.
+ */
+export async function playwrightAvailable(): Promise<boolean> {
+  try {
+    await import('playwright');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function createSession(id: string, url?: string, input: Input = {}, persist = true): Promise<Session> {
   if (!sessions.has(id) && sessions.size >= maxBrowserSessions()) {
     throw new Error(

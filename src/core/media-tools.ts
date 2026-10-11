@@ -4,15 +4,80 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { load } from 'cheerio';
-import sharp from 'sharp';
 import exifr from 'exifr';
-import { createWorker } from 'tesseract.js';
-import { createCanvas } from '@napi-rs/canvas';
 import { downloadToBuffer, fetchFollowingSafeRedirects, fetchWithOptions } from './http-client.js';
 import { assertSafeUrl } from './ssrf-guard.js';
 import { capturePageScreenshot } from './browser-tools.js';
 import { result } from './format.js';
 import type { ToolResult } from './types.js';
+
+/**
+ * Native image/OCR dependencies are loaded lazily and cached.
+ *
+ * `sharp`, `@napi-rs/canvas` and `tesseract.js` ship platform-specific binaries. Static imports
+ * put them in the module graph of every `media` tool, so one failed native build aborted the whole
+ * server with `ERR_MODULE_NOT_FOUND` — verified by removing `sharp` from `node_modules` and
+ * watching `dist/server.js` refuse to boot. That is the difference between "image tools are
+ * unavailable" and "no tool works at all" on Alpine, musl, or an unsupported glibc.
+ *
+ * Each loader now fails only the tool that needs it, with an actionable message.
+ */
+type SharpModule = typeof import('sharp');
+type CanvasModule = typeof import('@napi-rs/canvas');
+type TesseractModule = typeof import('tesseract.js');
+
+let sharpPromise: Promise<SharpModule> | undefined;
+let canvasPromise: Promise<CanvasModule> | undefined;
+let tesseractPromise: Promise<TesseractModule> | undefined;
+
+const INSTALL_HINT =
+  'Bu platform uchun binary topilmadi. `npm ci` (majburiy) yoki `npm install --force` bilan qayta o‘rnating.';
+
+function installError(name: string, error: unknown): Error {
+  const detail = error instanceof Error ? error.message.split('\n')[0] : String(error);
+  return new Error(`${name} yuklanmadi: ${INSTALL_HINT} (${detail})`);
+}
+
+async function loadSharp(): Promise<SharpModule> {
+  sharpPromise ??= import('sharp').catch((error: unknown) => {
+    sharpPromise = undefined;
+    throw installError('sharp', error);
+  });
+  return sharpPromise;
+}
+
+async function loadCanvas(): Promise<CanvasModule> {
+  canvasPromise ??= import('@napi-rs/canvas').catch((error: unknown) => {
+    canvasPromise = undefined;
+    throw installError('@napi-rs/canvas', error);
+  });
+  return canvasPromise;
+}
+
+async function loadTesseract(): Promise<TesseractModule> {
+  tesseractPromise ??= import('tesseract.js').catch((error: unknown) => {
+    tesseractPromise = undefined;
+    throw installError('tesseract.js', error);
+  });
+  return tesseractPromise;
+}
+
+/** Report which native media dependencies are usable on this platform. */
+export async function nativeMediaAvailable(): Promise<{ sharp: boolean; canvas: boolean; tesseract: boolean }> {
+  const probe = async (load: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      await load();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  return {
+    sharp: await probe(loadSharp),
+    canvas: await probe(loadCanvas),
+    tesseract: await probe(loadTesseract),
+  };
+}
 
 type Input = Record<string, unknown>;
 const outputDirectory = path.join(os.tmpdir(), 'pro-fetch-mcp');
@@ -58,6 +123,7 @@ async function pdfText(bytes: Buffer): Promise<string[]> {
 }
 
 async function ocr(bytes: Buffer, language: string): Promise<string> {
+  const { createWorker } = await loadTesseract();
   const worker = await createWorker(language);
   try {
     const output = await worker.recognize(bytes);
@@ -147,6 +213,8 @@ export async function runMediaTool(toolName: string, input: Input): Promise<Tool
     name === 'svg_to_png'
   ) {
     const media = await bytesFromInput(input);
+    // Loaded per call so a platform without the native binary fails only this tool.
+    const { default: sharp } = await loadSharp();
     const image = sharp(media.bytes, { failOn: 'none' });
     if (name === 'image_info')
       return result(
@@ -194,6 +262,7 @@ export async function runMediaTool(toolName: string, input: Input): Promise<Tool
   }
   if (name === 'barcode_qr_read') {
     const media = await bytesFromInput(input);
+    const { default: sharp } = await loadSharp();
     const { data, info } = await sharp(media.bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const qrModule = (await import('jsqr')) as unknown as {
       default: (
@@ -227,6 +296,7 @@ export async function runMediaTool(toolName: string, input: Input): Promise<Tool
         .trim();
       if (!pageText) {
         const viewport = page.getViewport({ scale: 1.5 });
+        const { createCanvas } = await loadCanvas();
         const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
         await page.render({ canvas: canvas as any, canvasContext: canvas.getContext('2d') as any, viewport }).promise;
         pageText = await ocr(canvas.toBuffer('image/png'), str(input, 'language') || 'eng');

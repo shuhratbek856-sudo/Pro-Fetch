@@ -14,6 +14,8 @@ import { tail } from '../../core/log.js';
  * Pack: admin (REAL ✅) (pro-fetch)
  */
 import { defineTool } from '../../core/tool.js';
+import { nativeMediaAvailable } from '../../core/media-tools.js';
+import { playwrightAvailable } from '../../core/browser-tools.js';
 import { view } from '../../core/input.js';
 export default defineTool({
   name: 'pro_fetch_diagnostics',
@@ -27,6 +29,15 @@ export default defineTool({
     const p = view(input);
     return jsonBlock('# Diagnostika', {
       health: { uptime_sec: Math.round(process.uptime()), node: process.version, tools: allTools().length },
+      // Platform and native-binary availability, so a user on Alpine/musl or an unsupported
+      // glibc can see exactly which optional tools are unavailable and why.
+      platform: {
+        os: process.platform,
+        arch: process.arch,
+        release: process.platform === 'win32' ? (process.env.OS ?? undefined) : process.release.name,
+        native_media: await nativeMediaAvailable(),
+        playwright: await playwrightAvailable(),
+      },
       cache: cache.stats(),
       rate_limit: bucketsSnapshot(),
       env: {

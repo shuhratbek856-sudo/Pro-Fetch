@@ -19,7 +19,9 @@ versiya semver bo'yicha.
 - `npm run verify:package` — tarball uchun shebang, `files` allowlist va credential tekshiruvi.
 - `npm run format` / `npm run format:check` — Prettier (`.prettierrc.json`).
 - `vitest.config.ts` — v8 coverage va minimal chegaralar.
-- `.github/workflows/ci.yml` — Node 22.13/24, Ubuntu/Windows matritasi.
+- `.github/workflows/ci.yml` — Node 22.13/24, Ubuntu/Windows matritasi **va Alpine (musl) job'i**:
+  native binary'lar olib tashlanganda server boot qilishi, testlar va registry tekshiruvi o'tishi
+  majburiy shart.
 - `qwen-mcp.example.json` — mashinasiz, nisbiy konfiguratsiya namunasi.
 - `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`.
 
@@ -39,6 +41,14 @@ versiya semver bo'yicha.
 
 ### Fixed
 
+- **Boshqa OS da server ishga tushmasdi.** `sharp`, `@napi-rs/canvas` va `tesseract.js` statik
+  import qilingan edi, ya'ni ular butun registry'ning modul grafigiga kirgan edi. Platformaga
+  bog'liq binary qurilmaganda (Alpine/musl, qo'llab-quvvatlanmaydigan glibc, container) `dist/server.js`
+  `ERR_MODULE_NOT_FOUND` bilan **butunlay** ishga tushmasdi — 559 tool'idan biri ham ishlamasdi.
+  Endi uchala modul ham `await import()` bilan lazy yuklanadi va muvaffaqiyatsiz bo'lsa faqat
+  tegishli tool xato beradi. `pro_fetch_diagnostics` endi platforma va binary mavjudligini
+  ko'rsatadi. Regressiya testlari: statik import'ni qayta qo'yish `npm test` ni va
+  `npm run verify:static` ni fail qiladi.
 - **Paket POSIX'da ishga tushmasdi.** `dist/server.js` da shebang yo'q edi; `npx pro-fetch-mcp`
   Linux/macOS'da crash bo'lardi. Endi `#!/usr/bin/env node` qo'shildi va `verify:package` buni
   tekshiradi.

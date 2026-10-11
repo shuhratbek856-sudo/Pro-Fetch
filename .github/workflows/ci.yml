@@ -59,10 +59,44 @@ jobs:
       - name: Verify the published tarball is executable and secret-free
         run: npm run verify:package
 
+  # Alpine/musl is where the native image binaries (`sharp`, `@napi-rs/canvas`) usually fail to
+  # build. The server must still boot there and degrade to "this tool is unavailable" rather than
+  # aborting at import time — which is exactly what a static import used to do.
+  alpine:
+    name: Alpine (musl, degraded native deps)
+    runs-on: ubuntu-latest
+    container: node:24-alpine
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Build first: the boot check below runs the compiled entry point.
+      - name: Build
+        run: npm run build
+
+      # The server must boot with the native binaries removed, which is what a slim container or
+      # a failed node-gyp build looks like. The install is best-effort because the compile
+      # toolchain may be absent; the boot check is the assertion that matters.
+      - name: Remove native media binaries to simulate a degraded host
+        run: rm -rf node_modules/sharp node_modules/@napi-rs node_modules/tesseract.js
+
+      - name: Server must boot without native media binaries
+        run: |
+          node -e "import('./dist/server.js').then(()=>{console.log('BOOT_OK')}).catch(e=>{console.error('BOOT_FAIL',e.code||e.message);process.exit(1)})"
+
+      - name: Unit tests still pass without native binaries
+        run: npm test
+
+      - name: Registry still verifies
+        run: npm run verify:registry
+
   publish-dry-run:
     name: Pack check
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify, alpine]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

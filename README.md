@@ -45,16 +45,37 @@ Talab: **Node.js >= 22.13** (`pdfjs-dist@6` shuni talab qiladi; `package.json` d
 
 ```bash
 npm ci
-npm run check    # verify:static + verify:registry + build + test
+npm run check    # verify:static + verify:registry + build + test + verify:package + format:check
 ```
 
-Alohida: `npm run build`, `npm test`, `npm run verify:registry` (haqiqiy tool registry'ni yuklab, 559 / 26 / profil sonlarini tekshiradi).
+Alohida: `npm run build`, `npm test`, `npm run verify:registry` (haqiqiy tool registry'ni yuklab, 559 / 26 / barcha 4 profil sonlarini tekshiradi).
 
 Ishga tushirish (stdio MCP server):
 
 ```bash
 npm start        # yoki: npx tsx src/server.ts
 ```
+
+### Platformalar
+
+Server **Windows, Linux va macOS** da ishlaydi (CI: `ubuntu-latest` va `windows-latest`, Node 22.13 va 24).
+Qo'shimcha ravishda Alpine/musl konteyneri ham tekshiriladi.
+
+`sharp`, `@napi-rs/canvas` va `tesseract.js` platformaga bog'liq binary fayllar olib keladi. Ular
+`await import()` bilan **lazy** yuklanadi, shuning uchun binary muvaffaqiyatsiz bo'lsa ham server
+**ishga tushadi** — faqat tegishli tool xato beradi. `pro_fetch_diagnostics` qaysi modullar mavjudligini
+ko'rsatadi:
+
+```json
+"platform": {
+  "os": "linux", "arch": "x64",
+  "native_media": { "sharp": false, "canvas": false, "tesseract": true },
+  "playwright": false
+}
+```
+
+Alpine'da binary qurish kerak bo'lsa: `apk add --no-cache python3 make g++` va keyin
+`npm rebuild sharp @napi-rs/canvas`. Playwright brauzerlari uchun: `npx playwright install --with-deps chromium`.
 
 ## Qwen Desktop konfiguratsiyasi
 

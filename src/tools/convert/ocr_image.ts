@@ -1,7 +1,7 @@
 import { defineTool } from '../../core/tool.js';
-import { createWorker } from 'tesseract.js';
 import { result } from '../../core/format.js';
 import { readBinarySource } from '../../core/binary-source.js';
+import { nativeMediaAvailable } from '../../core/media-tools.js';
 
 /**
  * pro_fetch_ocr_image — Run OCR on an image and return detected text
@@ -22,9 +22,16 @@ export default defineTool({
     required: ['url'],
   },
   async handler(input) {
+    // Loaded lazily: `tesseract.js` ships a platform-specific binary, and a static import made
+    // it part of the module graph of every tool in the registry.
+    const tesseract = await import('tesseract.js').catch((error: unknown) => {
+      throw new Error(
+        `tesseract.js yuklanmadi: bu platform uchun binary topilmadi, \`npm ci\` bilan qayta o‘rnating (${error instanceof Error ? error.message.split('\n')[0] : String(error)})`,
+      );
+    });
     const image = await readBinarySource(input, 'Image OCR', 50 * 1024 * 1024);
     const language = typeof input.language === 'string' && input.language.trim() ? input.language.trim() : 'eng';
-    const worker = await createWorker(language);
+    const worker = await tesseract.createWorker(language);
     try {
       const recognition = await worker.recognize(image);
       return result(

@@ -67,3 +67,6 @@ read-only SQL.
 - **Local CLI tools trust their workspace.** `PRO_FETCH_WORKSPACE` bounds git/devops/database
   access to a directory, but anything inside that directory is fair game.
 - **Rate limiting is per-process.** It does not coordinate across multiple server instances.
+- **Native media binaries are optional at runtime.** `sharp`, `@napi-rs/canvas` and `tesseract.js`
+  are loaded lazily, so a host where they failed to build still runs the server with those tools
+  unavailable. Run `pro_fetch_diagnostics` to see which are present.

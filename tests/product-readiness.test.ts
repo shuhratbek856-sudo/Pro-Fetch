@@ -269,6 +269,50 @@ describe('env_check reports file-backed secrets as configured', () => {
   });
 });
 
+describe('native media dependencies degrade instead of breaking the server', () => {
+  it('never statically imports a platform-specific binary', async () => {
+    // `sharp`, `@napi-rs/canvas` and `tesseract.js` ship per-platform binaries. A static import
+    // puts them in the module graph of every tool, so one failed native build aborted the whole
+    // server — reproduced by hiding the packages and watching `dist/server.js` fail with
+    // ERR_MODULE_NOT_FOUND. The server must boot and only the affected tool must fail.
+    const { readFileSync, readdirSync, statSync } = await import('node:fs');
+    const { join } = await import('node:path');
+
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (full.endsWith('.ts')) {
+          const source = readFileSync(full, 'utf8');
+          for (const pkg of ['sharp', '@napi-rs/canvas', 'tesseract.js']) {
+            if (new RegExp(`^import[\\s\\S]{0,120}?from '${pkg.replace('/', '\\/')}'`, 'm').test(source)) {
+              offenders.push(`${full} statically imports ${pkg}`);
+            }
+          }
+        }
+      }
+    };
+    walk(path.resolve(process.cwd(), 'src'));
+    expect(offenders).toEqual([]);
+  });
+
+  it('reports which native modules are usable on this platform', async () => {
+    const { nativeMediaAvailable } = await import('../src/core/media-tools.js');
+    const availability = await nativeMediaAvailable();
+    // The probe must resolve rather than throw, whatever the host platform supports.
+    expect(typeof availability.sharp).toBe('boolean');
+    expect(typeof availability.canvas).toBe('boolean');
+    expect(typeof availability.tesseract).toBe('boolean');
+  });
+
+  it('bootstraps the whole registry, which is what a native failure used to prevent', async () => {
+    expect(allTools().length).toBeGreaterThan(0);
+    const media = allTools().filter((tool) => tool.category === 'media');
+    expect(media.length).toBeGreaterThan(0);
+  });
+});
+
 describe('dispatch still returns structured errors after the input migration', () => {
   it('wraps a failing tool in the standard error envelope', async () => {
     const result = await dispatch('pro_fetch_tool_execute', { tool_name: 'definitely_not_a_tool' });

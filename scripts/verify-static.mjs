@@ -93,6 +93,21 @@ try {
   }
 
   const sourceFiles = await collectTs('src');
+
+  // A static import of a platform-specific binary puts it in the module graph of every tool, so a
+  // failed native build (Alpine/musl, unsupported glibc, a slim container) aborts the whole server
+  // at startup. Verified: hiding `sharp` from node_modules made dist/server.js exit with
+  // ERR_MODULE_NOT_FOUND. These packages must be loaded with `await import()`.
+  const nativeBinaryPackages = ['sharp', '@napi-rs/canvas', 'tesseract.js'];
+  for (const file of sourceFiles) {
+    const content = await read(file);
+    for (const pkg of nativeBinaryPackages) {
+      const escaped = pkg.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&');
+      if (new RegExp(`^import\\s[^;]*?from\\s+'${escaped}'`, 'm').test(content)) {
+        failures.push(`${file} statically imports ${pkg}; load it with await import() instead`);
+      }
+    }
+  }
   const secretPattern =
     /(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|ATATT3[A-Za-z0-9_\-=]{20,}|ATCTT3[A-Za-z0-9_\-=]{20,}|glpat-[A-Za-z0-9_\-=]{20,}|(?:serpapi|serper)\.?[_-]?api[_-]?key\s*[:=]\s*['"][A-Za-z0-9]{20,})/i;
   const forbidden = [
