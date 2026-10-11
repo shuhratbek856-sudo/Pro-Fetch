@@ -5,7 +5,25 @@ versiya semver bo'yicha.
 
 ## [Unreleased]
 
+### Changed
+
+- **Kompozitlar ichki parallel.** Bog'liq bo'lmagan qadamlar `runParallel()` bilan bir vaqtda
+  bajariladi (fan-out 8). Konkurrentlik chegaralari o'zgarmagan — ular execution engine'da qoladi;
+  composite faqat o'z navbatida nechta promise ushlashini cheklaydi. Asosiy foyda tarmoq
+  bosqichlarida: `research_deep` uchta qidiruvni va N ta sahifa o'qishni parallel qiladi.
+- **`detail` byudjeti.** Har bir kompozit `detail: "summary" | "full"` oladi. Summary rejimi bo'sh
+  natija bergan qadamlarni yashiradi va matnlarni qisqartiradi — 17-qadamli auditda 43 KB → 3.8 KB
+  (**91% kamayish**). To'liq rejim ham 120,000 belgi chegarasini hurmat qiladi: avvalgi halqa
+  har bir katta matnni faqat bir marta qisqartirib, 750 KB natija qoldirardi (o'lchilgan muammo).
+- **Semantik qidiruv** (`src/core/intent-search.ts`): BM25 + morfologik kengaytirish + 55 so'zli
+  sinon jadvali. Kalit so'z mosligi "papers about retrieval augmented generation" so'rovida arxiv
+  tool'ini **topa olmasdi**; endi u birinchi o'rinda. Nonsense so'z endi bo'sh natija beradi
+  (`MIN_RELEVANCE` chegarasi). Kompozitlar kengaytirilgan so'zlarda maxsus tool'larni bosib
+  ketmasligi uchun jazolangan.
+
 ### Added
+- `src/core/composite-budget.ts` — `detailMode`, `renderBudgeted`, `isInformative`.
+- `tests/smart-system-quality.test.ts` — 25 ta test: semantik qidiruv, byudjet, parallel izolyatsiya.
 
 - **Smart System** — MCP klientlar modelga ~10 tagacha tool yubora olishi muammosini hal qiladi.
   569 tool'ni 10 ta kuchli tool'ga yig'adi, shunda imkoniyat saqlanadi:

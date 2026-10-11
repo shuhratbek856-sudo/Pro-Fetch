@@ -1,7 +1,8 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail } from '../../core/format.js';
 import { bool, num, strOrEmpty, view } from '../../core/input.js';
-import { renderPipeline, runPipeline, runStep } from '../../core/composite.js';
+import { renderPipeline, runParallel, runStep } from '../../core/composite.js';
+import { detailMode, renderBudgeted } from '../../core/composite-budget.js';
 
 /**
  * pro_fetch_ingest — Turn any URL into clean, structured, citable data
@@ -22,6 +23,7 @@ export default defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       url: { type: 'string', description: 'Manba URL (sahifa, PDF, CSV, JSON, RSS, office fayl)' },
       extract: { type: 'boolean', description: 'Qo‘shimcha ma’lumot ajratish (sahifalar uchun)' },
       archive: { type: 'boolean', description: 'Natijani arxivga saqlash (keyinroq citation uchun)' },
@@ -68,7 +70,7 @@ export default defineTool({
       steps.push(['Archive', 'pro_fetch_archive_org_save', { url }]);
     }
 
-    const outcomes = [fetched, ...(await runPipeline(steps))];
-    return result(renderPipeline(`Ingest: ${url}`, outcomes));
+    const outcomes = [fetched, ...(await runParallel(steps))];
+    return result(renderBudgeted(`Ingest: ${url}`, outcomes, detailMode(p.detail)));
   },
 });

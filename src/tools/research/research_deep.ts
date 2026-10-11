@@ -1,7 +1,8 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail } from '../../core/format.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
-import { pick, renderPipeline, rowsFrom, runPipeline, runStep, urlsFrom } from '../../core/composite.js';
+import { pick, renderPipeline, rowsFrom, runParallel, runPipeline, runStep, urlsFrom } from '../../core/composite.js';
+import { detailMode, renderBudgeted } from '../../core/composite-budget.js';
 
 /**
  * pro_research_deep — Full multi-source research on a topic
@@ -22,6 +23,7 @@ export default defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       topic: { type: 'string', description: 'Tadqiqot mavzusi (masalan: "RAG arxitekturalari 2025")' },
       depth: {
         type: 'number',
@@ -44,15 +46,13 @@ export default defineTool({
 
     const outcomes = [];
 
-    // 1. Gather. Web search first because it is the broadest provider; the rest enrich coverage.
-    const gather = await runPipeline(
-      [
-        ['Web search', 'pro_fetch_web_search', { query: topic, limit: maxSources * 2 }],
-        ['Academic sources', 'pro_fetch_academic_search', { query: topic, limit: maxSources }],
-        ['News coverage', 'pro_fetch_news_search', { query: topic, limit: maxSources }],
-        ['Deduplicate and rank', 'pro_research_dedupe_sources', { sources: [] }],
-      ].filter((step) => step[0] !== 'Deduplicate and rank') as Array<[string, string, Record<string, unknown>]>,
-    );
+    // 1. Gather. The three providers are independent, so they run concurrently; this stage used to
+    // dominate the wall clock because each provider call is a network round trip.
+    const gather = await runParallel([
+      ['Web search', 'pro_fetch_web_search', { query: topic, limit: maxSources * 2 }],
+      ['Academic sources', 'pro_fetch_academic_search', { query: topic, limit: maxSources }],
+      ['News coverage', 'pro_fetch_news_search', { query: topic, limit: maxSources }],
+    ]);
     outcomes.push(...gather);
 
     // 2. Collect the URLs the searches surfaced.
@@ -62,17 +62,22 @@ export default defineTool({
     }
     const selected = candidateUrls.slice(0, maxSources);
 
-    // 3. Read the strongest pages.
-    const pages: Array<{ url: string; text: string }> = [];
-    for (const url of selected) {
-      const outcome = await runStep(`Read ${shortUrl(url)}`, 'pro_fetch_html_to_text', { url, max_bytes: 400_000 });
-      outcomes.push(outcome);
-      if (outcome.ok) pages.push({ url, text: outcome.output });
-    }
+    // 3. Read the strongest pages. Independent per URL, so fetched concurrently.
+    const readOutcomes = await runParallel(
+      selected.map((url): [string, string, Record<string, unknown>] => [
+        `Read ${shortUrl(url)}`,
+        'pro_fetch_html_to_text',
+        { url, max_bytes: 400_000 },
+      ]),
+    );
+    outcomes.push(...readOutcomes);
+    const pages = readOutcomes
+      .filter((outcome, index) => outcome.ok)
+      .map((outcome, index) => ({ url: selected[index]!, text: outcome.output }));
 
     if (pages.length === 0) {
       return result(
-        renderPipeline(`Deep research: ${topic}`, outcomes) +
+        renderBudgeted(`Deep research: ${topic}`, outcomes, detailMode(p.detail)) +
           '\n\n**Xulosa:** manbalar topildi, lekin hech biri o‘qib chiqilmadi.',
       );
     }

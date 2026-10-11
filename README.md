@@ -126,7 +126,26 @@ Smart System buni ikki yo'l bilan hal qiladi: **kompozit tool'lar** va **batch i
 Bir chaqiruvda uchta tool ishlaydi. Birinchisi xato bersa, qolganlari davom etadi va natijada
 har biri alohida `ok`/`error` bilan qaytadi.
 
-### Maxfiylik saqlanadi
+### Natija hajmi: `detail`
+
+Har bir kompozit `detail` parametrini oladi:
+
+- `detail: "summary"` (standart) — har bir qadam holati ko'rsatiladi, lekin faqat **bo'sh natija bermagan**
+  qadamlar chiqadi, har biri qisqa bo'lak bilan. O'lchilgan: 17-qadamli auditda **91% token tejash**
+  (43 KB → 3.8 KB).
+- `detail: "full"` — to'liq matn, 120,000 belgi chegarasi bilan.
+
+```jsonc
+{ "tool": "pro_audit_page", "arguments": { "url": "https://example.com", "detail": "summary" } }
+```
+
+### Qidiruv tili
+
+`pro_capability_map` kalit so'z mosligidan ko'p kuchli: BM25 reytingi, morfologik kengaytirish
+(*extracting → extract*) va 55 ta so'zli sinxon jadvali. Shuning uchun "papers about retrieval"
+arxiv tool'ini, "leaked credentials in code" esa `secret_scan` ni topadi.
+
+### Xavfsizlik saqlanadi
 
 Kompozitlar registry'ni aylanib o'tmaydi: har bir ichki chaqiruv `dispatch()` orqali o'tadi, shuning
 uchun `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_READ_ONLY`, SSRF tekshiruvi, `PRO_FETCH_OUTPUT_ROOT`

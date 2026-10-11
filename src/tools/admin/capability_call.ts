@@ -27,12 +27,14 @@ export default defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       calls: {
         type: 'array',
         description: 'Bajariladigan toollar ro‘yxati',
         items: {
           type: 'object',
           properties: {
+            detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
             tool: {
               type: 'string',
               description: 'Aniq tool nomi (pro_capability_map yoki tool_list_details dan olingan)',

@@ -1,7 +1,8 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail } from '../../core/format.js';
 import { bool, num, strOrEmpty, view } from '../../core/input.js';
-import { renderPipeline, runPipeline, runStep } from '../../core/composite.js';
+import { renderPipeline, runParallel, runStep } from '../../core/composite.js';
+import { detailMode, renderBudgeted } from '../../core/composite-budget.js';
 
 /**
  * pro_page_diff — Compare two versions of a page
@@ -20,6 +21,7 @@ export const PAGE_DIFF_TOOL = defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       url: { type: 'string', description: 'Birinchi (eski) URL' },
       url2: { type: 'string', description: 'Ikkinchi (yangi) URL' },
       text: { type: 'string', description: 'Birinchi matn (URL o‘rniga)' },
@@ -52,8 +54,10 @@ export const PAGE_DIFF_TOOL = defineTool({
       );
     }
 
-    const outcomes = await runPipeline(steps);
-    return result(renderPipeline(`Page diff: ${url || '(text)'} → ${url2 || '(text)'}`, outcomes));
+    const outcomes = await runParallel(steps);
+    return result(
+      renderBudgeted(`Page diff: ${url || '(text)'} → ${url2 || '(text)'}`, outcomes, detailMode(p.detail)),
+    );
   },
 });
 
@@ -74,6 +78,7 @@ export const SITE_SCAN_TOOL = defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       url: { type: 'string', description: "Saytning bosh URL'i" },
       max_pages: { type: 'number', description: 'Ko‘riladigan sahifalar soni (1-100, standart 10)' },
       max_depth: { type: 'number', description: 'Crawl chuqurligi (1-5, standart 2)' },
@@ -100,8 +105,8 @@ export const SITE_SCAN_TOOL = defineTool({
       steps.push(['Link graph', 'pro_crawl_link_graph', { url, limit: 50 }]);
     }
 
-    const outcomes = await runPipeline(steps);
-    return result(renderPipeline(`Site scan: ${url}`, outcomes));
+    const outcomes = await runParallel(steps);
+    return result(renderBudgeted(`Site scan: ${url}`, outcomes, detailMode(p.detail)));
   },
 });
 
@@ -122,6 +127,7 @@ export const DATA_PIPELINE_TOOL = defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       url: { type: 'string', description: "CSV yoki JSON fayl URL'i" },
       text: { type: 'string', description: 'Inline CSV/JSON matn (url o‘rniga)' },
       operation: { type: 'string', description: 'Qo‘shimcha amaliyor: sort | group | dedupe | flatten | diff' },
@@ -155,7 +161,7 @@ export const DATA_PIPELINE_TOOL = defineTool({
     if (operation === 'diff') steps.push(['Diff', 'pro_data_diff_json', { ...source, text2: operationArg }]);
     if (operationArg && operation === '') steps.push(['Array ops', 'pro_data_array_ops', { ...source, limit }]);
 
-    const outcomes = await runPipeline(steps);
-    return result(renderPipeline(`Data pipeline: ${url || 'inline data'}`, outcomes));
+    const outcomes = await runParallel(steps);
+    return result(renderBudgeted(`Data pipeline: ${url || 'inline data'}`, outcomes, detailMode(p.detail)));
   },
 });

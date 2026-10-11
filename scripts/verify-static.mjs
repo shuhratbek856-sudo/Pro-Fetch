@@ -64,6 +64,24 @@ try {
   ]) {
     if (!profileModule.includes(`'${required}'`)) failures.push(`smart profile is missing ${required}`);
   }
+
+  // A duplicate key in the synonym table silently discards the first definition, which is exactly
+  // the kind of silent degradation this checker exists to catch.
+  try {
+    const intentText = await read('src/core/intent-search.ts');
+    const tableStart = intentText.indexOf('const SYNONYMS');
+    const table = intentText.slice(tableStart, intentText.indexOf('};', tableStart));
+    const keys = [...table.matchAll(/^\s{2}([a-z_]+):/gm)].map((match) => match[1]);
+    const duplicates = [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
+    if (duplicates.length) {
+      failures.push(`src/core/intent-search.ts has duplicate SYNONYMS keys: ${duplicates.join(', ')}`);
+    }
+    if (keys.length < 30) {
+      failures.push(`src/core/intent-search.ts has only ${keys.length} synonyms; the vocabulary regressed`);
+    }
+  } catch {
+    failures.push('src/core/intent-search.ts is missing; discovery must not regress to keyword overlap');
+  }
   if (maxPlatform.includes('runTemplateTool') || /template-tools/i.test(maxPlatform))
     failures.push('MAX pack contains a template dispatcher');
   // Whitespace-tolerant: these guards are real but Prettier may reformat the literal.

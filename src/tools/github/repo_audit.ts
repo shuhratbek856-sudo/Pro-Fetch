@@ -1,7 +1,8 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail } from '../../core/format.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
-import { renderPipeline, runPipeline, runStep } from '../../core/composite.js';
+import { renderPipeline, runParallel, runStep } from '../../core/composite.js';
+import { detailMode, renderBudgeted } from '../../core/composite-budget.js';
 
 /**
  * pro_repo_audit — Complete repository report in one call
@@ -21,6 +22,7 @@ export default defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       repository: { type: 'string', description: 'owner/reko nomi (masalan: facebook/react)' },
       include_ci: { type: 'boolean', description: 'CI run va workflow holatini ham tekshirish' },
       include_security: { type: 'boolean', description: 'Dependency zaifliklari va repolardagi secret skani' },
@@ -63,8 +65,8 @@ export default defineTool({
       );
     }
 
-    const outcomes = await runPipeline(steps);
-    return result(renderPipeline(`Repository audit: ${repository}`, outcomes));
+    const outcomes = await runParallel(steps);
+    return result(renderBudgeted(`Repository audit: ${repository}`, outcomes, detailMode(p.detail)));
   },
 });
 
@@ -78,6 +80,7 @@ export const PR_DEEP_TOOL = defineTool({
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       repository: { type: 'string', description: 'owner/reko' },
       pr_number: { type: 'number', description: 'PR raqami' },
       include_diff: { type: 'boolean', description: 'To‘liq diffni qo‘shish' },
@@ -102,7 +105,7 @@ export const PR_DEEP_TOOL = defineTool({
     ];
     if (p.include_diff === true) steps.push(['Diff', 'pro_gh_pr_diff', base]);
 
-    const outcomes = await runPipeline(steps);
-    return result(renderPipeline(`PR #${prNumber} · ${repository}`, outcomes));
+    const outcomes = await runParallel(steps);
+    return result(renderBudgeted(`PR #${prNumber} · ${repository}`, outcomes, detailMode(p.detail)));
   },
 });

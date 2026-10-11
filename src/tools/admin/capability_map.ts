@@ -1,29 +1,34 @@
 import { defineTool } from '../../core/tool.js';
-import { result, fail, jsonBlock } from '../../core/format.js';
+import { fail, jsonBlock } from '../../core/format.js';
 import { allTools } from '../../core/tool.js';
 import { currentProfile, isToolVisibleInProfile } from '../../core/profile.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
+import { rankTools } from '../../core/intent-search.js';
 
 /**
  * pro_capability_map — Find the right tool without a round trip per guess
  * Pack: smart-composite (pro-fetch)
  *
- * `tool_list_details` returns tools ranked by keyword overlap. That misses the common case: the
- * model knows what it wants to *do* ("turn this PDF into markdown", "search arxiv for papers")
- * but not what the tool is called. This maps intent phrases to concrete tools and, critically,
- * reports whether each is reachable under the active profile — so the model is never handed a name
- * it cannot invoke.
+ * `tool_list_details` ranks by keyword overlap, which fails the way users actually talk: "papers
+ * about retrieval" does not surface the arxiv tool, because those words are absent from its
+ * description. This delegates to `core/intent-search.ts`, which blends BM25 with morphological
+ * expansion and a domain synonym table, and returns the exact tool names with their input schemas.
+ *
+ * Every returned tool is reachable: `direct` marks the ones callable by name under the active
+ * profile, and the rest are reached through `pro_capability_call`.
  */
 export default defineTool({
   name: 'pro_capability_map',
   description:
-    'Map a task in plain language to the exact Pro-Fetch tools that can do it, grouped by category, ' +
-    'with full input schemas and a note on whether each tool is reachable under the current profile. ' +
-    'Use this first when you know the goal but not the tool name.',
+    'Map a task in plain language to the exact Pro-Fetch tools that can do it, with full input ' +
+    'schemas. Understands synonyms and word forms, so "papers about retrieval" finds the academic ' +
+    'search tool and "look at this site" finds the crawler. Use this first when you know the goal ' +
+    'but not the tool name.',
   category: 'admin',
   inputSchema: {
     type: 'object',
     properties: {
+      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       task: { type: 'string', description: 'Nima qilmoqchisiz? Masalan: "arxiv dan paper qidirish"' },
       category: { type: 'string', description: 'Kategoriya filtri (ixtiyoriy)' },
       include_schema: { type: 'boolean', description: "To'liq input schema'ni qo'shish (odatda kerak)" },
@@ -40,109 +45,43 @@ export default defineTool({
     const limit = Math.max(1, Math.min(60, num(p, 'limit', 12, 1, 60)));
     const profile = currentProfile();
 
-    const terms = tokenize(task);
-    const scored = allTools()
-      .filter((tool) => !category || tool.category.toLowerCase() === category)
-      .map((tool) => ({ tool, score: scoreTool(tool, terms) }))
-      .filter((entry) => entry.score > 0)
-      .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
-      .slice(0, limit);
+    const pool = category ? allTools().filter((tool) => tool.category.toLowerCase() === category) : allTools();
+    const ranked = rankTools(pool, task).slice(0, limit);
 
-    if (scored.length === 0) {
+    if (ranked.length === 0) {
       return fail(
-        `"${task}" uchun mos tool topilmadi. Boshqa so‘zl bilan urinib ko‘ring yoki category parametridan foydalaning.`,
+        `"${task}" uchun mos tool topilmadi. Boshqa so'zl bilan urinib ko'ring yoki category parametridan foydalaning.`,
       );
     }
 
-    const grouped = new Map<string, typeof scored>();
-    for (const entry of scored) {
-      const bucket = grouped.get(entry.tool.category) ?? [];
+    // Group by category so related tools stay together in the response.
+    const grouped = new Map<string, typeof ranked>();
+    for (const entry of ranked) {
+      const bucket = grouped.get(entry.category) ?? [];
       bucket.push(entry);
-      grouped.set(entry.tool.category, bucket);
+      grouped.set(entry.category, bucket);
     }
 
     return jsonBlock(`Capability map: ${task}`, {
       profile,
-      matched: scored.length,
-      how_to_call: [
-        'Har bir tool `pro_capability_call` bilan bir chaqiruvda yoki `pro_fetch_tool_execute` bilan alohida chaqiriladi.',
-        '`direct` = to‘g‘ridan-to‘g‘ri chaqirsa bo‘ladi; `via_composite` = shu profilda ko‘rinmaydi, lekin kompozit orqali ishlaydi.',
-        'Ikkalasi ham `pro_capability_call` orqali bajariladi — batch ichida xato bo‘lsa qolganlari davom etadi.',
-      ].join(' '),
-      categories: [...grouped.entries()].map(([cat, entries]) => ({
-        category: cat,
-        tools: entries.map(({ tool, score }) => ({
-          name: tool.name,
-          description: tool.description,
-          relevance: score,
-          // Whether the tool can be invoked directly under this profile. Everything is reachable
-          // through `pro_capability_call` regardless, so this is a routing hint, not a restriction.
-          direct: isToolVisibleInProfile(tool, profile),
-          ...(includeSchema ? { inputSchema: tool.inputSchema } : {}),
-        })),
+      matched: ranked.length,
+      how_to_call:
+        'Har bir tool `pro_capability_call` bilan bir chaqiruvda yoki `pro_fetch_tool_execute` bilan ' +
+        "alohida chaqiriladi. `direct` = to'g'ridan-to'g'ri chaqirsa bo'ladi. `direct: false` " +
+        'bo‘lgan tool’lar ham batch orqali bajariladi.',
+      categories: [...grouped.entries()].map(([name, entries]) => ({
+        category: name,
+        tools: entries.map((entry) => {
+          const tool = allTools().find((candidate) => candidate.name === entry.name);
+          return {
+            name: entry.name,
+            description: entry.description,
+            relevance: Number(entry.score.toFixed(2)),
+            direct: isToolVisibleInProfile(tool ?? { name: entry.name, category: name }, profile),
+            ...(includeSchema && tool ? { inputSchema: tool.inputSchema } : {}),
+          };
+        }),
       })),
     });
   },
 });
-
-/** Split a task into lowercase tokens, dropping stop words that add noise. */
-function tokenize(task: string): string[] {
-  const stop = new Set([
-    'the',
-    'a',
-    'an',
-    'for',
-    'to',
-    'of',
-    'in',
-    'on',
-    'and',
-    'or',
-    'with',
-    'from',
-    'bu',
-    'uchun',
-    'bilan',
-    'va',
-    'ham',
-  ]);
-  return task
-    .toLowerCase()
-    .split(/[^a-z0-9а-я]+/i)
-    .filter((token) => token.length > 2 && !stop.has(token));
-}
-
-/**
- * Score a tool against the task tokens.
- *
- * Weighting matters: an exact word-boundary hit in the description is a stronger signal than a
- * substring anywhere, and matching the tool's own category or name suffix is stronger still.
- */
-function scoreTool(
-  tool: { name: string; category: string; description: string; inputSchema?: { properties?: Record<string, unknown> } },
-  terms: string[],
-): number {
-  const name = tool.name.toLowerCase();
-  const category = tool.category.toLowerCase();
-  const description = tool.description.toLowerCase();
-  const schema = JSON.stringify(tool.inputSchema?.properties ?? {}).toLowerCase();
-  let score = 0;
-
-  for (const term of terms) {
-    if (name.includes(term)) score += name.includes('_' + term) || name.startsWith(term) ? 10 : 6;
-    if (category.includes(term)) score += 5;
-    if (new RegExp(`\\b${escapeRegExp(term)}`).test(description)) score += 4;
-    else if (description.includes(term)) score += 2;
-    if (schema.includes(term)) score += 1;
-  }
-  return score;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Names of every registered tool, for callers that just want an inventory. */
-export function inventory(): string[] {
-  return allTools().map((tool) => tool.name);
-}
