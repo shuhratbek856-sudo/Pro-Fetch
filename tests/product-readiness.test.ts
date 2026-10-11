@@ -244,6 +244,29 @@ describe('typed input helpers', () => {
   });
 });
 
+describe('env_check reports file-backed secrets as configured', () => {
+  it('reads through the credential resolver instead of raw process.env', async () => {
+    // Previously the tool read `process.env` directly, so a `<NAME>_FILE` setup reported the
+    // credential as missing even though the server could actually use it.
+    const previous = process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN_FILE = path.resolve(process.cwd(), '.github-token-test-fixture.txt');
+    try {
+      await writeFile(path.resolve(process.cwd(), '.github-token-test-fixture.txt'), 'fixture-token\n', 'utf8');
+      const result = await dispatch('pro_fetch_env_check', {});
+      const text = (result.content ?? []).map((item) => item.text).join('\n');
+      expect(result.isError).toBeFalsy();
+      expect(text).toContain('GITHUB_TOKEN');
+      expect(text).toContain('✅');
+    } finally {
+      if (previous === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = previous;
+      delete process.env.GITHUB_TOKEN_FILE;
+      await rm(path.resolve(process.cwd(), '.github-token-test-fixture.txt'), { force: true });
+    }
+  });
+});
+
 describe('dispatch still returns structured errors after the input migration', () => {
   it('wraps a failing tool in the standard error envelope', async () => {
     const result = await dispatch('pro_fetch_tool_execute', { tool_name: 'definitely_not_a_tool' });
