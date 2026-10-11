@@ -187,8 +187,10 @@ describe('credentials', () => {
       process.chdir(previousCwd);
       delete process.env.PRO_FETCH_TEST_SECRET;
       delete process.env.PRO_FETCH_TEST_SECRET_FILE;
-      await rm(elsewhere, { recursive: true, force: true });
+      // The fixture lives in the package root, so clean it up here or it would survive
+      // the run and get picked up by version control.
       await rm(target, { force: true });
+      await rm(elsewhere, { recursive: true, force: true });
     }
   });
 
