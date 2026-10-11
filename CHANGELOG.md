@@ -7,6 +7,30 @@ versiya semver bo'yicha.
 
 ### Added
 
+- **Smart System** — MCP klientlar modelga ~10 tagacha tool yubora olishi muammosini hal qiladi.
+  569 tool'ni 10 ta kuchli tool'ga yig'adi, shunda imkoniyat saqlanadi:
+  - `pro_capability_call` — `{ tool, arguments }` ro'yxatini **bir chaqiruvda** bajaradi (batch).
+    Birinchi xato qolganlarini to'xtatmaydi; har bir natija alohida `ok`/`error` bilan qaytadi.
+    50 tagacha cheklangan.
+  - `pro_capability_map` — tabiiy tilidagi vazifani aniq tool nomlari va input schema'lariga
+    bog'laydi.
+  - `pro_research_deep` — qidiruv → sahifalarni o'qish → faktalar → cross-check → evidence baholash →
+    taqdimot, to'liq tadqiqot bitta chaqiruvda.
+  - `pro_fetch_ingest` — formatni avtomatik aniqlab har qanday URLni toza ma'lumotga aylantiradi.
+  - `pro_audit_page` — bitta sahifani 15+ ekstraksiya bilan bir vaqtda tahlil qiladi.
+  - `pro_repo_audit` — repository uchun 15+ GitHub tool'ini bitta chaqiruvda ishga tushiradi.
+  - `pro_pr_review` — PR uchun diff, checks, review va inline izohlarni yig'adi.
+  - `pro_site_scan` — robots + sitemap + crawl + metadata + link grafigi.
+  - `pro_data_pipeline` — datasetni yuklash, profillash va qayta ishlash.
+  - `src/core/composite.ts` — pipeline yordamchilari (`runStep`, `renderPipeline`, `urlsFrom`).
+  - `tests/smart-system.test.ts` — 17 ta test, jumladan allowlist va xato izolyatsiyasi.
+
+  **O'lchangan foyda:** eski `smart` profilida uch bosqichli tadqiqot uchun 9 round trip kerak edi,
+  har biri oldingisining to'g'ri tool nomini taxmin qilishiga bog'liq edi. Endi bir chaqiruv yetadi.
+
+  **Xavfsizlik o'zgarmadi:** har bir ichki chaqiruv `dispatch()` orqali o'tadi, shuning uchun
+  `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_READ_ONLY`, SSRF, output sandbox va timeout qo'llaniladi.
+
 - `PRO_FETCH_ENFORCE_PROFILE` — profilni qat'iy allowlistga aylantiradi. `smart` profil bilan
   birga ishlatilganda aniq konfiguratsiya xatosi beriladi, chunki `smart` meta-executor orqali
   o'z ko'rinmaydigan tool'larni chaqirishga bog'liq.

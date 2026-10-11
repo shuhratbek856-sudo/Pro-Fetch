@@ -23,8 +23,11 @@ import jwt_decode from './jwt_decode.js';
 import number_format from './number_format.js';
 import date_convert from './date_convert.js';
 import array_ops from './array_ops.js';
+import data_pipeline from './data_pipeline.js';
 
 export default [
+  // Smart System composite
+  data_pipeline,
   csv_stats,
   json_flatten,
   diff_json,

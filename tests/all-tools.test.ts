@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import '../src/loader.js'; // barcha 559 toolni ro'yxatga qo'shadi
+import '../src/loader.js'; // barcha 569 toolni ro'yxatga qo'shadi
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -7,19 +7,19 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const EXPECTED_COUNTS: Record<string, number> = {
-  http: 18,
+  http: 19,
   convert: 30,
   search: 20,
-  research: 25,
-  github: 47,
-  crawl: 20,
-  extract: 23,
+  research: 26,
+  github: 49,
+  crawl: 22,
+  extract: 24,
   media: 15,
   archive: 15,
-  admin: 21,
+  admin: 23,
   auth: 12,
   apitest: 12,
-  data: 25,
+  data: 26,
   docs: 15,
   browser: 41,
   monitoring: 10,
@@ -58,9 +58,9 @@ const SCHEMA_CATEGORIES = new Set([
   'productivity',
 ]);
 
-describe('pro-fetch MAX — barcha 559 tool', () => {
-  it("jami aynan 559 tool ro'yxatga olinadi", () => {
-    expect(allTools().length).toBe(559);
+describe('pro-fetch MAX — barcha 569 tool', () => {
+  it("jami aynan 569 tool ro'yxatga olinadi", () => {
+    expect(allTools().length).toBe(569);
   });
 
   it('har kategoriya kutilgan sonda', () => {
@@ -73,7 +73,7 @@ describe('pro-fetch MAX — barcha 559 tool', () => {
 
   it('nomlar unikal va MCP formatiga mos', () => {
     const names = allTools().map((t) => t.name);
-    expect(new Set(names).size).toBe(559);
+    expect(new Set(names).size).toBe(569);
     for (const n of names) expect(n).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
   });
 
@@ -87,7 +87,7 @@ describe('pro-fetch MAX — barcha 559 tool', () => {
 
   it('scoped tool categories publish closed input schemas', () => {
     const schemaTools = allTools().filter((tool) => SCHEMA_CATEGORIES.has(tool.category));
-    expect(schemaTools).toHaveLength(433);
+    expect(schemaTools).toHaveLength(437);
     for (const tool of schemaTools) {
       expect(tool.inputSchema.additionalProperties, tool.name).toBe(false);
       expect(tool.inputSchema.properties, tool.name).toBeDefined();
@@ -168,6 +168,21 @@ describe('pro-fetch MAX — barcha 559 tool', () => {
       'security',
       'knowledge',
     ]);
+
+    // Composite tools legitimately require an input, so they are checked for a handler rather
+    // than dispatched with no arguments the way the parameterless packs are.
+    const COMPOSITES = new Set([
+      'pro_data_pipeline',
+      'pro_capability_call',
+      'pro_capability_map',
+      'pro_research_deep',
+      'pro_fetch_ingest',
+      'pro_audit_page',
+      'pro_repo_audit',
+      'pro_pr_review',
+      'pro_page_diff',
+      'pro_site_scan',
+    ]);
     const seen = new Set<string>();
     const samples = allTools().filter((t) => {
       if (seen.has(t.category)) return false;
@@ -176,7 +191,7 @@ describe('pro-fetch MAX — barcha 559 tool', () => {
     });
     expect(samples.length).toBe(26);
     for (const t of samples) {
-      if (NET.has(t.category)) {
+      if (NET.has(t.category) || COMPOSITES.has(t.name)) {
         expect(typeof t.handler).toBe('function');
       } else {
         const res = await dispatch(t.name, {});
@@ -191,12 +206,12 @@ describe('pro-fetch MAX — barcha 559 tool', () => {
     expect(res.isError).toBe(true);
   });
 
-  it('profillar: minimal=69, standard=171, full=559', () => {
-    expect(listTools('minimal').length).toBe(69);
-    expect(listTools('standard').length).toBe(171);
-    expect(listTools('full').length).toBe(559);
+  it('profillar: minimal=72, standard=177, full=569', () => {
+    expect(listTools('minimal').length).toBe(72);
+    expect(listTools('standard').length).toBe(177);
+    expect(listTools('full').length).toBe(569);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
-    expect(listTools('smart').length).toBe(5);
+    expect(listTools('smart').length).toBe(10);
   });
 });
 

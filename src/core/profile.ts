@@ -15,12 +15,36 @@ export type Profile = 'smart' | 'minimal' | 'standard' | 'full';
 
 export const PROFILE_LEVELS: Record<Profile, number> = { smart: 0, minimal: 1, standard: 2, full: 3 };
 
+/** Tools exposed under the `smart` profile.
+ *
+ * The design goal is a client's tool budget — commonly around ten — without giving up capability.
+ * Each entry either runs many underlying tools behind one schema, or makes the rest of the registry
+ * reachable. Together they cover the whole surface:
+ *
+ * - `pro_capability_call` — batch executor: many tools, one round trip
+ * - `pro_capability_map`  — intent to tool discovery, with schemas
+ * - `pro_fetch_tool_execute` — single-tool executor (the escape hatch)
+ * - `pro_research_deep`   — the full research pipeline
+ * - `pro_fetch_ingest`    — any URL to clean structured data
+ * - `pro_audit_page`      — one page to every applicable extraction
+ * - `pro_repo_audit`      — a repository to its complete report
+ * - `pro_pr_review`       — a pull request to a full review
+ * - `pro_site_scan`       — crawl and summarise a site
+ * - `pro_data_pipeline`   — load, profile and transform a dataset
+ *
+ * Exactly ten entries, matching the tightest common client limit.
+ */
 export const SMART_TOOL_NAMES = new Set([
-  'pro_fetch_tool_list_details',
+  'pro_capability_call',
+  'pro_capability_map',
   'pro_fetch_tool_execute',
-  'pro_fetch_health_check',
-  'pro_fetch_diagnostics',
-  'pro_fetch_usage_stats',
+  'pro_research_deep',
+  'pro_fetch_ingest',
+  'pro_audit_page',
+  'pro_repo_audit',
+  'pro_pr_review',
+  'pro_site_scan',
+  'pro_data_pipeline',
 ]);
 
 /** Category → minimum profile level that exposes it. Unlisted categories default to `full`. */

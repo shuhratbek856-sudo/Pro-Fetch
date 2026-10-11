@@ -44,14 +44,26 @@ try {
   const qwenJson = JSON.parse(qwenText);
   const countManifest = JSON.parse(countManifestText);
 
-  if (!String(packageJson.description ?? '').includes('559 MCP tool'))
-    failures.push('package.json description does not report 559 tools');
-  if (!readme.includes('559 MCP tool')) failures.push('README does not report 559 tools');
+  if (!String(packageJson.description ?? '').includes('569 MCP tool'))
+    failures.push('package.json description does not report 569 tools');
+  if (!readme.includes('569 MCP tool')) failures.push('README does not report 569 tools');
   // The smart-profile tool list now lives in `src/core/profile.ts`; `loader.ts` re-exports it.
-  if (!profileModule.includes("'pro_fetch_tool_execute'"))
-    failures.push('smart profile does not expose the meta-executor');
-  if (!profileModule.includes("'pro_fetch_tool_list_details'"))
-    failures.push('smart profile does not expose tool discovery');
+  // The Smart System contract: the profile must expose the batch executor, the intent mapper and
+  // the single-tool escape hatch, so a client that caps its tool budget still reaches everything.
+  for (const required of [
+    'pro_capability_call',
+    'pro_capability_map',
+    'pro_fetch_tool_execute',
+    'pro_research_deep',
+    'pro_fetch_ingest',
+    'pro_audit_page',
+    'pro_repo_audit',
+    'pro_pr_review',
+    'pro_site_scan',
+    'pro_data_pipeline',
+  ]) {
+    if (!profileModule.includes(`'${required}'`)) failures.push(`smart profile is missing ${required}`);
+  }
   if (maxPlatform.includes('runTemplateTool') || /template-tools/i.test(maxPlatform))
     failures.push('MAX pack contains a template dispatcher');
   // Whitespace-tolerant: these guards are real but Prettier may reformat the literal.
@@ -69,7 +81,7 @@ try {
   if (!packageJson.scripts?.['verify:registry']) failures.push('verify:registry script is missing from package.json');
   if (!packageJson.engines?.node)
     failures.push('package.json is missing engines.node (pdfjs-dist 6 requires Node >=22.13)');
-  if (!/toBe\(559\)/.test(allToolsTest)) failures.push('tool registry test does not assert 559 tools');
+  if (!/toBe\(569\)/.test(allToolsTest)) failures.push('tool registry test does not assert 569 tools');
   const profile = qwenJson?.mcpServers?.['pro-fetch']?.env?.PRO_FETCH_PROFILE;
   if (profile !== 'smart') failures.push('qwen-mcp.example.json should use the smart profile');
   const qwenEnv = qwenJson?.mcpServers?.['pro-fetch']?.env ?? {};
@@ -142,7 +154,7 @@ try {
   const manifestTotal = Object.values(countManifest.categories ?? {}).reduce((sum, value) => sum + Number(value), 0);
   if (manifestTotal !== countManifest.total)
     failures.push(`independent tool-count manifest sums to ${manifestTotal}, expected ${countManifest.total}`);
-  if (countManifest.total !== 559) failures.push(`independent manifest total is ${countManifest.total}, expected 559`);
+  if (countManifest.total !== 569) failures.push(`independent manifest total is ${countManifest.total}, expected 569`);
   if (!allToolsTest.includes('allTools().length'))
     failures.push('registry tests do not inspect actual registered tools');
 

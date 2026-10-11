@@ -140,6 +140,6 @@ describe('github pack completeness', () => {
     const names = new Set(allTools().map((tool) => tool.name));
     expect(names.has('pro_gh_repo_contributors')).toBe(true);
     expect(names.has('pro_gh_release_read')).toBe(true);
-    expect(allTools().filter((tool) => tool.category === 'github').length).toBe(47);
+    expect(allTools().filter((tool) => tool.category === 'github').length).toBe(49);
   });
 });

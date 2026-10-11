@@ -1,7 +1,7 @@
 # Pro-Fetch MCP
 
 Professional fetch, deep-research va GitHub o'qish MCP serveri.
-**559 MCP tool · 26 kategoriya · smart tool discovery · umumiy execution/security engine**
+**569 MCP tool · 26 kategoriya · smart tool discovery · umumiy execution/security engine**
 
 ## Holat
 
@@ -48,7 +48,7 @@ npm ci
 npm run check    # verify:static + verify:registry + build + test + verify:package + format:check
 ```
 
-Alohida: `npm run build`, `npm test`, `npm run verify:registry` (haqiqiy tool registry'ni yuklab, 559 / 26 / barcha 4 profil sonlarini tekshiradi).
+Alohida: `npm run build`, `npm test`, `npm run verify:registry` (haqiqiy tool registry'ni yuklab, 569 / 26 / barcha 4 profil sonlarini tekshiradi).
 
 Ishga tushirish (stdio MCP server):
 
@@ -85,7 +85,53 @@ Tayyor konfiguratsiya namunasi [qwen-mcp.example.json](qwen-mcp.example.json) da
 cp qwen-mcp.example.json qwen-mcp.json   # qwen-mcp.json .gitignore'da
 ```
 
-`smart` profilda modelga 559 schema o'rniga 5 ta meta-tool ko'rinadi: `pro_fetch_tool_list_details` vazifaga mos tool'larni qidiradi, `pro_fetch_tool_execute` esa topilgan tool'ni schema argumentlari bilan chaqiradi. API kalitlari `.env` da yoki `GITHUB_TOKEN_FILE` kabi `*_FILE` o'zgaruvchisida saqlanadi; `.env` hech qachon commit qilinmaydi va nashr paketiga kirmaydi. Nisbiy `*_FILE` yo'llari paket ildiziga nisbatan resolve qilinadi, shuning uchun server istalgan papkadan ishga tushsa ham to'g'ri ishlaydi.
+`smart` profilda modelga 569 schema o'rniga **10 ta Smart System tool** ko'rinadi. Ular to'liq imkoniyatni saqlab qoladi, chunki biri ko'p tool'ni bir chaqiruvda ishga tushiradi. Batafsil: [Smart System](#smart-system). API kalitlari `.env` da yoki `GITHUB_TOKEN_FILE` kabi `*_FILE` o'zgaruvchisida saqlanadi; `.env` hech qachon commit qilinmaydi va nashr paketiga kirmaydi. Nisbiy `*_FILE` yo'llari paket ildiziga nisbatan resolve qilinadi, shuning uchun server istalgan papkadan ishga tushsa ham to'g'ri ishlaydi.
+
+## Smart System
+
+Ko'p MCP klient modelga yuboriladigan tool sonini ~10 taga cheklaydi. 569 ta tool'ni yuborish
+imkonsiz, oddiy discovery esa har bir amal uchun uch round trip talab qiladi va model tool nomini
+taxmin qilishi kerak bo'ladi.
+
+Smart System buni ikki yo'l bilan hal qiladi: **kompozit tool'lar** va **batch ijro**.
+
+### 10 ta tool
+
+| Tool | Vazifa |
+|---|---|
+| `pro_capability_call` | **Batch executor.** `{ tool, arguments }` ro'yxatini bir chaqiruvda bajaradi |
+| `pro_capability_map` | Vazifani tabiiy tildan aniq tool'larga va schema'lariga bog'laydi |
+| `pro_fetch_tool_execute` | Bitta tool'ni aniq nom bilan chaqirish |
+| `pro_research_deep` | To'liq tadqiqot: qidiruv → o'qish → faktalar → tekshiruv → hisobot |
+| `pro_fetch_ingest` | Har qanday URL → toza tuzilgan ma'lumot (sahifa, PDF, CSV, feed) |
+| `pro_audit_page` | Bitta sahifa → barcha tegishli ekstraksiyalar |
+| `pro_repo_audit` | Repository → to'liq hisobot (metadata, README, tree, issues, PR, release) |
+| `pro_pr_review` | PR → to'liq review (diff, checks, reviews, izohlar) |
+| `pro_site_scan` | Saytni crawl qilib tushuntirish |
+| `pro_data_pipeline` | Datasetni yuklash, profillash va qayta ishlash |
+
+### Namuna: 3 round trip o'rniga 1
+
+```jsonc
+// Eski usul: qidiruv → schema → chaqiruv → yana qidiruv → schema → chaqiruv (6+ round trip)
+{ "tool": "pro_capability_call", "arguments": {
+  "calls": [
+    { "tool": "pro_fetch_web_search",      "arguments": { "query": "RAG arxitekturasi 2025" }, "label": "search" },
+    { "tool": "pro_fetch_academic_search", "arguments": { "query": "retrieval augmented generation" }, "label": "papers" },
+    { "tool": "pro_fetch_news_search",     "arguments": { "query": "RAG news" }, "label": "news" }
+  ]
+}}
+```
+
+Bir chaqiruvda uchta tool ishlaydi. Birinchisi xato bersa, qolganlari davom etadi va natijada
+har biri alohida `ok`/`error` bilan qaytadi.
+
+### Maxfiylik saqlanadi
+
+Kompozitlar registry'ni aylanib o'tmaydi: har bir ichki chaqiruv `dispatch()` orqali o'tadi, shuning
+uchun `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_READ_ONLY`, SSRF tekshiruvi, `PRO_FETCH_OUTPUT_ROOT`
+sandbox'i va timeout **o'zgarmagan holda** qo'llaniladi. `pro_capability_call` o'zi allowlistda
+yo'q bo'lsa, u umuman ishga tushmaydi.
 
 ## Runtime, xavfsizlik va ishlash
 
@@ -105,9 +151,9 @@ cp qwen-mcp.example.json qwen-mcp.json   # qwen-mcp.json .gitignore'da
 | Profil | Tool soni | Kategoriyalar |
 |---|---|---|
 | `minimal` | 69 | http, convert, admin |
-| `smart` | 5 | Tool discovery + meta-executor; schemas are loaded on demand |
+| `smart` | 10 | **Smart System**: kompozitlar + batch executor + discovery |
 | `standard` (default) | 171 | + github, search, extract, auth |
-| `full` | 559 | Barcha 26 kategoriya |
+| `full` | 569 | Barcha 26 kategoriya |
 
 **Profil — ko'rinish, emas xavfsizlik chegarasi.** Profil faqat modelga qancha schema yuborilishini
 belgilaydi: `smart` profilida `pro_fetch_tool_execute` aynan ko'rinmaydigan tool'larni chaqirish
@@ -123,7 +169,7 @@ qo'ying — u `smart` bilan birga ishlatilmaydi va aniq xato beradi. Batafsil: [
 ## Test
 
 - `tests/core.test.ts` — SSRF, xavfsiz redirect, binary size limits, rate-limit, cache, domain scope va secret redaction
-- `tests/all-tools.test.ts` — 559 tool: son, schema, smart profile, meta-execution, dispatch va input-contract regressiyalari
+- `tests/all-tools.test.ts` — 569 tool: son, schema, smart profile, meta-execution, dispatch va input-contract regressiyalari
 - `tests/handler-regression.test.ts` — conversion, search provider, research, crawl, auth va SSE behavior
 - `tests/advanced-runtime.test.ts` — smart meta-execution, permission policy, output sandbox, credential files, search ranking, GET cache, ETag, POST no-retry va credential stripping
 - `tests/hardening.test.ts` — timeout'dan keyin slot bo'shashi, `PRO_FETCH_OUTPUT_ROOT` symlink sandbox'i va github kiritma himoyasi

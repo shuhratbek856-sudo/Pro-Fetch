@@ -16,8 +16,11 @@ import fetch_with_proxy from './fetch_with_proxy.js';
 import websocket_listen from './websocket_listen.js';
 import sse_subscribe from './sse_subscribe.js';
 import fetch_retry from './fetch_retry.js';
+import fetch_ingest from './fetch_ingest.js';
 
 export default [
+  // Smart System composite
+  fetch_ingest,
   fetch_url,
   fetch_batch,
   fetch_raw,

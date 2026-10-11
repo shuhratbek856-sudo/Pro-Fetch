@@ -1,19 +1,19 @@
 {
-  "total": 559,
+  "total": 569,
   "categories": {
-    "http": 18,
+    "http": 19,
     "convert": 30,
     "search": 20,
-    "research": 25,
-    "github": 47,
-    "crawl": 20,
-    "extract": 23,
+    "research": 26,
+    "github": 49,
+    "crawl": 22,
+    "extract": 24,
     "media": 15,
     "archive": 15,
-    "admin": 21,
+    "admin": 23,
     "auth": 12,
     "apitest": 12,
-    "data": 25,
+    "data": 26,
     "docs": 15,
     "browser": 41,
     "monitoring": 10,
@@ -29,9 +29,21 @@
     "productivity": 18
   },
   "profiles": {
-    "smart": 5,
-    "minimal": 69,
-    "standard": 171,
-    "full": 559
-  }
+    "smart": 10,
+    "minimal": 72,
+    "standard": 177,
+    "full": 569
+  },
+  "smartComposites": [
+    "pro_capability_call",
+    "pro_capability_map",
+    "pro_fetch_tool_execute",
+    "pro_research_deep",
+    "pro_fetch_ingest",
+    "pro_audit_page",
+    "pro_repo_audit",
+    "pro_pr_review",
+    "pro_site_scan",
+    "pro_data_pipeline"
+  ]
 }

@@ -45,8 +45,14 @@ import user_profile from './user_profile.js';
 import actions_runs from './actions_runs.js';
 import repo_contributors from './repo_contributors.js';
 import release_read from './release_read.js';
+import repo_audit from './repo_audit_tool.js';
+import pr_review from './pr_review_tool.js';
 
 export default [
+  // Smart System composite
+  pr_review,
+  // Smart System composite
+  repo_audit,
   repo_info,
   repo_readme,
   repo_tree,

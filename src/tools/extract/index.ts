@@ -21,8 +21,11 @@ import price_extract from './price_extract.js';
 import hreflang_extract from './hreflang_extract.js';
 import image_alt_extract from './image_alt_extract.js';
 import link_domains from './link_domains.js';
+import audit_page from './audit_page.js';
 
 export default [
+  // Smart System composite
+  audit_page,
   css_select,
   xpath_select,
   json_path,

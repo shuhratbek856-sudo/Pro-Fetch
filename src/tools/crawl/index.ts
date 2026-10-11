@@ -18,8 +18,14 @@ import link_graph from './link_graph.js';
 import broken_links from './broken_links.js';
 import page_weight from './page_weight.js';
 import crawl_export from './crawl_export.js';
+import page_diff from './page_diff.js';
+import site_scan from './site_scan.js';
 
 export default [
+  // Smart System composite
+  site_scan,
+  // Smart System composite
+  page_diff,
   crawl_site,
   sitemap_read,
   extract_links,

@@ -23,8 +23,11 @@ import fact_ledger from './fact_ledger.js';
 import followup_questions from './followup_questions.js';
 import evidence_strength from './evidence_strength.js';
 import citation_graph from './citation_graph.js';
+import research_deep from './research_deep.js';
 
 export default [
+  // Composite: the whole research pipeline behind a single schema.
+  research_deep,
   research_plan,
   research_iterate,
   crawl_for_topic,
