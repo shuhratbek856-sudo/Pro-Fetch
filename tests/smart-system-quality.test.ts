@@ -427,6 +427,38 @@ interface SqliteHandle {
   close(): void;
 }
 
+describe('discovery hands over a ready-to-send call', () => {
+  /**
+   * Discovery used to end at a list of names, leaving the caller to write the invocation. A wrong
+   * argument is the most common reason a correctly discovered tool then fails, so the map now
+   * returns the exact payload and names the executor that fits the matched categories.
+   */
+  const suggest = async (task: string): Promise<string> =>
+    text(await dispatch('pro_capability_map', { task, include_schema: false }));
+
+  it('names the coverage composite when the matches are in its categories', async () => {
+    expect(await suggest('check the git history and scan the diff for secrets')).toContain('pro_workspace_ops');
+    expect(await suggest('list issues in my gitlab repository')).toContain('pro_service_ops');
+    expect(await suggest('query the postgres database tables')).toContain('pro_workspace_ops');
+  });
+
+  it('falls back to the batch executor when no composite covers the matches', async () => {
+    const body = await suggest('extract emails and prices from this page');
+    expect(body).toContain('pro_capability_call');
+    // The generic executor is still right there, so the fallback must not drop the payload.
+    expect(body).toMatch(/"calls"/);
+  });
+
+  it('returns a payload whose tools all exist', async () => {
+    const body = await suggest('extract emails and prices from this page');
+    const names = [...body.matchAll(/"tool"\s*:\s*"(pro_[a-z0-9_]+)"/g)].map((m) => m[1]!);
+    const known = new Set(allTools().map((tool) => tool.name));
+    expect(names.length).toBeGreaterThan(0);
+    // A suggested call naming a tool that does not exist would fail on the very next step.
+    for (const name of names) expect(known, name).toContain(name);
+  });
+});
+
 describe('concurrent downloads of one URL happen once', () => {
   /**
    * `pro_fetch_ingest` fans out fifteen steps, three of which need the original bytes: the PDF

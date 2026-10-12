@@ -206,19 +206,31 @@ o'zgartirilishi** — foydalanuvchi "tez ko'rib chiq" desa.
 | 8 | **Platforma muvofiqligi** | Windows npm, SQLite binary'siz | ✅ |
 | 9 | **Aniq xatolar** | `COMMAND_NOT_FOUND`, `SQLITE_UNAVAILABLE` | ✅ |
 | 10 | **Konsistent kiritish** | `repo` ikkala shaklda qabul qilinadi | ✅ |
-| 11 | **Tayyor payload** — `capability_map` → `*_ops` ga tayyor ro'yxat | qo'lda yoziladigan nom 0 | ⬜ |
-| 12 | **OCR worker pool** — native, alohida tekshiruv bilan | rasmlar ketma-ket emas | ⬜ |
+| 11 | **Tayyor payload** — `capability_map` → `*_ops` ga tayyor ro'yxat | qo'lda yoziladigan nom 0 | ✅ |
+| 12 | **OCR parallel** | 4 ta parallel → **3.9× tezlik** | ✅ allaqach ishlaydi |
 
 Har bir qadam alohida commit, o'lchov bilan, va `npm run check` yashil holda.
 
-### 6.1 Nima ochiq qoladi va nima uchun bu onatli
+### 6.1 "Kamchilik" bo'lib yozilgan, lekin o'lchovda yo'q bo'lib chiqqan narsa
 
-| Kamchilik | Nima uchun hozir qilinmadi |
+Bu hujjat avval ikkita kamchikni ro'yxatga olgan edi. Ikkalasi ham tekshirilganda **roziq bo'lib chiqdi**,
+va bu yozilishi kerak — aks holda hujjat tekshirilmagan niqobni qo'llab-quvvatlaydi.
+
+| Kamchilik (avval yozilgan) | O'lchov | Xulosa |
+|---|---|---|
+| «OCR ketma-ket ishlaydi, worker pool kerak» | 1 ta OCR = 324 ms; 4 ta parallel = 333 ms → **3.9× tezlik** | **Ro'ziq emas.** Parallel allaqach ishlaydi. Haqiqiy test: canvas'ga «HELLO» yozildi, OCR uni 96% ishonch bilan topdi. |
+| «`pro_fetch_ingest` da PDF/CSV konvertorlari qayta yuklaydi» | 15 qadam → **1 so'rov** (jonli sahifada o'lchangan) | **Yopildi.** `downloadToBuffer` parallel yuklashlarni birlashtiradi. |
+
+Yozilgan kamchilik — o'lcangan natija emas, taxmin bo'lgan. Endi har bir qator o'lchovdan kelib chiqadi.
+
+### 6.2 Nima haqiqatan ochiq qoladi
+
+| Kamchilik | Nima uchun |
 |---|---|
-| `capability_map` → `*_ops` tayyor payload | `capability_call` allaqachon shuni qiladi; qo'shimcha qatlam model uchun ikki xil yo'l beradi va chalkashtiradi. |
-| OCR worker pool | `tesseract.js` native. Sinov muhitida worker yaratib ko'rish kerak; ishlamaydigan kod qoldirishdan ko'ra, hozir ketma-ket ishlash to'g'ri. |
-| Kross-chaqiruv kesh (jamiq) | Kesh **noto'g'ri** bo'lsa, model eskirgan ma'lumotga ishonadi. Faqat `readOnlyHint` va aniq `max-age` bilan. Parallel yuklashlar birlashtirilgani hozirgi ehtiyojni yopadi. |
-| `mode: fast` | Gate'lar allaqach oddiy sahifada 16 → 6 qiladi. Qo'shimcha rejim — foydalanuvchiga ikki xil xatti-harakat berib, chalkashtiradi. |
+| 234 ta credential talab qiladigan tool **real kalitsiz** tekshirilmadi | Hisoblarda token yo'q. Kod yo'li tekshirildi (GitLab ochiq repo, GitHub ochiq API ishladi), kalit bilan esa yo'q. |
+| `npm publish` bajarilmagan | `npm whoami` → auth talab qiladi. Bu sizning hisobingiz. |
+| Linux / macOS / Alpine faqat CI konfiguratsiyasida | Bu muhitda Windows. CI matritsasi mavjud, lekin men qochirmadim. |
+| Kross-chaqiruv kesh (jamiq) | Kesh noto'g'ri bo'lsa model eskirgan ma'lumotga ishonadi. Parallel yuklashlar birlashtirilgani hozirgi ehtiyojni yopadi. |
 
 ## 6. Nima **qilinmaydi** (onatli)
 

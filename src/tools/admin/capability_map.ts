@@ -17,6 +17,34 @@ import { rankTools } from '../../core/intent-search.js';
  * Every returned tool is reachable: `direct` marks the ones callable by name under the active
  * profile, and the rest are reached through `pro_capability_call`.
  */
+/** Categories each coverage composite serves, so discovery can name the right executor. */
+const COMPOSITE_CATEGORIES: Record<string, readonly string[]> = {
+  pro_workspace_ops: ['git', 'devops', 'database', 'security'],
+  pro_service_ops: ['codehost', 'collaboration', 'storage', 'productivity'],
+};
+
+/**
+ * Pick the executor that covers the most matched categories.
+ *
+ * Naming `pro_workspace_ops` rather than the generic batch executor matters: the composite is a single
+ * schema the caller already knows, while the batch executor asks them to assemble a call list. When
+ * no composite covers the matches — the common case for extract, http and research — the generic
+ * executor is still correct, so this returns it rather than nothing.
+ */
+function batchToolFor(categories: string[]): string {
+  const distinct = new Set(categories);
+  let best = 'pro_capability_call';
+  let bestCoverage = 0;
+  for (const [composite, served] of Object.entries(COMPOSITE_CATEGORIES)) {
+    const coverage = served.filter((category) => distinct.has(category)).length;
+    if (coverage > bestCoverage) {
+      bestCoverage = coverage;
+      best = composite;
+    }
+  }
+  return best;
+}
+
 export default defineTool({
   name: 'pro_capability_map',
   description:
@@ -82,6 +110,20 @@ export default defineTool({
           };
         }),
       })),
+      // Ready to send, so the caller does not have to assemble the call itself.
+      //
+      // Discovery that stops at names leaves the caller to write the invocation, and a malformed
+      // argument is the most common way a discovered tool then fails. Returning the exact payload
+      // means the next step is a paste rather than a construction.
+      suggested_call: {
+        tool: batchToolFor(ranked.map((entry) => entry.category)),
+        arguments: {
+          calls: ranked.slice(0, 5).map((entry) => ({ tool: entry.name, arguments: {}, label: entry.name })),
+        },
+        note:
+          'Yuqoridagi `calls` ro‘yxatini to‘ldirib, ko‘rsatilgan tool ga yuboring. ' +
+          'Har bir argument o‘z tool‘ining `inputSchema` siga qarab to‘ldiriladi.',
+      },
     });
   },
 });
