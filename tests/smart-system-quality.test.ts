@@ -251,6 +251,60 @@ describe('composite contract is preserved', () => {
     }
   });
 
+  it('runs a batch concurrently and returns results in request order', async () => {
+    // A 12-entry batch used to be serialised into 12 round trips, which is the cost this tool
+    // exists to remove. Execution order is now unconstrained, so the contract that matters is
+    // that results still line up with the request the model wrote.
+    const calls = Array.from({ length: 12 }, (_, i) => ({
+      tool: 'pro_fetch_hash_string',
+      arguments: { text: `order-${i}` },
+      label: `L${i}`,
+    }));
+    const body = payload(await dispatch('pro_capability_call', { calls }));
+    const results = body.results as Array<{ label: string; ok: boolean }>;
+    expect(results).toHaveLength(12);
+    expect(results.every((entry) => entry.ok)).toBe(true);
+    expect(results.map((entry) => entry.label)).toEqual(calls.map((call) => call.label));
+  });
+
+  it('keeps inline validation errors inline rather than dropping them', async () => {
+    const body = payload(
+      await dispatch('pro_capability_call', {
+        calls: [
+          { tool: 'pro_fetch_hash_string', arguments: { text: 'a' }, label: 'ok-1' },
+          { arguments: {}, label: 'no-tool' },
+          'not-an-object' as unknown as Record<string, unknown>,
+          { tool: 'pro_fetch_hash_string', arguments: { text: 'b' }, label: 'ok-2' },
+        ],
+      }),
+    );
+    const results = body.results as Array<{ label: string; ok: boolean; error?: string }>;
+    expect(results).toHaveLength(4);
+    expect(results[0]!.ok).toBe(true);
+    expect(results[1]!.ok).toBe(false);
+    expect(results[2]!.ok).toBe(false);
+    expect(results[3]!.ok).toBe(true);
+  });
+
+  it('stop_on_error is reported honestly without discarding work already in flight', async () => {
+    const body = payload(
+      await dispatch('pro_capability_call', {
+        stop_on_error: true,
+        calls: [
+          { tool: 'not_a_real_tool', arguments: {}, label: 'bad' },
+          { tool: 'pro_fetch_hash_string', arguments: { text: 'x' }, label: 'good' },
+        ],
+      }),
+    );
+    const results = body.results as Array<{ label: string; ok: boolean; error?: string }>;
+    const stopped = results.find((entry) => entry.label === '(stopped)');
+    expect(stopped).toBeDefined();
+    expect(stopped!.error).toMatch(/stop_on_error/);
+    // The second entry ran concurrently and must not be reported as cancelled.
+    const good = results.find((entry) => entry.label === 'good');
+    expect(good!.ok).toBe(true);
+  });
+
   it('every composite exposes the detail budget knob', () => {
     const composites = listTools('smart').filter((tool) => tool.name !== 'pro_fetch_tool_execute');
     for (const tool of composites) {
