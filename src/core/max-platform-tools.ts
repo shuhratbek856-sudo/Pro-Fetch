@@ -2611,6 +2611,15 @@ for (const spec of SPECS) {
   };
   defineTool(def);
 }
+// Coverage composites for git/devops/database/security and codehost/collaboration/storage/
+// productivity. Measured as having zero composite coverage before these were added; see
+// scripts/measure-composite-coverage.mts.
+//
+// Imported for the side effect of registration: each composite calls `defineTool` itself on import,
+// so re-defining them here would collide. They live beside the MAX packs rather than in a category
+// index because those packs register via SPECS, not per-category index files.
+import '../tools/git/workspace_ops_composites.js';
+
 export function maxPlatformToolCount(): number {
   return SPECS.length;
 }

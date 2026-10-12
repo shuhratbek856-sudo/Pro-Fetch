@@ -44,9 +44,9 @@ try {
   const qwenJson = JSON.parse(qwenText);
   const countManifest = JSON.parse(countManifestText);
 
-  if (!String(packageJson.description ?? '').includes('569 MCP tool'))
-    failures.push('package.json description does not report 569 tools');
-  if (!readme.includes('569 MCP tool')) failures.push('README does not report 569 tools');
+  if (!String(packageJson.description ?? '').includes('571 MCP tool'))
+    failures.push('package.json description does not report 571 tools');
+  if (!readme.includes('571 MCP tool')) failures.push('README does not report 571 tools');
   // The smart-profile tool list now lives in `src/core/profile.ts`; `loader.ts` re-exports it.
   // The Smart System contract: the profile must expose the batch executor, the intent mapper and
   // the single-tool escape hatch, so a client that caps its tool budget still reaches everything.
@@ -97,9 +97,38 @@ try {
     failures.push('SearchItem has an unnecessary catch-all index signature');
   if (!packageJson.scripts?.['verify:static']) failures.push('verify:static script is missing from package.json');
   if (!packageJson.scripts?.['verify:registry']) failures.push('verify:registry script is missing from package.json');
+  if (!packageJson.scripts?.['measure:coverage'])
+    failures.push('measure:coverage script is missing from package.json; coverage must stay measurable');
+
+  // A composite that analyses a document must hand its extractors the *document*. `fetch_url`
+  // returns markdown and `html_to_text` returns text with the markup stripped, so passing either as
+  // a source body removes the evidence the extractors look for: `<script type="application/ld+json">`,
+  // `<img alt>`, `<a href>`, `itemscope`, `hreflang`. Verified regression — every structured-data,
+  // image-alt and link step reported "not found" on pages that contain all of them, which is a false
+  // negative the model cannot tell from the truth. Composites must use `fetchSource`.
+  const COMPOSITES_NEEDING_RAW_SOURCE = [
+    'src/tools/extract/audit_page.ts',
+    'src/tools/http/fetch_ingest.ts',
+    'src/tools/crawl/composites.ts',
+  ];
+  for (const file of COMPOSITES_NEEDING_RAW_SOURCE) {
+    const source = await read(file);
+    if (!/await fetchSource\(/.test(source)) {
+      failures.push(`${file} must fetch its source with fetchSource() so extractors see real markup`);
+    }
+  }
+  // `fetchSource` must stay a raw fetch. Swapping it for `fetchUrl` would silently restore the bug
+  // above, because `fetchUrl` renders markdown and still looks like a normal fetch.
+  const compositeCore = await read('src/core/composite.ts');
+  if (!/fetchSource[\s\S]*?fetchWithOptions\(url/.test(compositeCore)) {
+    failures.push('fetchSource must return the raw response body (fetchWithOptions), not a rendering');
+  }
+  if (/export async function fetchSource[\s\S]{0,400}?await fetchUrl\(/.test(compositeCore)) {
+    failures.push('fetchSource must not use fetchUrl: it renders markdown and destroys page markup');
+  }
   if (!packageJson.engines?.node)
     failures.push('package.json is missing engines.node (pdfjs-dist 6 requires Node >=22.13)');
-  if (!/toBe\(569\)/.test(allToolsTest)) failures.push('tool registry test does not assert 569 tools');
+  if (!/toBe\(571\)/.test(allToolsTest)) failures.push('tool registry test does not assert 571 tools');
   const profile = qwenJson?.mcpServers?.['pro-fetch']?.env?.PRO_FETCH_PROFILE;
   if (profile !== 'smart') failures.push('qwen-mcp.example.json should use the smart profile');
   const qwenEnv = qwenJson?.mcpServers?.['pro-fetch']?.env ?? {};
@@ -172,7 +201,7 @@ try {
   const manifestTotal = Object.values(countManifest.categories ?? {}).reduce((sum, value) => sum + Number(value), 0);
   if (manifestTotal !== countManifest.total)
     failures.push(`independent tool-count manifest sums to ${manifestTotal}, expected ${countManifest.total}`);
-  if (countManifest.total !== 569) failures.push(`independent manifest total is ${countManifest.total}, expected 569`);
+  if (countManifest.total !== 571) failures.push(`independent manifest total is ${countManifest.total}, expected 571`);
   if (!allToolsTest.includes('allTools().length'))
     failures.push('registry tests do not inspect actual registered tools');
 

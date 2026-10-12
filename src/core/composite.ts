@@ -25,6 +25,7 @@
  */
 
 import { dispatch } from './tool.js';
+import { fetchWithOptions } from './http-client.js';
 import { asRecordArray, pathStr } from './input.js';
 import type { ToolResult } from './types.js';
 
@@ -93,31 +94,108 @@ export async function runStep(step: string, tool: string, args: Record<string, u
 }
 
 /**
- * Run steps concurrently, preserving input order in the result.
+ * Fetch a source document once, for a composite that will analyse it many times.
  *
- * Independence is the caller's claim: only group steps that do not depend on each other's output.
- * Concurrency itself stays bounded by the execution engine, so this cannot exceed the configured
- * network limits — it just stops the composite from serialising work that could overlap.
+ * ## Why this is not `runStep('...', 'pro_fetch_fetch_url')`
+ *
+ * Every tool result is flattened through `textOf`, which truncates at 4,000 characters, and
+ * `pro_fetch_fetch_url` renders the page to markdown with a status footer while `pro_fetch_raw`
+ * clips at 12,000 tokens. A composite that needs to hand the *document* to several extractors cannot
+ * use either: markdown has no `<script type="application/ld+json">` for a structured-data step to
+ * find, no `<img alt>` for an alt-coverage step, and truncated markup silently drops the tail.
+ *
+ * This performs the one real request and returns the bytes, so every downstream step analyses the
+ * same complete document. `url` and `html` are returned together so a caller can pass the content
+ * while still labelling each step with the page it describes.
+ *
+ * The fetch still runs through `fetchWithOptions`, so SSRF resolution, redirect limits, timeouts
+ * and the byte cap all apply exactly as they do to a normal tool call.
+ */
+export async function fetchSource(
+  url: string,
+  maxBytes = 2_000_000,
+): Promise<{ ok: true; url: string; html: string } | { ok: false; error: string }> {
+  try {
+    const response = await fetchWithOptions(url, { maxBytes });
+    if (response.status >= 400) return { ok: false, error: `HTTP ${response.status}` };
+    if (!response.text.trim()) return { ok: false, error: 'Bo‘sh javob olindi.' };
+    return { ok: true, url, html: response.text };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Stable identity for a step, used to collapse exact duplicates within one fan-out.
+ *
+ * Keyed on the tool and its arguments, not on the step label: two steps asking the same question
+ * are the same question whatever they are called.
+ */
+function stepKey(tool: string, args: Record<string, unknown>): string {
+  let serialised: string;
+  try {
+    // Sorted keys, so argument order cannot make two identical calls look different.
+    const sorted: Record<string, unknown> = {};
+    for (const name of Object.keys(args).sort()) sorted[name] = args[name];
+    serialised = JSON.stringify(sorted) ?? '{}';
+  } catch {
+    // Non-serialisable arguments are rare but possible; treat them as distinct rather than guessing.
+    serialised = String(Date.now());
+  }
+  return `${tool}::${serialised}`;
+}
+
+/**
+ * Run steps concurrently, collapsing exact duplicates and preserving input order.
+ *
+ * Deduplication matters because composites naturally ask several tools the same question — two
+ * headings extractions for the same page, three converters for the same bytes. Without this, a
+ * single fan-out multiplies one expensive call into several. Duplicates reuse the first result under
+ * their own step name, so the transcript still shows what every step asked and found.
+ *
+ * Independence is still the caller's claim: only group steps that do not consume each other's output.
+ * Concurrency stays bounded by the execution engine, so this cannot exceed the configured limits.
  */
 export async function runParallel(
   steps: Array<[string, string, Record<string, unknown>]>,
   fanout = DEFAULT_FANOUT,
 ): Promise<StepOutcome[]> {
-  const width = Math.max(1, Math.min(fanout, steps.length));
-  const results = new Array<StepOutcome>(steps.length);
+  // Plan the unique work, then map each step onto the item that satisfies it.
+  //
+  // Every step keeps its own label. Two steps that share a tool and arguments are one dispatch, but
+  // they are not one *step*: a caller who asked the same question twice, or who gave the operations
+  // distinct ids, must still see two labelled results. Sharing the label would report the second
+  // operation under the first one's name, which reads as if only one had been requested.
+  const unique = new Map<string, { index: number; step: string; tool: string; args: Record<string, unknown> }>();
+  const plan: Array<{ source: number; label: string }> = [];
+  for (const [step, tool, args] of steps) {
+    const key = stepKey(tool, args);
+    let item = unique.get(key);
+    if (!item) {
+      item = { index: unique.size, step, tool, args };
+      unique.set(key, item);
+    }
+    plan.push({ source: item.index, label: step });
+  }
+
+  const work = [...unique.values()];
+  const width = Math.max(1, Math.min(fanout, work.length));
+  const results = new Array<StepOutcome>(work.length);
   let cursor = 0;
 
   const worker = async (): Promise<void> => {
     for (;;) {
       const index = cursor++;
-      if (index >= steps.length) return;
-      const [step, tool, args] = steps[index]!;
-      results[index] = await runStep(step, tool, args);
+      if (index >= work.length) return;
+      const item = work[index]!;
+      results[index] = await runStep(item.step, item.tool, item.args);
     }
   };
 
   await Promise.all(Array.from({ length: width }, worker));
-  return results;
+  // Reuse the shared outcome, but under the step's own label. A deduplicated step must not inherit
+  // another step's name, or the transcript under-reports how many operations the caller requested.
+  return plan.map(({ source, label }) => ({ ...results[source]!, step: label }));
 }
 
 /** Run steps sequentially, collecting every outcome. Needed when later steps consume earlier output. */

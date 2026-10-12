@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import '../src/loader.js'; // barcha 569 toolni ro'yxatga qo'shadi
+import '../src/loader.js'; // barcha 571 toolni ro'yxatga qo'shadi
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -24,8 +24,8 @@ const EXPECTED_COUNTS: Record<string, number> = {
   browser: 41,
   monitoring: 10,
   i18n: 12,
-  git: 22,
-  codehost: 24,
+  git: 23,
+  codehost: 25,
   devops: 24,
   database: 24,
   security: 24,
@@ -58,9 +58,9 @@ const SCHEMA_CATEGORIES = new Set([
   'productivity',
 ]);
 
-describe('pro-fetch MAX — barcha 569 tool', () => {
+describe('pro-fetch MAX — barcha 571 tool', () => {
   it("jami aynan 569 tool ro'yxatga olinadi", () => {
-    expect(allTools().length).toBe(569);
+    expect(allTools().length).toBe(571);
   });
 
   it('har kategoriya kutilgan sonda', () => {
@@ -73,7 +73,7 @@ describe('pro-fetch MAX — barcha 569 tool', () => {
 
   it('nomlar unikal va MCP formatiga mos', () => {
     const names = allTools().map((t) => t.name);
-    expect(new Set(names).size).toBe(569);
+    expect(new Set(names).size).toBe(571);
     for (const n of names) expect(n).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
   });
 
@@ -87,7 +87,7 @@ describe('pro-fetch MAX — barcha 569 tool', () => {
 
   it('scoped tool categories publish closed input schemas', () => {
     const schemaTools = allTools().filter((tool) => SCHEMA_CATEGORIES.has(tool.category));
-    expect(schemaTools).toHaveLength(437);
+    expect(schemaTools).toHaveLength(439);
     for (const tool of schemaTools) {
       expect(tool.inputSchema.additionalProperties, tool.name).toBe(false);
       expect(tool.inputSchema.properties, tool.name).toBeDefined();
@@ -209,7 +209,7 @@ describe('pro-fetch MAX — barcha 569 tool', () => {
   it('profillar: minimal=72, standard=177, full=569', () => {
     expect(listTools('minimal').length).toBe(72);
     expect(listTools('standard').length).toBe(177);
-    expect(listTools('full').length).toBe(569);
+    expect(listTools('full').length).toBe(571);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
     expect(listTools('smart').length).toBe(10);
   });
@@ -229,7 +229,7 @@ describe('MAX platform handlers', () => {
       'productivity',
     ]);
     const tools = allTools().filter((tool) => categories.has(tool.category));
-    expect(tools).toHaveLength(198);
+    expect(tools).toHaveLength(200);
     for (const tool of tools) {
       expect(typeof tool.handler).toBe('function');
       expect(tool.inputSchema.additionalProperties).toBe(false);

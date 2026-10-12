@@ -1,7 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail } from '../../core/format.js';
 import { bool, num, strOrEmpty, view } from '../../core/input.js';
-import { renderPipeline, runParallel, runStep } from '../../core/composite.js';
+import { fetchSource, runParallel } from '../../core/composite.js';
 import { detailMode, renderBudgeted } from '../../core/composite-budget.js';
 
 /**
@@ -39,18 +39,27 @@ export const PAGE_DIFF_TOOL = defineTool({
     if (!url && !text) return fail('url yoki text talab qilinadi.');
     if (!url2 && !text2) return fail('url2 yoki text2 talab qilinadi.');
 
+    // Each side is fetched once as a raw document and every analysis on that side reads it from
+    // memory, so comparing two pages costs two requests instead of four. The content must be the
+    // original markup: heading and link extraction look for `<h1>` and `<a href>`, which a text
+    // conversion removes, so a converted "page" would report no headings on a page full of them.
+    const oldSource = await fetchSource(url);
+    const newSource = await fetchSource(url2);
+
     const steps: Array<[string, string, Record<string, unknown>]> = [
       ['Text diff', 'pro_fetch_diff_text', text && text2 ? { text, text2 } : { url, url2 }],
     ];
 
-    if (bool(p, 'include_headings', true) && url && url2) {
+    if (bool(p, 'include_headings', true) && oldSource.ok && newSource.ok) {
+      const oldHtml = oldSource.html;
+      const newHtml = newSource.html;
       steps.push(
-        ['Old headings', 'pro_fetch_heading_outline', { url }],
-        ['New headings', 'pro_fetch_heading_outline', { url: url2 }],
+        ['Old headings', 'pro_fetch_heading_outline', { url, text: oldHtml }],
+        ['New headings', 'pro_fetch_heading_outline', { url: url2, text: newHtml }],
       );
       steps.push(
-        ['Old links', 'pro_fetch_link_domains', { url }],
-        ['New links', 'pro_fetch_link_domains', { url: url2 }],
+        ['Old links', 'pro_fetch_link_domains', { url, text: oldHtml }],
+        ['New links', 'pro_fetch_link_domains', { url: url2, text: newHtml }],
       );
     }
 

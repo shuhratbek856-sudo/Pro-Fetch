@@ -55,7 +55,12 @@ export function isInformative(outcome: StepOutcome): boolean {
  * Steps are never dropped silently: when space is tight the transcript says how many were summarised
  * and how to fetch any one of them in full.
  */
-export function renderBudgeted(title: string, outcomes: StepOutcome[], detail: 'summary' | 'full'): string {
+export function renderBudgeted(
+  title: string,
+  outcomes: StepOutcome[],
+  detail: 'summary' | 'full',
+  gatedCount = 0,
+): string {
   const informative = outcomes.filter(isInformative);
   const skipped = outcomes.length - informative.length;
   const budget = detail === 'full' ? FULL_BUDGET : SUMMARY_BUDGET;
@@ -64,8 +69,15 @@ export function renderBudgeted(title: string, outcomes: StepOutcome[], detail: '
   const footerLines = [
     '---',
     `steps=${outcomes.length}; ok=${outcomes.filter((o) => o.ok).length}; failed=${outcomes.filter((o) => !o.ok).length}` +
-      (skipped > 0 ? `; empty=${skipped}` : ''),
+      (skipped > 0 ? `; empty=${skipped}` : '') +
+      (gatedCount > 0 ? `; gated=${gatedCount}` : ''),
   ];
+  if (gatedCount > 0) {
+    // A gated step must stay visible, or the model assumes the page was checked and found nothing.
+    footerLines.push(
+      `gated: ${gatedCount} ta qadam shart bajarilmagani uchun o‘tkazildi (sahifada tegishli belgi yo‘q).`,
+    );
+  }
   if (outcomes.some((o) => !o.ok)) {
     footerLines.push(
       `failed: ${outcomes

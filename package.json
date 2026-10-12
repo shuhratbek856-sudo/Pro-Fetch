@@ -1,7 +1,7 @@
 {
   "name": "pro-fetch-mcp",
   "version": "0.3.0",
-  "description": "Professional fetch, deep-research va GitHub MCP serveri — 569 MCP tool, shared domain handlers, tool-pack profillari",
+  "description": "Professional fetch, deep-research va GitHub MCP serveri — 571 MCP tool, shared domain handlers, tool-pack profillari",
   "type": "module",
   "license": "MIT",
   "author": "Shuhratbek",
@@ -49,6 +49,7 @@
     "lint": "tsc --noEmit",
     "verify:static": "node scripts/verify-static.mjs",
     "verify:registry": "tsx scripts/verify-registry.mts",
+    "measure:coverage": "tsx scripts/measure-composite-coverage.mts",
     "verify:package": "npm run build && node scripts/verify-package.mjs",
     "check": "npm run verify:static && npm run verify:registry && npm run build && npm test && npm run verify:package && npm run format:check",
     "prepublishOnly": "npm run check"

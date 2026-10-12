@@ -1,5 +1,5 @@
 {
-  "total": 569,
+  "total": 571,
   "categories": {
     "http": 19,
     "convert": 30,
@@ -18,8 +18,8 @@
     "browser": 41,
     "monitoring": 10,
     "i18n": 12,
-    "git": 22,
-    "codehost": 24,
+    "git": 23,
+    "codehost": 25,
     "devops": 24,
     "database": 24,
     "security": 24,
@@ -32,7 +32,7 @@
     "smart": 10,
     "minimal": 72,
     "standard": 177,
-    "full": 569
+    "full": 571
   },
   "smartComposites": [
     "pro_capability_call",
@@ -45,5 +45,15 @@
     "pro_pr_review",
     "pro_site_scan",
     "pro_data_pipeline"
-  ]
+  ],
+  "coverageComposites": {
+    "pro_workspace_ops": {
+      "categories": ["git", "devops", "database", "security"],
+      "purpose": "One call for local workspace operations across the four MAX packs that had no composite."
+    },
+    "pro_service_ops": {
+      "categories": ["codehost", "collaboration", "storage", "productivity"],
+      "purpose": "One call for hosted-provider operations across the four MAX packs that had no composite."
+    }
+  }
 }

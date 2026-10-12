@@ -231,6 +231,101 @@ describe('parallel pipelines', () => {
   });
 });
 
+describe('coverage composites reach the packs that had none', () => {
+  it('workspace_ops runs operations across categories in one call', async () => {
+    const result = await dispatch('pro_workspace_ops', {
+      operations: [
+        { tool: 'pro_fetch_hash_string', arguments: { text: 'a' }, label: 'first' },
+        { tool: 'pro_fetch_uuid_generate', arguments: {}, label: 'second' },
+      ],
+    });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toContain('first');
+    expect(text(result)).toContain('second');
+  });
+
+  it('service_ops runs the same way', async () => {
+    const result = await dispatch('pro_service_ops', {
+      operations: [{ tool: 'pro_fetch_hash_string', arguments: { text: 'x' }, label: 'alpha' }],
+    });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toContain('alpha');
+  });
+
+  it('both refuse a malformed operation list rather than silently running nothing', async () => {
+    for (const name of ['pro_workspace_ops', 'pro_service_ops']) {
+      expect((await dispatch(name, { operations: [] })).isError, name).toBe(true);
+      expect((await dispatch(name, { operations: [{ arguments: {} }] })).isError, name).toBe(true);
+      expect((await dispatch(name, {})).isError, name).toBe(true);
+    }
+  });
+
+  it('caps the operation list', async () => {
+    const many = Array.from({ length: 60 }, () => ({ tool: 'pro_fetch_hash_string', arguments: { text: 'x' } }));
+    expect((await dispatch('pro_workspace_ops', { operations: many })).isError).toBe(true);
+  });
+
+  it('cannot be used to escape an allowlist, exactly like the batch executor', async () => {
+    process.env.PRO_FETCH_ALLOWED_TOOLS = 'pro_workspace_ops,pro_fetch_hash_string';
+    const result = await dispatch('pro_workspace_ops', {
+      operations: [{ tool: 'pro_fetch_uuid_generate', arguments: {}, label: 'blocked' }],
+    });
+    // The composite itself is allowed, but the operation inside it must still be refused.
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toMatch(/allowlist/);
+  });
+
+  it('an operation gated on code is skipped, and the transcript says so', async () => {
+    const result = await dispatch('pro_workspace_ops', {
+      workspace_has_code: false,
+      operations: [
+        { tool: 'pro_fetch_hash_string', arguments: { text: 'x' }, label: 'gated-one', only_if_code: true },
+        { tool: 'pro_fetch_uuid_generate', arguments: {}, label: 'ungated' },
+      ],
+    });
+    const raw = text(result);
+    expect(raw).toMatch(/o‘tkazildi/);
+    expect(raw).toMatch(/gated/);
+    // The ungated operation must still have run.
+    expect(raw).toMatch(/uuid/i);
+  });
+
+  it('both are registered in the registry', () => {
+    const names = new Set(allTools().map((tool) => tool.name));
+    expect(names.has('pro_workspace_ops')).toBe(true);
+    expect(names.has('pro_service_ops')).toBe(true);
+  });
+
+  it('operation_id keeps repeated calls distinguishable in the transcript', async () => {
+    // The same tool twice would otherwise be deduplicated into one dispatch and lose its label.
+    const result = await dispatch('pro_workspace_ops', {
+      operations: [
+        { tool: 'pro_fetch_hash_string', arguments: { text: 'same' }, label: 'run', operation_id: 1 },
+        { tool: 'pro_fetch_hash_string', arguments: { text: 'same' }, label: 'run', operation_id: 2 },
+      ],
+    });
+    const raw = text(result);
+    expect(raw).toContain('[#1]');
+    expect(raw).toContain('[#2]');
+  });
+
+  it('reports a per-operation failure without discarding the others', async () => {
+    const result = await dispatch('pro_workspace_ops', {
+      operations: [
+        { tool: 'pro_fetch_hash_string', arguments: { text: 'ok' }, label: 'good' },
+        { tool: 'pro_tool_that_does_not_exist', arguments: {}, label: 'broken' },
+        { tool: 'pro_fetch_uuid_generate', arguments: {}, label: 'also-good' },
+      ],
+    });
+    const raw = text(result);
+    // Both good operations ran...
+    expect(raw).toContain('good');
+    expect(raw).toContain('also-good');
+    // ...and the failure is visible rather than collapsing the batch.
+    expect(raw).toMatch(/failed=1/);
+  });
+});
+
 describe('composite contract is preserved', () => {
   it('composites still reach the registry through dispatch, with policies applied', async () => {
     process.env.PRO_FETCH_ALLOWED_TOOLS = 'pro_capability_call,pro_fetch_hash_string';
