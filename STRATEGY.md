@@ -15,13 +15,17 @@ qator raqam — o'lchilgan natija, taxmin emas. O'lchash skripti:
 | Dinamik executor kompozitlari | 3 | `pro_capability_call`, `pro_workspace_ops`, `pro_service_ops` |
 | `pro_repo_audit` ichki tool | 23 | `repo_audit.ts` |
 | `pro_audit_page` ichki tool | 16 (10 tasi shartli) | `tests/content-reuse.test.ts` |
-| `pro_audit_page` **tarmoq so'rovi** | **1** (avval 11) | `withSource` wiring |
+| **`pro_audit_page` tarmoq so'rovi** | **1** (16 qadam, avval 11) | jonli sahifada o'lchangan |
+| **`pro_fetch_ingest` tarmoq so'rovi** | **1** (15 qadam) | jonli sahifada o'lchangan |
 | `pro_research_deep` ichki tool | 12 | `research_deep.ts` |
 | Natija (summary) | 43 KB → 3.8 KB, **91%** kamayish | `composite-budget.ts` |
 | Dedup | 6 bir xil qadam → **1** dispatch | `runParallel` |
-| Testlar | **196** | `npm test` |
+| Zararli kiritish sinovi | 10,278 chaqiruv — **0 crash** | fuzz |
+| Dekoder sinovi | 175 juftlik — **0 yomon natija** | fuzz |
+| Jarayon-killer sinovi | **0** (avval 4 ta topildi) | `tests/resilience.test.ts` |
+| Testlar | **228** | `npm test` |
 | Registry / static / package / format | PASS | `npm run check` |
-| Toza install (`npm pack` → `npm install` → ishga tushirish) | ✅ 571 tool, SQLite ishlaydi | `prodtest2` |
+| Toza install (`--ignore-scripts` bilan ham) | ✅ 571 tool | `prodtest4` |
 
 ## 2. Nima tuzatildi va nima uchun
 
@@ -197,10 +201,13 @@ o'zgartirilishi** — foydalanuvchi "tez ko'rib chiq" desa.
 | 3 | **Xom manba** (render emas) | Wikipedia: 15/16 qadam | ✅ |
 | 4 | Shartli qadamlar | oddiy sahifada 6/16 | ✅ |
 | 5 | Dedup + label saqlanishi | 6 qadam → 1 dispatch, 6 label | ✅ |
-| 6 | **Binary reuse** — `fetch_ingest` dagi PDF/CSV | tarmoq so'rovi 7 → 3 | ⬜ |
-| 7 | **Tayyor payload** — `capability_map` → `*_ops` ga tayyor ro'yxat | qo'lda yoziladigan nom 0 | ⬜ |
-| 8 | **OCR worker pool** — native, alohida tekshiruv bilan | rasmlar ketma-ket emas | ⬜ |
-| 9 | **Kross-chaqiruv keshi** — faqat readOnly tool'lar | takroriy URL 0 | ⬜ |
+| 6 | **Binary reuse** — parallel yuklashlar birlashtirildi | `ingest` 15 qadam → **1 so'rov** | ✅ |
+| 7 | **Jarayon xavfsizligi** | 4 ta killer topildi → 0 | ✅ |
+| 8 | **Platforma muvofiqligi** | Windows npm, SQLite binary'siz | ✅ |
+| 9 | **Aniq xatolar** | `COMMAND_NOT_FOUND`, `SQLITE_UNAVAILABLE` | ✅ |
+| 10 | **Konsistent kiritish** | `repo` ikkala shaklda qabul qilinadi | ✅ |
+| 11 | **Tayyor payload** — `capability_map` → `*_ops` ga tayyor ro'yxat | qo'lda yoziladigan nom 0 | ⬜ |
+| 12 | **OCR worker pool** — native, alohida tekshiruv bilan | rasmlar ketma-ket emas | ⬜ |
 
 Har bir qadam alohida commit, o'lchov bilan, va `npm run check` yashil holda.
 
@@ -208,9 +215,9 @@ Har bir qadam alohida commit, o'lchov bilan, va `npm run check` yashil holda.
 
 | Kamchilik | Nima uchun hozir qilinmadi |
 |---|---|
-| PDF/CSV konvertorlari URL'dan yuklanadi | Ular **original bayt** kerak. `text` berish PDF'ni buzadi — bu jihatdan `text` berishdan ko'ra ko'p zarar. Alohida `bytes` mexanizmi kerak. |
+| `capability_map` → `*_ops` tayyor payload | `capability_call` allaqachon shuni qiladi; qo'shimcha qatlam model uchun ikki xil yo'l beradi va chalkashtiradi. |
 | OCR worker pool | `tesseract.js` native. Sinov muhitida worker yaratib ko'rish kerak; ishlamaydigan kod qoldirishdan ko'ra, hozir ketma-ket ishlash to'g'ri. |
-| Kross-chaqiruv kesh | Kesh **noto'g'ri** bo'lsa, model eskirgan ma'lumotga ishonadi. Faqat `readOnlyHint` va aniq `max-age` bilan. |
+| Kross-chaqiruv kesh (jamiq) | Kesh **noto'g'ri** bo'lsa, model eskirgan ma'lumotga ishonadi. Faqat `readOnlyHint` va aniq `max-age` bilan. Parallel yuklashlar birlashtirilgani hozirgi ehtiyojni yopadi. |
 | `mode: fast` | Gate'lar allaqach oddiy sahifada 16 → 6 qiladi. Qo'shimcha rejim — foydalanuvchiga ikki xil xatti-harakat berib, chalkashtiradi. |
 
 ## 6. Nima **qilinmaydi** (onatli)

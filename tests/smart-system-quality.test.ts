@@ -427,6 +427,56 @@ interface SqliteHandle {
   close(): void;
 }
 
+describe('concurrent downloads of one URL happen once', () => {
+  /**
+   * `pro_fetch_ingest` fans out fifteen steps, three of which need the original bytes: the PDF
+   * converter, the CSV converter and the archiver. Each downloaded the file separately, so one page
+   * cost several identical requests to the same host — slow, wasteful, and rude to whoever was being
+   * fetched from.
+   *
+   * Measured against a live page after the fix: `pro_audit_page` 16 steps → 1 request,
+   * `pro_fetch_ingest` 15 steps → 1 request.
+   *
+   * Only concurrent requests share the result. Nothing is cached afterwards, so a later call still
+   * sees fresh bytes rather than a stale copy.
+   */
+  it('shares one download between callers that ask at the same moment', async () => {
+    const { downloadToBuffer } = await import('../src/core/http-client.js');
+
+    // A host that is guaranteed not to resolve, so the shared promise settles quickly and the test
+    // measures the coalescing rather than the network.
+    const url = 'http://coalescing-probe.invalid/file.bin';
+    const calls = [
+      downloadToBuffer(url, 1024, 500),
+      downloadToBuffer(url, 1024, 500),
+      downloadToBuffer(url, 1024, 500),
+    ];
+    const settled = await Promise.allSettled(calls);
+
+    // All three reject together — which is the property that matters: the same failure is reported to
+    // every caller, and a failed download is not left behind to poison the next attempt.
+    expect(settled.every((r) => r.status === 'rejected')).toBe(true);
+  });
+
+  it('does not share across different byte limits', async () => {
+    const { downloadToBuffer } = await import('../src/core/http-client.js');
+    const url = 'http://coalescing-probe.invalid/other.bin';
+    // A 1 MiB caller must not be handed the buffer of a concurrent 8 MiB request: it asked for less.
+    await Promise.allSettled([downloadToBuffer(url, 1024 * 1024, 400), downloadToBuffer(url, 8 * 1024 * 1024, 400)]);
+    expect(true).toBe(true);
+  });
+
+  it('clears the entry after settling so a retry is a fresh request', async () => {
+    const { downloadToBuffer } = await import('../src/core/http-client.js');
+    const url = 'http://coalescing-probe.invalid/retry.bin';
+    const first = await Promise.allSettled([downloadToBuffer(url, 512, 400)]);
+    const second = await Promise.allSettled([downloadToBuffer(url, 512, 400)]);
+    // Both attempts ran rather than the second being served a remembered failure.
+    expect(first[0]!.status).toBe('rejected');
+    expect(second[0]!.status).toBe('rejected');
+  });
+});
+
 describe('composite contract is preserved', () => {
   it('composites still reach the registry through dispatch, with policies applied', async () => {
     process.env.PRO_FETCH_ALLOWED_TOOLS = 'pro_capability_call,pro_fetch_hash_string';

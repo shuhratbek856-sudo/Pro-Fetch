@@ -116,6 +116,8 @@ export async function fetchSource(
   maxBytes = 2_000_000,
 ): Promise<{ ok: true; url: string; html: string } | { ok: false; error: string }> {
   try {
+    // Same in-flight coalescing as `downloadToBuffer`, so a composite that fetches a page while a
+    // binary converter fetches the same address performs one request rather than two.
     const response = await fetchWithOptions(url, { maxBytes });
     if (response.status >= 400) return { ok: false, error: `HTTP ${response.status}` };
     if (!response.text.trim()) return { ok: false, error: 'Bo‘sh javob olindi.' };

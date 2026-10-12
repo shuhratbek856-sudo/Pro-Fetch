@@ -103,7 +103,10 @@ describe('github input guard', () => {
 
   it('rejects values that could redirect the API path or query', () => {
     expect(() => assertGithubInput(gh, { owner: 'octocat', repo: '../../user' })).toThrow();
-    expect(() => assertGithubInput(gh, { owner: 'octocat', repo: 'a/b' })).toThrow();
+    // `a/b` is a valid owner/repo specifier and is normalised to {owner:'a', repo:'b'} before any
+    // handler runs. The segment check is what makes it safe, so the deep form is still rejected.
+    expect(() => assertGithubInput(gh, { owner: 'octocat', repo: 'a/b' })).not.toThrow();
+    expect(() => assertGithubInput(gh, { owner: 'octocat', repo: 'a/b/c' })).toThrow();
     expect(() => assertGithubInput(gh, { owner: 'octo/cat', repo: 'x' })).toThrow();
     expect(() => assertGithubInput(gh, { owner: '..', repo: 'x' })).toThrow();
     expect(() => assertGithubInput(gh, { owner: 'a', repo: 'b', sha: 'abc?per_page=1' })).toThrow();

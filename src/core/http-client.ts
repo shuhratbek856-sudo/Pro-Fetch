@@ -192,7 +192,43 @@ export interface BinaryResult {
   bytes: Buffer;
 }
 
+/**
+ * Downloads of the same URL that are already in flight.
+ *
+ * A composite fans its steps out concurrently, so `pro_fetch_ingest` has the PDF converter, the CSV
+ * converter and the archiver all requesting the same URL at the same moment. Each re-downloaded the
+ * file: the same bytes, from the same host, several times over — which is slow and rude to whoever
+ * is being fetched from.
+ *
+ * Only concurrent requests share. Nothing is retained once a download settles, so there is no cache
+ * to go stale, no large buffer held in memory, and a later request still gets a fresh copy. The entry
+ * is removed in a `finally` block, so a failed download does not poison the URL for the next attempt.
+ */
+const inFlightDownloads = new Map<string, Promise<BinaryResult>>();
+
 export async function downloadToBuffer(
+  url: string,
+  maxBytes = 50 * 1024 * 1024,
+  timeoutMs = 30_000,
+): Promise<BinaryResult> {
+  // The key includes the bounds: a 1 MiB request must not be handed the 50 MiB buffer of a
+  // concurrent request for the same address, because the smaller caller asked for less.
+  const key = `${maxBytes}|${timeoutMs}|${url}`;
+  const existing = inFlightDownloads.get(key);
+  if (existing) return existing;
+
+  const started = downloadToBufferDirectly(url, maxBytes, timeoutMs);
+  inFlightDownloads.set(key, started);
+  try {
+    return await started;
+  } finally {
+    // Guard against deleting a newer entry: the map holds one promise per key, and a re-entrant
+    // call could have replaced it.
+    if (inFlightDownloads.get(key) === started) inFlightDownloads.delete(key);
+  }
+}
+
+async function downloadToBufferDirectly(
   url: string,
   maxBytes = 50 * 1024 * 1024,
   timeoutMs = 30_000,

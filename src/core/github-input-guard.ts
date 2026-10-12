@@ -48,6 +48,31 @@ function hasRefTraversal(value: string): boolean {
   return value.includes('..') || hasDotSegment(value);
 }
 
+/**
+ * Accept both `repo` and `owner/repo`.
+ *
+ * Every GitHub tool documented `repo` as "Repository nomi" with no format, while the codehost tools
+ * — documented with the identical wording — require the combined form. A caller who learned one
+ * convention got "'repo' qiymati yaroqsiz repository nomi" from the other 42 tools, with nothing
+ * indicating which of the two was wrong.
+ *
+ * The combined form is validated segment by segment rather than by widening REPO_RE: each side must
+ * still be a legal owner or repository name, so allowing the separator cannot admit a traversal, a
+ * leading slash, or an over-long path.
+ */
+function validRepoSpecifier(value: string): boolean {
+  if (value === '.' || value === '..') return false;
+  if (!value.includes('/')) return REPO_RE.test(value);
+
+  const segments = value.split('/');
+  // Exactly one separator: `owner/repo`. A deeper path is a route, not a repository, and accepting
+  // it would forward an unvalidated trailing segment into a URL.
+  if (segments.length !== 2) return false;
+  const [owner, repo] = segments as [string, string];
+  if (!owner || !repo) return false;
+  return OWNER_RE.test(owner) && REPO_RE.test(repo);
+}
+
 export function assertGithubInput(
   tool: Pick<ToolDefinition, 'category' | 'name'>,
   input: Record<string, unknown>,
@@ -60,8 +85,23 @@ export function assertGithubInput(
       throw new GithubInputError(`'${key}' qiymati yaroqsiz GitHub nomi.`);
   }
   const repo = str(input, 'repo');
-  if (repo !== undefined && (!REPO_RE.test(repo) || repo === '.' || repo === '..'))
-    throw new GithubInputError("'repo' qiymati yaroqsiz repository nomi.");
+  if (repo !== undefined && !validRepoSpecifier(repo))
+    throw new GithubInputError(
+      "'repo' qiymati yaroqsiz. Ikkala shakl ham qabul qilinadi: `node` (owner alohida berilganda) " +
+        'yoki `nodejs/node` (birlashtirilgan).',
+    );
+
+  // Normalise the combined form so every one of the 42 GitHub tools accepts it.
+  //
+  // Each handler reads `input.owner` and `input.repo` separately, so rewriting the specifier here —
+  // after validating it and before any handler runs — makes the whole category accept both shapes
+  // without touching 42 files. `owner` is only filled in when the caller did not supply one: an
+  // explicit owner still wins, which is what a caller overriding the prefix intends.
+  if (repo?.includes('/')) {
+    const [ownerFromRepo, repoName] = repo.split('/') as [string, string];
+    if (input.owner === undefined || input.owner === null || input.owner === '') input.owner = ownerFromRepo;
+    input.repo = repoName;
+  }
   const gist = str(input, 'gist_id');
   if (gist !== undefined && !GIST_RE.test(gist)) throw new GithubInputError("'gist_id' qiymati yaroqsiz.");
 
