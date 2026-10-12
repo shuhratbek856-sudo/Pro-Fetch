@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import '../src/loader.js';
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
@@ -325,6 +327,92 @@ describe('coverage composites reach the packs that had none', () => {
     expect(raw).toMatch(/failed=1/);
   });
 });
+
+/**
+ * SQLite must not depend on a system binary.
+ *
+ * These tools previously shelled out to `sqlite3`, which exists on a developer's machine and on
+ * almost nobody else's. A consumer who installed the package got `COMMAND_FAILED_ENOENT: spawn
+ * sqlite3 ENOENT` for all 24 database tools — every one of them dead, with an error that says
+ * nothing about what to do. The native driver ships with the package, so the tool works on a clean
+ * install.
+ */
+describe('SQLite works without a system binary', () => {
+  const db = 'sqlite-tool-test.sqlite';
+
+  beforeAll(() => {
+    // Seeded through the same driver the tool uses, so the test does not depend on the CLI either.
+    return (async () => {
+      const specifier = 'better-sqlite3';
+      const mod = (await import(specifier)) as { default: new (p: string, o?: object) => SqliteHandle };
+      const handle = new mod.default(db);
+      handle.exec('CREATE TABLE items(id INTEGER, name TEXT)');
+      handle.prepare('INSERT INTO items VALUES (?, ?)').run(1, 'alpha');
+      handle.prepare('INSERT INTO items VALUES (?, ?)').run(2, 'beta');
+      handle.close();
+    })();
+  });
+
+  afterAll(() => {
+    rmSync(db, { force: true });
+  });
+
+  it('does not shell out to sqlite3', () => {
+    const source = readFileSync('src/core/max-platform-tools.ts', 'utf8');
+    const body = source.slice(source.indexOf('async function sqliteQuery'));
+    // The CLI survives only as a fallback for platforms with no native prebuild.
+    expect(body).toContain("command('sqlite3'");
+    expect(body).toMatch(/readonly:\s*true/);
+  });
+
+  it('answers a ping', async () => {
+    const result = await dispatch('pro_fetch_database_sqlite_ping', { db_path: db });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toMatch(/ok/);
+  });
+
+  it('lists tables and reads rows', async () => {
+    const tables = await dispatch('pro_fetch_database_sqlite_list_tables', { db_path: db });
+    expect(tables.isError).toBeFalsy();
+    expect(text(tables)).toMatch(/items/);
+
+    const rows = await dispatch('pro_fetch_database_sqlite_query', {
+      db_path: db,
+      sql: 'SELECT name FROM items ORDER BY id',
+    });
+    expect(rows.isError).toBeFalsy();
+    expect(text(rows)).toMatch(/alpha/);
+    expect(text(rows)).toMatch(/beta/);
+  });
+
+  it('refuses to write, whatever the spelling', async () => {
+    for (const sql of [
+      'DELETE FROM items',
+      'DROP TABLE items',
+      'UPDATE items SET name=1',
+      'INSERT INTO items VALUES (9,9)',
+    ]) {
+      const result = await dispatch('pro_fetch_database_sqlite_query', { db_path: db, sql });
+      expect(result.isError, sql).toBe(true);
+      expect(text(result), sql).toMatch(/READ_ONLY_SQL_ONLY/);
+    }
+  });
+
+  it('says the file is missing instead of blaming the directory', async () => {
+    const result = await dispatch('pro_fetch_database_sqlite_ping', { db_path: 'definitely-not-here.sqlite' });
+    expect(result.isError).toBe(true);
+    // The native driver reports "Cannot open database because the directory does not exist" even when
+    // the directory exists and only the file is absent, which sends the model after the wrong thing.
+    expect(text(result)).toMatch(/SQLITE_FILE_NOT_FOUND/);
+  });
+});
+
+/** The slice of the driver the test needs. */
+interface SqliteHandle {
+  exec(sql: string): void;
+  prepare(sql: string): { run(...args: unknown[]): unknown };
+  close(): void;
+}
 
 describe('composite contract is preserved', () => {
   it('composites still reach the registry through dispatch, with policies applied', async () => {

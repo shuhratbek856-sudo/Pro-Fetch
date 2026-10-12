@@ -208,6 +208,69 @@ function safeSegment(v: string, label: string): string {
     throw new Error(`INVALID_${label.toUpperCase()}: noto‘g‘ri ${label}.`);
   return v;
 }
+/**
+ * Run a read-only SQLite statement and return rows as JSON.
+ *
+ * ## Why not the `sqlite3` CLI
+ *
+ * It worked, but it made the tool useless on a machine without that binary — which is most machines,
+ * and every consumer who installed the package rather than the system tool. The failure surfaced as
+ * `COMMAND_FAILED_ENOENT: spawn sqlite3 ENOENT`, which tells the model nothing about what to do.
+ *
+ * `better-sqlite3` is already a declared optional dependency with a prebuilt binary for this platform,
+ * so it is loaded lazily and the CLI is kept only as a fallback. Either way the read-only guarantee
+ * comes from the same place: `assertReadOnlySql` runs before this function is ever called, and the
+ * connection is additionally opened with `readonly: true` so the database cannot be written even if
+ * a statement slipped through.
+ *
+ * Rows are shaped like the CLI's `-json` output, so the transcript does not change shape depending on
+ * which path ran.
+ */
+async function sqliteQuery(path: string, sql: string): Promise<{ stdout: string; stderr: string }> {
+  // Fail with a clear message rather than a native error the caller cannot act on. `better-sqlite3`
+  // reports a missing or unreadable database as "Cannot open database because the directory does not
+  // exist", which is wrong when the directory exists and the file does not, and gives the model
+  // nothing to fix.
+  if (!existsSync(path)) throw new Error(`SQLITE_FILE_NOT_FOUND: ${path}`);
+
+  try {
+    // Imported through a variable so TypeScript does not need type declarations for an optional
+    // dependency, and so a missing package surfaces as a catchable error instead of a load-time crash.
+    const specifier = 'better-sqlite3';
+    const mod = (await import(specifier)) as unknown as { default: new (p: string, o?: object) => SqliteDb };
+    const db = new mod.default(path, { readonly: true, fileMustExist: true });
+    try {
+      const rows = db.prepare(sql).all();
+      return { stdout: JSON.stringify(rows, null, 2), stderr: '' };
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    // Fall back to the CLI only when the module itself could not be loaded — an unsupported platform,
+    // musl/Alpine without a prebuild, or an install where optional dependencies were skipped.
+    //
+    // The code list is deliberately broad and includes the exact codes observed in practice:
+    // `MODULE_NOT_FOUND` (Node), `ERR_MODULE_NOT_FOUND` (ESM resolvers, including tsx and bundlers),
+    // and `ERR_DLOPEN_FAILED` / `ERR_INVALID_MODULE_SPECIFIER` (a missing or mismatched native
+    // binding). Anything else — a bad statement, a corrupt database, a permission failure — is a real
+    // error and must be reported, not silently retried through a second engine.
+    const code = (error as NodeJS.ErrnoException).code;
+    const missingModule =
+      code === 'MODULE_NOT_FOUND' ||
+      code === 'ERR_MODULE_NOT_FOUND' ||
+      code === 'ERR_DLOPEN_FAILED' ||
+      code === 'ERR_INVALID_MODULE_SPECIFIER';
+    if (!missingModule) throw error;
+  }
+  return command('sqlite3', ['-readonly', '-json', path, sql]);
+}
+
+/** The slice of the `better-sqlite3` surface this module uses. */
+interface SqliteDb {
+  prepare(sql: string): { all(): unknown[] };
+  close(): void;
+}
+
 async function command(
   file: string,
   args: string[],
@@ -224,6 +287,22 @@ async function command(
     });
   } catch (e) {
     const x = e as Error & { code?: string; stdout?: string; stderr?: string };
+
+    // A missing executable is the single most common failure for these tools, and the raw error does
+    // not distinguish "not installed" from "installed but not on PATH" from "the command itself is
+    // missing". Each needs a different response from the caller, so they are named here instead of
+    // being collapsed into `COMMAND_FAILED_ENOENT`.
+    if (x.code === 'ENOENT') {
+      throw new Error(
+        `COMMAND_NOT_FOUND: '${file}' topilmadi. Bu buyruq PATH da emas yoki o'rnatilmagan. ` +
+          `O'rnatish: https://nodejs.org (npm), https://git-scm.com (git), ` +
+          `https://docs.docker.com/get-docker/ (docker), https://kubernetes.io/docs/tasks/tools/ (kubectl).`,
+      );
+    }
+    if (x.code === 'EACCES') {
+      throw new Error(`COMMAND_NOT_EXECUTABLE: '${file}' topildi lekin ishga tayyor emas (EACCES).`);
+    }
+
     const msg = (x.stderr || x.message || String(e))
       .replace(/(?:token|password|secret|api[_-]?key)=\S+/gi, '[REDACTED]')
       .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[REDACTED]@')
@@ -1197,22 +1276,18 @@ async function runDatabase(provider: string, action: string, i: Record<string, u
   let env: Record<string, string | undefined> = {};
   if (provider === 'sqlite') {
     const p = safeLocalPath(db);
-    bin = 'sqlite3';
-    if (action === 'ping') args = ['-readonly', '-json', p, 'SELECT 1 AS ok'];
+    // Every statement below is read-only, and `sqliteQuery` additionally opens the database
+    // read-only. A caller-supplied statement goes through `assertReadOnlySql` first, so a write
+    // cannot reach the connection even if it is spelled in a way the checker has not seen.
+    let sql: string;
+    if (action === 'ping') sql = 'SELECT 1 AS ok';
     else if (action === 'list_tables')
-      args = [
-        '-readonly',
-        '-json',
-        p,
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT " + limit,
-      ];
-    else if (action === 'describe')
-      args = ['-readonly', '-json', p, `PRAGMA table_info('${safeIdent(table).replace(/'/g, "''")}')`];
-    else if (action === 'query') args = ['-readonly', '-json', p, assertReadOnlySql(need(i, 'sql'))];
-    else if (action === 'explain')
-      args = ['-readonly', '-json', p, 'EXPLAIN QUERY PLAN ' + assertReadOnlySql(need(i, 'sql'))];
-    else args = ['-readonly', '-json', p, 'SELECT sqlite_version() AS version'];
-    return await command(bin, args, cwd, env);
+      sql = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name LIMIT " + limit;
+    else if (action === 'describe') sql = `PRAGMA table_info('${safeIdent(table).replace(/'/g, "''")}')`;
+    else if (action === 'query') sql = assertReadOnlySql(need(i, 'sql'));
+    else if (action === 'explain') sql = 'EXPLAIN QUERY PLAN ' + assertReadOnlySql(need(i, 'sql'));
+    else sql = 'SELECT sqlite_version() AS version';
+    return await sqliteQuery(p, sql);
   }
   if (!url)
     throw new Error(

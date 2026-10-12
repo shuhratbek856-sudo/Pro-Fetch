@@ -19,8 +19,9 @@ qator raqam — o'lchilgan natija, taxmin emas. O'lchash skripti:
 | `pro_research_deep` ichki tool | 12 | `research_deep.ts` |
 | Natija (summary) | 43 KB → 3.8 KB, **91%** kamayish | `composite-budget.ts` |
 | Dedup | 6 bir xil qadam → **1** dispatch | `runParallel` |
-| Testlar | **191** | `npm test` |
+| Testlar | **196** | `npm test` |
 | Registry / static / package / format | PASS | `npm run check` |
+| Toza install (`npm pack` → `npm install` → ishga tushirish) | ✅ 571 tool, SQLite ishlaydi | `prodtest2` |
 
 ## 2. Nima tuzatildi va nima uchun
 

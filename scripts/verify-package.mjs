@@ -73,7 +73,47 @@ for (const file of entries) {
   }
 }
 
-// 4. Scan shipped text files for embedded credentials.
+// 4. Every optional dependency the code imports at runtime must actually be declared.
+//
+// The SQLite tools shelled out to the `sqlite3` binary and shipped no driver, so all 24 database
+// tools failed with `spawn sqlite3 ENOENT` on any machine without that CLI — which is most of them.
+// A green suite did not catch it because the code path was never exercised with a real database.
+//
+// This walks the source for optional dependencies and checks each is declared, so a future driver
+// cannot be imported without being packaged.
+const declared = new Set([
+  ...Object.keys(manifest.dependencies ?? {}),
+  ...Object.keys(manifest.optionalDependencies ?? {}),
+  ...Object.keys(manifest.devDependencies ?? {}),
+]);
+const runtimeOptional = ['better-sqlite3', 'sharp', '@napi-rs/canvas', 'tesseract.js'];
+for (const name of runtimeOptional) {
+  if (!declared.has(name)) {
+    failures.push(`${name} is used at runtime but is not a declared dependency; it will be absent on install`);
+  }
+}
+
+// The driver must be a real dependency of the package, not only a devDependency: `npm install
+// --omit=dev` is how most consumers install a globally-invoked MCP server.
+if (manifest.devDependencies?.['better-sqlite3'] && !manifest.optionalDependencies?.['better-sqlite3']) {
+  failures.push('better-sqlite3 is only a devDependency; a production install would not have it');
+}
+
+// And the source must not reach for a `sqlite3` executable as its primary path.
+try {
+  const source = readFileSync('src/core/max-platform-tools.ts', 'utf8');
+  const start = source.indexOf('async function sqliteQuery');
+  if (start < 0) {
+    failures.push('sqliteQuery is missing; the SQLite tools would fall back to an external binary');
+  } else {
+    const body = source.slice(start, start + 2000);
+    if (!/await import\(/.test(body)) failures.push('sqliteQuery must load the bundled driver, not shell out');
+  }
+} catch {
+  failures.push('cannot read src/core/max-platform-tools.ts to check the SQLite path');
+}
+
+// 5. Scan shipped text files for embedded credentials.
 let scanned = 0;
 for (const file of entries) {
   if (!/\.(?:js|json|md|example)$/.test(file)) continue;

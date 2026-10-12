@@ -77,6 +77,27 @@ ko'rsatadi:
 Alpine'da binary qurish kerak bo'lsa: `apk add --no-cache python3 make g++` va keyin
 `npm rebuild sharp @napi-rs/canvas`. Playwright brauzerlari uchun: `npx playwright install --with-deps chromium`.
 
+### Tashqi buyruqlar (git, docker, kubectl, psql, redis-cli)
+
+Bu tool'lar tizim buyrug'ini chaqiradi. Ular **majburiy emas** — o'rnatilmasa, faqat o'sha tool
+xato beradi va qolgan 500+ tool ishlayveradi. Xato endi aniq nomlanadi (`COMMAND_NOT_FOUND`),
+shuning uchun model "o'rnatilmagan" bilan "PATH da yo'q"ni ajratolmaydi:
+
+```
+COMMAND_NOT_FOUND: 'git' topilmadi. Bu buyruq PATH da emas yoki o'rnatilmagan.
+```
+
+| Pack | Kerak |
+|---|---|
+| git (22 tool) | [git-scm.com](https://git-scm.com) |
+| devops (24 tool) | docker, kubectl, terraform, npm |
+| database — Postgres/MySQL/Redis | `psql`, `mysql`, `redis-cli` + credential |
+| database — **SQLite (24 tool)** | **hech narsa** — `better-sqlite3` paket bilan keladi |
+
+SQLite alohida: u avval `sqlite3` buyrug'iga bog'liq edi, bu esa ko'pchilik kompyuterlarda yo'q —
+barcha 24 ta database tool o'lik bo'lib qolardi. Endi paket ichidagi native drayver ishlatiladi,
+CLI faqat oldindek platformalarda zaxira sifatida qoladi.
+
 ## Qwen Desktop konfiguratsiyasi
 
 Tayyor konfiguratsiya namunasi [qwen-mcp.example.json](qwen-mcp.example.json) da — mashinasiz, nisbiy yo'llar bilan va o'rnatilgan paketni ishlatadi. Nusxalang va `args` ni o'z kompyuteringizga moslang:
