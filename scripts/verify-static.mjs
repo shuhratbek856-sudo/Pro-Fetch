@@ -198,6 +198,37 @@ try {
     );
   }
 
+  // Windows package managers are batch scripts, and `execFile` cannot launch them: `npm` resolves to
+  // nothing (ENOENT) and `npm.cmd` is refused outright (EINVAL). Both verified on Windows 11 / Node
+  // 24. Every npm-backed tool was therefore dead on Windows while reporting "command not found",
+  // which points people at installing something they already have.
+  try {
+    const platform = await read('src/core/max-platform-tools.ts');
+    // Anchored on the parameter list so a renamed or suffixed declaration cannot satisfy it: a plain
+    // prefix match passed when the function was renamed to `resolveExecutableDISABLED`.
+    const declaration = platform.search(/function resolveExecutable\s*\(/);
+    if (declaration < 0) {
+      failures.push('max-platform-tools.ts has no resolveExecutable(); npm cannot be spawned on Windows');
+    } else {
+      const resolver = platform.slice(declaration);
+      const body = resolver.slice(0, resolver.indexOf('\n}'));
+      // The working approach is npm's own JavaScript entry point run by the current Node binary.
+      if (!/npm-cli\.js/.test(body)) {
+        failures.push('resolveExecutable must locate npm-cli.js; a .cmd shim cannot be spawned');
+      }
+      if (!/process\.platform\s*!==\s*'win32'/.test(body)) {
+        failures.push('resolveExecutable must stay a no-op off Windows, where npm is a real binary');
+      }
+    }
+    // A failing command still has to report what it printed. `npm audit` writes its findings to
+    // stdout and exits 1, so an error handler that reads only stderr discards the entire report.
+    if (!/x\.stdout[\s\S]{0,240}stderr\s*\|\|/.test(platform)) {
+      failures.push('a failed command must fall back to stdout; several tools report their result there');
+    }
+  } catch {
+    failures.push('cannot read src/core/max-platform-tools.ts to check the Windows command path');
+  }
+
   // The process guards are what stop a future dependency fault from becoming an outage.
   try {
     const server = await read('src/server.ts');

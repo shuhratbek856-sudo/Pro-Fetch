@@ -291,6 +291,35 @@ interface SqliteDb {
   close(): void;
 }
 
+/**
+ * Node package managers are shell scripts on Windows, not executables.
+ *
+ * `npm` on disk is `npm.cmd` (plus a POSIX `npm` shell script), and `execFile` cannot launch either:
+ * asking for `npm` fails with ENOENT because no extension is resolved, and asking for `npm.cmd` fails
+ * with EINVAL because Node refuses to spawn a batch file. Verified on Windows 11 / Node 24: both
+ * fail, while `node` works. The consequence was that every npm-backed tool — audit, outdated, list,
+ * package info, license report — was dead on Windows, which is a large share of MCP users.
+ *
+ * The fix is the one npm itself recommends: locate the CLI's JavaScript entry and run it with the
+ * current Node binary. That needs no shell, so the arguments stay properly escaped and no injection
+ * surface is introduced. Other platforms are untouched.
+ */
+function resolveExecutable(file: string): { file: string; args: string[] } {
+  if (process.platform !== 'win32') return { file, args: [] };
+  if (!new Set(['npm', 'npx', 'yarn', 'pnpm']).has(file)) return { file, args: [] };
+
+  // npm ships its entry point next to the running Node binary. `npx` is a flag on that same CLI.
+  if (file === 'npm' || file === 'npx') {
+    const cli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    if (existsSync(cli)) {
+      return { file: process.execPath, args: [cli, ...(file === 'npx' ? ['--'] : [])] };
+    }
+  }
+
+  // yarn and pnpm have no such entry point here; their `.cmd` shim is the only option.
+  return { file: `${file}.cmd`, args: [] };
+}
+
 async function command(
   file: string,
   args: string[],
@@ -298,7 +327,8 @@ async function command(
   env: Record<string, string | undefined> = {},
 ): Promise<{ stdout: string; stderr: string }> {
   try {
-    return await execFileAsync(file, args, {
+    const resolved = resolveExecutable(file);
+    return await execFileAsync(resolved.file, [...resolved.args, ...args], {
       cwd,
       timeout: Number(process.env.PRO_FETCH_COMMAND_TIMEOUT_MS) || 30_000,
       maxBuffer: 2 * 1024 * 1024,
@@ -319,11 +349,30 @@ async function command(
           `https://docs.docker.com/get-docker/ (docker), https://kubernetes.io/docs/tasks/tools/ (kubectl).`,
       );
     }
+    // A `.cmd` shim reached this far only when npm's own entry point could not be located. Node
+    // refuses to spawn a batch file, so the message must point at the cause rather than report the
+    // command as missing, which it is not.
+    if (x.code === 'EINVAL' && process.platform === 'win32') {
+      throw new Error(
+        `COMMAND_SHIM_UNUSABLE: '${file}' Windows shim fayli va Node uni ishga tushira olmadi (EINVAL). ` +
+          `Node o'rnatilgan npm ni topilmadi. Node PATH da ekanini tekshiring yoki ` +
+          `PRO_FETCH_WORKSPACE ni to'g'ri sozlang.`,
+      );
+    }
     if (x.code === 'EACCES') {
       throw new Error(`COMMAND_NOT_EXECUTABLE: '${file}' topildi lekin ishga tayyor emas (EACCES).`);
     }
 
-    const msg = (x.stderr || x.message || String(e))
+    // Several of these commands report their result on stdout and signal a non-zero exit with it:
+    // `npm audit` exits 1 when it finds vulnerabilities, which is a finding rather than a failure.
+    // Discarding stdout in that case throws away exactly what the caller asked for, so it is
+    // preferred over the generic "Command failed" message and preferred over stderr when stderr
+    // carries nothing useful.
+    const stdout = typeof x.stdout === 'string' ? x.stdout.trim() : '';
+    const stderr = typeof x.stderr === 'string' ? x.stderr.trim() : '';
+    const detail = stderr || stdout || x.message || String(e);
+
+    const msg = detail
       .replace(/(?:token|password|secret|api[_-]?key)=\S+/gi, '[REDACTED]')
       .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[REDACTED]@')
       .replace(/((?:postgres|postgresql|mysql|redis)s?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[REDACTED]@')

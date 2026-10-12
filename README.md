@@ -90,9 +90,15 @@ COMMAND_NOT_FOUND: 'git' topilmadi. Bu buyruq PATH da emas yoki o'rnatilmagan.
 | Pack | Kerak |
 |---|---|
 | git (22 tool) | [git-scm.com](https://git-scm.com) |
-| devops (24 tool) | docker, kubectl, terraform, npm |
+| devops (24 tool) | docker, kubectl, terraform; **npm Node bilan keladi** |
 | database — Postgres/MySQL/Redis | `psql`, `mysql`, `redis-cli` + credential |
 | database — **SQLite (24 tool)** | **hech narsa** — `better-sqlite3` paket bilan keladi |
+
+> **Windows'da npm.** `npm` Windows'da `.cmd` skript, ko'chiriladigan fayl emas. `execFile` uni
+> ishga tushira olmaydi (`ENOENT` yoki `EINVAL`), shuning uchun barcha npm tool'lari — audit,
+> outdated, list, package info, license report — **Windows'da ishlamaydi** va "topilmadi" deb
+> xato beradi. Bu tuzatilgan: npm'ning JavaScript kirish nuqtasi `process.execPath` orqali
+> chaqiriladi, shakl (shell) ishlatilmaydi.
 
 SQLite alohida: u avval `sqlite3` buyrug'iga bog'liq edi, bu esa ko'pchilik kompyuterlarda yo'q —
 barcha 24 ta database tool o'lik bo'lib qolardi. Endi paket ichidagi native drayver ishlatiladi,

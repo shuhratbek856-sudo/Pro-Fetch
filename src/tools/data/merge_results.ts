@@ -19,7 +19,14 @@ export default defineTool({
   },
   async handler(input) {
     const p = view(input);
-    const items = (Array.isArray(p.items) ? p.items : []).map(String);
-    return result(items.map((t: string, i: number) => '## Natija ' + (i + 1) + '\n\n' + t).join('\n\n---\n\n'));
+    const raw = Array.isArray(p.items) ? p.items : [];
+    // Say so rather than returning an empty string. A caller cannot otherwise tell "nothing was
+    // merged" from "everything merged was blank", and will read the blank result as success.
+    if (raw.length === 0) return fail('items bo‘sh — birlashtiriladigan matnlar ro‘yxati kerak.');
+    const items = raw.map(String);
+    const merged = items.map((text, index) => '## Natija ' + (index + 1) + '\n\n' + text).join('\n\n---\n\n');
+    const blank = items.filter((text) => !text.trim()).length;
+    const footer = blank > 0 ? `\n\n---\n\n${blank} ta element bo‘sh.` : '';
+    return result(merged + footer);
   },
 });
