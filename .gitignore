@@ -41,3 +41,10 @@ npm-debug.log*
 # Test fixtures written by the credential tests
 .pro-fetch-test-*.txt
 .github-token-test-fixture.txt
+# Session scratch scripts. The probes used to answer a question during development 
+# (coverage sweeps, decoder fuzzing, protocol probes) are written into the repo root and 
+# would otherwise be committed. They are not part of the package.
+.*-tmp.mts
+.*-tmp.mjs
+.case*.mts
+.list-tools.mts
