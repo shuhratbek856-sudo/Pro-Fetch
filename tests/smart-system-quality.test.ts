@@ -365,6 +365,19 @@ describe('SQLite works without a system binary', () => {
     expect(body).toMatch(/readonly:\s*true/);
   });
 
+  it('recognises an unbuilt driver as unavailable rather than as a real failure', () => {
+    const source = readFileSync('src/core/max-platform-tools.ts', 'utf8');
+    const body = source.slice(source.indexOf('async function sqliteQuery'));
+    // `npm install --ignore-scripts` installs the package without building its native binding, and
+    // better-sqlite3 then throws a plain Error with no `code`. Matching only error codes classified
+    // that as a genuine failure, so the CLI fallback never ran and every database tool failed on
+    // exactly the locked-down installs where a driver is most likely to be missing.
+    expect(body).toMatch(/could not locate the bindings file/i);
+    // And when neither engine works, the error must name the fix instead of surfacing a spawn error.
+    expect(body).toContain('SQLITE_UNAVAILABLE');
+    expect(body).toMatch(/npm rebuild better-sqlite3/);
+  });
+
   it('answers a ping', async () => {
     const result = await dispatch('pro_fetch_database_sqlite_ping', { db_path: db });
     expect(result.isError).toBeFalsy();

@@ -246,23 +246,43 @@ async function sqliteQuery(path: string, sql: string): Promise<{ stdout: string;
       db.close();
     }
   } catch (error) {
-    // Fall back to the CLI only when the module itself could not be loaded — an unsupported platform,
-    // musl/Alpine without a prebuild, or an install where optional dependencies were skipped.
+    // Fall back to the CLI only when the driver cannot run. Two distinct situations look identical
+    // from the outside and both are recoverable with the CLI:
     //
-    // The code list is deliberately broad and includes the exact codes observed in practice:
-    // `MODULE_NOT_FOUND` (Node), `ERR_MODULE_NOT_FOUND` (ESM resolvers, including tsx and bundlers),
-    // and `ERR_DLOPEN_FAILED` / `ERR_INVALID_MODULE_SPECIFIER` (a missing or mismatched native
-    // binding). Anything else — a bad statement, a corrupt database, a permission failure — is a real
-    // error and must be reported, not silently retried through a second engine.
+    //  - The package is absent or its native binary will not load. The codes vary by platform and by
+    //    loader: `MODULE_NOT_FOUND`, `ERR_MODULE_NOT_FOUND` (ESM resolvers including tsx and bundlers),
+    //    `ERR_DLOPEN_FAILED`, `ERR_INVALID_MODULE_SPECIFIER`.
+    //  - The package is present but **unbuilt**. This is what an install with `--ignore-scripts`
+    //    produces, and it is not a module-resolution failure at all: `better-sqlite3` throws a plain
+    //    `Error: Could not locate the bindings file` with no `code`. Classifying that as a real error
+    //    meant the CLI fallback never ran and all 24 database tools failed silently on exactly the
+    //    locked-down installs where they are most needed.
+    //
+    // Anything else — a bad statement, a corrupt database, a permission failure — is a real error and
+    // is reported rather than retried through a second engine that would fail differently.
     const code = (error as NodeJS.ErrnoException).code;
-    const missingModule =
+    const message = error instanceof Error ? error.message : String(error);
+    const driverUnavailable =
       code === 'MODULE_NOT_FOUND' ||
       code === 'ERR_MODULE_NOT_FOUND' ||
       code === 'ERR_DLOPEN_FAILED' ||
-      code === 'ERR_INVALID_MODULE_SPECIFIER';
-    if (!missingModule) throw error;
+      code === 'ERR_INVALID_MODULE_SPECIFIER' ||
+      /could not locate the bindings file|native module was not compiled|bindings file/i.test(message);
+    if (!driverUnavailable) throw error;
   }
-  return command('sqlite3', ['-readonly', '-json', path, sql]);
+  // Neither engine is available. Say which is missing and how to fix it, rather than surfacing a
+  // spawn error that leaves the caller guessing whether to install the package or the CLI.
+  try {
+    return await command('sqlite3', ['-readonly', '-json', path, sql]);
+  } catch (error) {
+    throw new Error(
+      'SQLITE_UNAVAILABLE: SQLite yo‘qoldirilmagan. Ikkala yo‘l ham ishlamadi — ' +
+        `paket ichidagi drayver (better-sqlite3) va ` +
+        `tizim buyrug‘i (sqlite3). Drayverni qayta qurish: \`npm rebuild better-sqlite3\`. ` +
+        `(--ignore-scripts bilan o‘rnatilgan installda shu bajarilmaydi.) ` +
+        `Sabab: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`,
+    );
+  }
 }
 
 /** The slice of the `better-sqlite3` surface this module uses. */

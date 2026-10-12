@@ -98,6 +98,26 @@ SQLite alohida: u avval `sqlite3` buyrug'iga bog'liq edi, bu esa ko'pchilik komp
 barcha 24 ta database tool o'lik bo'lib qolardi. Endi paket ichidagi native drayver ishlatiladi,
 CLI faqat oldindek platformalarda zaxira sifatida qoladi.
 
+> **`npm install --ignore-scripts` bilan o'rnatilsa** native binding qurilmaydi va SQLite tool'lari
+> ishlamaydi. Buni tiklash uchun: `npm rebuild better-sqlite3`. Bunday holatda xato
+> `SQLITE_UNAVAILABLE` chiqadi va qaysi buyruq kerakligini aytib beradi — server esa
+> boshqa 500+ tool bilan to'liq ishlayveradi.
+
+## Jarayon xavfsizligi
+
+MCP server — bitta uzoq umrli jarayon, barcha tool'lar bir xil process'da ishlaydi. Shu sababli
+**bitta noto'g'ri kirish butun serverni o'ldirsa**, bu xato emas — butun xizmat to'xtaydi.
+
+Shuning uchun:
+
+- **Baytlar dekoderdan oldin aniqlanadi.** Tesseract, pdfjs va `sharp` noto'g'ri ma'lumotni o'z
+  worker thread'ida rad qiladi — bu rejection `try/catch` bilan ushlanmaydi. Faqat PNG belgisi bor
+  4 baytli "rasm" ham tuzatiladi (belgi + strukturaviy tekshiruv).
+- **Kutilmagan promise'lar ushlanadi.** `.then()` zanjiri `.catch()` siz qolsa, rad etilish
+  jarayonni tugatadi.
+- **`uncaughtException` va `unhandledRejection` handler'lari o'rnatilgan.** Kutubxona kelajakda
+  noshik bo'lsa, xato stderr'ga yoziladi va sessiya davom etadi.
+
 ## Qwen Desktop konfiguratsiyasi
 
 Tayyor konfiguratsiya namunasi [qwen-mcp.example.json](qwen-mcp.example.json) da — mashinasiz, nisbiy yo'llar bilan va o'rnatilgan paketni ishlatadi. Nusxalang va `args` ni o'z kompyuteringizga moslang:

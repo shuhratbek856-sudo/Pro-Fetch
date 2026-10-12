@@ -5,7 +5,7 @@ await import('file:///C:/Users/user/Downloads/pro-fetch/pro-fetch-mcp/src/loader
 const { dispatch } = await import('file:///C:/Users/user/Downloads/pro-fetch/pro-fetch-mcp/src/core/tool.js');
 try {
   const r = await Promise.race([
-    dispatch("pro_fetch_xlsx_to_json", { base64: "iVBORw==", url: 'https://example.invalid/x' }),
+    dispatch("pro_fetch_epub_to_text", { base64: "UEsDBAAAAAA=", url: 'https://example.invalid/x' }),
     new Promise((res) => setTimeout(() => res({ isError: true, content: [{ type: 'text', text: 'CEILING' }] }), 20000)),
   ]);
   console.log('DONE:' + ((r.content ?? []).map((c) => c.text).join(' ').replace(/\s+/g, ' ').slice(0, 60)));
