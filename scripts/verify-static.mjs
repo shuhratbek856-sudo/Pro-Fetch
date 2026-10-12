@@ -16,6 +16,65 @@ async function collectTs(dir) {
   return results;
 }
 
+/**
+ * The text of a `.then()` chain, found by balancing parentheses from the match position.
+ *
+ * A fixed-width window is the obvious approach and the wrong one: it flags a legitimate long chain as
+ * unguarded and misses a short one placed just past the edge. Following the brackets is exact, and
+ * the characters skipped over — string and template literals, comments — are handled so that a
+ * parenthesis inside a message does not end the scan early.
+ *
+ * Returns `null` when the source is unbalanced, which means the guard should stay quiet rather than
+ * report a problem it cannot actually see.
+ */
+/**
+ * Whether the promise chain beginning at `start` installs a rejection handler before the statement
+ * ends.
+ *
+ * The chain is walked forward rather than measured with a fixed window, because the two obvious
+ * shortcuts are both wrong: a character window misses a `.catch()` just past its edge and flags a
+ * legitimate long chain as unguarded, and reading only up to the end of the first `.then()` callback
+ * misses a `.catch()` attached to a later link. The statement ends at a `;` at bracket depth zero,
+ * which is unambiguous.
+ *
+ * String and template literals and both comment forms are skipped so that a `;` inside a message
+ * does not end the scan early.
+ */
+function chainHasCatch(source, start) {
+  let depth = 0;
+  let i = start;
+  let head = '';
+  while (i < source.length && i - start < 20_000) {
+    const char = source[i];
+    if (char === '"' || char === "'" || char === '`') {
+      const quote = char;
+      i++;
+      while (i < source.length) {
+        if (source[i] === '\\') i += 2;
+        else if (source[i] === quote) break;
+        else i++;
+      }
+    } else if (char === '/' && source[i + 1] === '/') {
+      while (i < source.length && source[i] !== '\n') i++;
+      continue;
+    } else if (char === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2);
+      i = end < 0 ? source.length : end + 2;
+      continue;
+    } else if (char === '(' || char === '[' || char === '{') {
+      depth++;
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth--;
+    } else if (depth === 0 && char === ';') {
+      // A `.catch(` seen so far at statement level belongs to this chain; anything earlier does not.
+      return /\.catch\s*\(/.test(head);
+    }
+    head += char;
+    i++;
+  }
+  return /\.catch\s*\(/.test(head);
+}
+
 try {
   const [
     packageText,
@@ -99,6 +158,58 @@ try {
   if (!packageJson.scripts?.['verify:registry']) failures.push('verify:registry script is missing from package.json');
   if (!packageJson.scripts?.['measure:coverage'])
     failures.push('measure:coverage script is missing from package.json; coverage must stay measurable');
+
+  // Every dynamic import whose `.then()` has no `.catch()` can end the process.
+  //
+  // Node terminates on an unhandled rejection, and an MCP server is a single long-lived process
+  // shared by every tool. A rejection raised inside a `.then()` callback — a synchronous throw from a
+  // constructor, a background fetch that fails after the call returned — escapes every try/catch in
+  // the handler. Both instances found in this codebase were exactly that: `websocket_listen` throwing
+  // from `new WebSocket(undefined)`, and `batch_schedule` fetching with nothing awaiting it.
+  const sourceFilesForChain = await collectTs('src');
+  for (const file of sourceFilesForChain) {
+    const source = await read(file);
+    for (const match of source.matchAll(/(?:await\s+)?import\([^)]*\)\s*\.then\(/g)) {
+      if (!chainHasCatch(source, match.index)) {
+        failures.push(
+          `${file.replace(/\\/g, '/')}: a dynamic import().then() chain has no .catch(); a rejection here terminates the server`,
+        );
+      }
+    }
+  }
+
+  // A tool that decodes bytes must check what it decoded. The native imaging libraries fault on
+  // undecodable input from their own worker threads, where nothing in this process can catch it, so
+  // a PDF handed to an OCR tool ended the process and took all 571 tools with it. Every entry point
+  // needs the guard — fixing the tool that crashed first still left a sibling able to crash.
+  //
+  // Delegation counts: `src/tools/media/image_ocr.ts` is a one-line wrapper around `runMediaTool`,
+  // so the check it relies on lives in media-tools.ts. Both the file and its delegate are verified.
+  const mediaCore = await read('src/core/media-tools.ts');
+  if (!/export function assertImagePayload/.test(mediaCore)) {
+    failures.push('src/core/media-tools.ts no longer exports assertImagePayload');
+  } else if (!/if \(name === 'image_ocr'\)[\s\S]{0,220}assertDecodableImage/.test(mediaCore)) {
+    failures.push("runMediaTool's image_ocr branch must validate its bytes before OCR");
+  }
+  const ocrImage = await read('src/tools/convert/ocr_image.ts');
+  if (!/assertImagePayload\(/.test(ocrImage)) {
+    failures.push(
+      'src/tools/convert/ocr_image.ts must validate its bytes before tesseract sees them (assertImagePayload)',
+    );
+  }
+
+  // The process guards are what stop a future dependency fault from becoming an outage.
+  try {
+    const server = await read('src/server.ts');
+    if (!/process\.on\(['"]uncaughtException['"]/.test(server)) {
+      failures.push('src/server.ts has no uncaughtException guard; one library fault would end the session');
+    }
+    if (!/process\.on\(['"]unhandledRejection['"]/.test(server)) {
+      failures.push('src/server.ts has no unhandledRejection guard; one rejected promise would end the session');
+    }
+  } catch {
+    failures.push('src/server.ts is missing');
+  }
 
   // A composite that analyses a document must hand its extractors the *document*. `fetch_url`
   // returns markdown and `html_to_text` returns text with the markup stripped, so passing either as

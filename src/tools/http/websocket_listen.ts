@@ -26,36 +26,71 @@ export default defineTool({
   },
   async handler(input) {
     const p = view(input);
+    const target = typeof p.url === 'string' ? p.url.trim() : '';
+
+    // `new WebSocket(...)` throws synchronously for a malformed address, and inside a `.then()`
+    // callback that throw becomes an unhandled rejection — which terminates the process rather than
+    // failing the call. Verified: calling this tool without a url killed the server and took all
+    // 571 tools with it. Validating here means the native library is only ever handed an address it
+    // can open.
+    let parsed: URL;
+    try {
+      parsed = new URL(target);
+    } catch {
+      return fail('url talab qilinadi va to‘g‘ri bo‘lishi kerak (masalan wss://example.com/socket).');
+    }
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+      return fail(`WebSocket uchun ws:// yoki wss:// kerak, berilgan: ${parsed.protocol}`);
+    }
+
+    // A hostile `timeout_ms` must not pin a socket open indefinitely, and `max_messages` must be a
+    // count. `Number()` on the wrong type yields NaN, which every comparison below treats as false.
+    const timeoutMs = Math.min(Math.max(Number(p.timeout_ms ?? 15000) || 15000, 250), 120_000);
+    const maxMessages = Math.min(Math.max(Number(p.max_messages ?? 10) || 10, 1), 1000);
+
     return new Promise((resolve) => {
       const msgs: string[] = [];
       let done = false;
+      let timer: NodeJS.Timeout | undefined;
       let socket: { close: () => void } | undefined;
       const finish = () => {
         if (done) return;
         done = true;
+        if (timer) clearTimeout(timer);
         try {
           socket?.close();
         } catch {
           /* yopilgan */
         }
-        resolve(result('# ' + p.url + ' — WebSocket\n\n' + msgs.map((m, i) => i + 1 + '. ' + m).join('\n')));
+        resolve(result('# ' + target + ' — WebSocket\n\n' + msgs.map((m, i) => i + 1 + '. ' + m).join('\n')));
       };
-      import('ws').then(({ default: WebSocket }) => {
-        const ws = new WebSocket(String(p.url));
-        socket = ws;
-        ws.on('message', (data: unknown) => {
-          msgs.push(String(data));
-          if (msgs.length >= Number(p.max_messages ?? 10)) finish();
-        });
-        ws.on('error', (e: Error) => {
-          if (!done) {
+
+      import('ws')
+        .then(({ default: WebSocket }) => {
+          const ws = new WebSocket(target);
+          socket = ws;
+          ws.on('message', (data: unknown) => {
+            msgs.push(String(data));
+            if (msgs.length >= maxMessages) finish();
+          });
+          ws.on('error', (e: Error) => {
+            if (done) return;
             done = true;
+            if (timer) clearTimeout(timer);
             resolve(fail('WebSocket xato: ' + e.message));
-          }
+          });
+          ws.on('close', () => finish());
+          timer = setTimeout(finish, timeoutMs);
+        })
+        // Without this, a failure to load `ws` or to construct the socket rejects with nothing
+        // listening, and the promise returned by `handler` never settles at all — the caller waits
+        // forever and the rejection separately ends the process.
+        .catch((error: unknown) => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          resolve(fail('WebSocket ulanmadi: ' + (error instanceof Error ? error.message : String(error))));
         });
-        ws.on('close', () => finish());
-        setTimeout(finish, Number(p.timeout_ms ?? 15000));
-      });
     });
   },
 });

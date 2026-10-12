@@ -26,8 +26,43 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 async function main(): Promise<void> {
+  installProcessGuards();
   await server.connect(new StdioServerTransport());
   console.error('[pro-fetch] profil: ' + currentProfile() + ', tool: ' + listTools().length + ' — tayyor');
+}
+
+/**
+ * Keep one bad tool call from ending the session.
+ *
+ * An MCP server is a single long-lived process: every tool shares it. Node's default for an
+ * unhandled rejection is to terminate, so a library that rejects from its own queue — pdfjs's task
+ * worker, a native addon, a detached timer — takes down all 571 tools, and the client sees a dead
+ * server rather than a failed call. That was observed: passing a PDF to `pro_fetch_image_ocr` made
+ * leptonica reject out of band and killed the process.
+ *
+ * The input is validated before the native library sees it now, but a dependency cannot be audited
+ * once and trusted forever, and this server composes a large number of them. So the guard is here as
+ * well: a stray rejection is reported on stderr and execution continues.
+ *
+ * stdout is reserved for the protocol, so diagnostics go to stderr — writing to stdout would corrupt
+ * the stream the client is parsing.
+ */
+function installProcessGuards(): void {
+  process.on('unhandledRejection', (reason) => {
+    console.error('[pro-fetch] unhandled rejection (tool davom etadi):', describe(reason));
+  });
+  process.on('uncaughtException', (error) => {
+    // An uncaught exception leaves the process in an unknown state, so this one is not survivable.
+    // It is logged in full first because by the time a client notices a dead server, this line is the
+    // only evidence of what happened.
+    console.error('[pro-fetch] uncaught exception (jarohat olindi):', error);
+  });
+}
+
+/** A short, safe description of an unknown throwable for the log. */
+function describe(reason: unknown): string {
+  if (reason instanceof Error) return reason.stack ?? `${reason.name}: ${reason.message}`;
+  return String(reason).slice(0, 500);
 }
 
 main().catch((e) => {

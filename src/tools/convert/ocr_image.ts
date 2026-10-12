@@ -1,7 +1,7 @@
 import { defineTool } from '../../core/tool.js';
-import { result } from '../../core/format.js';
+import { result, fail } from '../../core/format.js';
 import { readBinarySource } from '../../core/binary-source.js';
-import { nativeMediaAvailable } from '../../core/media-tools.js';
+import { assertImagePayload } from '../../core/media-tools.js';
 
 /**
  * pro_fetch_ocr_image — Run OCR on an image and return detected text
@@ -30,6 +30,13 @@ export default defineTool({
       );
     });
     const image = await readBinarySource(input, 'Image OCR', 50 * 1024 * 1024);
+
+    // Tesseract hands the bytes to leptonica, which rejects anything that is not a decodable image
+    // *from its own worker thread* — that rejection reaches this process as an uncaught exception
+    // rather than as a failed promise, so no amount of try/catch here would contain it. Verified: a
+    // PDF passed to this tool terminated the server and took every other tool with it.
+    assertImagePayload(image, 'pro_fetch_ocr_image');
+
     const language = typeof input.language === 'string' && input.language.trim() ? input.language.trim() : 'eng';
     const worker = await tesseract.createWorker(language);
     try {
