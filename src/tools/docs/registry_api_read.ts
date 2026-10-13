@@ -10,6 +10,7 @@ import { ghApi, ghErr } from '../github/_api.js';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 export default defineTool({
   name: 'pro_fetch_registry_api_read',
   description: 'Read npm registry versions and deprecations',
@@ -26,7 +27,11 @@ export default defineTool({
     const pkg = encodeURIComponent(String(p.query));
     const r = await fetchWithOptions('https://registry.npmjs.org/' + pkg);
     if (r.status >= 400) return fail('Paket topilmadi: ' + p.query);
-    const j = JSON.parse(r.text);
+    const j = parseUpstreamJson<{
+      time?: Record<string, string>;
+      versions?: Record<string, { deprecated?: string }>;
+      'dist-tags'?: { latest?: string };
+    }>(r, 'pro_fetch_registry_api_read');
     const versions = Object.entries(j.time ?? {})
       .filter(([k]: any) => k !== 'created' && k !== 'modified')
       .slice(-20);

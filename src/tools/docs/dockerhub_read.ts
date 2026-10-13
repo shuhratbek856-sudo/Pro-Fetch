@@ -10,6 +10,7 @@ import { ghApi, ghErr } from '../github/_api.js';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 export default defineTool({
   name: 'pro_fetch_dockerhub_read',
   description: 'Read Docker Hub image metadata and tags',
@@ -27,7 +28,13 @@ export default defineTool({
     const r = await fetchWithOptions('https://hub.docker.com/v2/repositories/' + repo);
     if (r.status >= 400) return fail('Repo topilmadi: ' + p.query);
     const t = await fetchWithOptions('https://hub.docker.com/v2/repositories/' + repo + '/tags?page_size=10');
-    const tj = t.status < 400 ? (JSON.parse(t.text).results ?? []) : [];
-    return jsonBlock('# Docker Hub: ' + repo, { repo: JSON.parse(r.text), tags: tj.map((x: any) => x.name) });
+    const tj =
+      t.status < 400
+        ? (parseUpstreamJson<{ results?: Array<{ name?: string }> }>(t, 'pro_fetch_dockerhub_read').results ?? [])
+        : [];
+    return jsonBlock('# Docker Hub: ' + repo, {
+      repo: parseUpstreamJson(r, 'pro_fetch_dockerhub_read'),
+      tags: tj.map((x: any) => x.name),
+    });
   },
 });

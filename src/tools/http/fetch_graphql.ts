@@ -11,6 +11,7 @@ import path from 'node:path';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 export default defineTool({
   name: 'pro_fetch_fetch_graphql',
   description: 'Send a GraphQL query to an endpoint and return data',
@@ -30,6 +31,6 @@ export default defineTool({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ query: String(p.query), variables: p.variables ?? {} }),
     });
-    return jsonBlock('# GraphQL ' + p.url, JSON.parse(r.text));
+    return jsonBlock('# GraphQL ' + p.url, parseUpstreamJson(r, 'pro_fetch_fetch_graphql'));
   },
 });

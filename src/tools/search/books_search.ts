@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_books_search — Search book catalog records using Open Library
@@ -32,7 +33,7 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('Open Library HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_books_search') as {
       docs?: Array<{
         title?: string;
         author_name?: string[];

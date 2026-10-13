@@ -23,7 +23,7 @@ qator raqam — o'lchilgan natija, taxmin emas. O'lchash skripti:
 | Zararli kiritish sinovi | 10,278 chaqiruv — **0 crash** | fuzz |
 | Dekoder sinovi | 175 juftlik — **0 yomon natija** | fuzz |
 | Jarayon-killer sinovi | **0** (avval 4 ta topildi) | `tests/resilience.test.ts` |
-| Testlar | **228** | `npm test` |
+| Tests | 239 | `npx vitest run` |
 | Registry / static / package / format | PASS | `npm run check` |
 | Toza install (`--ignore-scripts` bilan ham) | ✅ 571 tool | `prodtest4` |
 

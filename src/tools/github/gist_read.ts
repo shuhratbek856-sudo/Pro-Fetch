@@ -24,7 +24,11 @@ export default defineTool({
   },
   async handler(input) {
     const p = view(input);
-    const r = await ghApi('/gists/' + p.gist_id);
+    // Without this the call goes out as `/gists/undefined` and comes back a 404, which reads as
+    // "gist not found" when the truth is "no gist was named".
+    const gistId = typeof p.gist_id === 'string' ? p.gist_id.trim() : '';
+    if (!gistId) return fail('MISSING_INPUT: gist_id majburiy.');
+    const r = await ghApi('/gists/' + gistId);
     if (r.status >= 400) return ghErr(r.status, r.json);
     const files = Object.entries(r.json.files ?? {}).map(
       ([n, f]: any) => '## ' + n + '\n\n' + clipToTokens(f.content ?? '', 3000),

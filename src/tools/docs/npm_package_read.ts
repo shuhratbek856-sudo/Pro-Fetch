@@ -10,6 +10,7 @@ import { ghApi, ghErr } from '../github/_api.js';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 export default defineTool({
   name: 'pro_fetch_npm_package_read',
   description: 'Read npm package metadata and README',
@@ -26,9 +27,14 @@ export default defineTool({
     const pkg = encodeURIComponent(String(p.query));
     const r = await fetchWithOptions('https://registry.npmjs.org/' + pkg);
     if (r.status >= 400) return fail('Paket topilmadi: ' + p.query);
-    const j = JSON.parse(r.text);
+    const j = parseUpstreamJson<{
+      'dist-tags'?: { latest?: string };
+      description?: string;
+      versions?: Record<string, { license?: string; homepage?: string; dependencies?: Record<string, string> }>;
+      maintainers?: Array<{ name?: string }>;
+    }>(r, 'pro_fetch_npm_package_read');
     const latest = j['dist-tags']?.latest;
-    const v = j.versions?.[latest] ?? {};
+    const v = (latest !== undefined ? j.versions?.[latest] : undefined) ?? {};
     return jsonBlock('# npm: ' + p.query + ' (latest: ' + latest + ')', {
       description: j.description,
       latest,

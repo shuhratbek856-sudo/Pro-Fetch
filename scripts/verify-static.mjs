@@ -229,6 +229,63 @@ try {
     failures.push('cannot read src/core/max-platform-tools.ts to check the Windows command path');
   }
 
+  // The suite must stay green on assertion results, not on the toolchain's teardown.
+  //
+  // Node 24.21.0 aborts in `RemoveEnvironmentCleanupHook` after the tests have passed, so a green run
+  // can still exit red — measured at 5 red exits in 10 runs with 231/231 green each time. The config
+  // flag below is what keeps CI reporting the code instead of the environment, and removing it
+  // reintroduces the flake silently.
+  try {
+    const vitestConfig = await read('vitest.config.ts');
+    if (!/dangerouslyIgnoreUnhandledErrors:\s*true/.test(vitestConfig)) {
+      failures.push('vitest.config.ts must set dangerouslyIgnoreUnhandledErrors: true (Node 24 teardown crash)');
+    }
+    if (!/RemoveEnvironmentCleanupHook/.test(vitestConfig)) {
+      failures.push('vitest.config.ts lost the justification comment for dangerouslyIgnoreUnhandledErrors');
+    }
+  } catch {
+    failures.push('cannot read vitest.config.ts to check the unhandled-error policy');
+  }
+
+  // An upstream API answers throttling with a 200 and a non-JSON body, and a bare
+  // `JSON.parse(response.text)` turns that into `Unexpected token 'O'` — observed live against GDELT.
+  // Every network-body decode goes through `parseUpstreamJson`, which names the provider, the status
+  // and the body preview instead. The four remaining bare decodes are all guarded (try/catch with a
+  // fallback, or a `'{}'` default); anything else is the regression returning.
+  const helper = await read('src/core/json-response.ts');
+  if (!/export function parseUpstreamJson/.test(helper)) {
+    failures.push('src/core/json-response.ts no longer exports parseUpstreamJson');
+  }
+  const bareDecode = /JSON\.parse\((response|r|t)\.text\)/;
+  const guardedBare = new Set([
+    'src/core/integration-tools.ts',
+    'src/core/max-platform-tools.ts',
+    'src/tools/archive/wayback_lookup.ts',
+    'src/tools/docs/wikipedia_deep_read.ts',
+  ]);
+  for (const file of sourceFilesForChain) {
+    const normalized = file.replace(/\\/g, '/');
+    if (normalized === 'src/core/json-response.ts' || guardedBare.has(normalized)) continue;
+    if (!normalized.startsWith('src/')) continue;
+    const source = await read(file);
+    if (bareDecode.test(source)) {
+      failures.push(`${normalized} parses a network body without parseUpstreamJson`);
+    }
+  }
+
+  // A redirect chain that revisits a URL is a loop, and in practice it is bot mitigation, not a
+  // long chain — remoteok.com answers an unknown user-agent with `302 /` from `/` itself, forever.
+  // The follower must name the loop rather than report a hop count that sends the caller counting
+  // redirects instead of recognising refused access.
+  try {
+    const httpClient = await read('src/core/http-client.ts');
+    if (!/redirect loop detected/.test(httpClient)) {
+      failures.push('http-client.ts lost its redirect-loop detection; loops report a hop count again');
+    }
+  } catch {
+    failures.push('cannot read src/core/http-client.ts to check redirect-loop detection');
+  }
+
   // The process guards are what stop a future dependency fault from becoming an outage.
   try {
     const server = await read('src/server.ts');

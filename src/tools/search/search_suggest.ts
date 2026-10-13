@@ -2,6 +2,7 @@ import { getCredential } from '../../core/credentials.js';
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_search_suggest — Get search autocomplete suggestions for a seed term
@@ -31,7 +32,9 @@ export default defineTool({
         cache: false,
       });
       if (response.status < 400) {
-        const payload = JSON.parse(response.text) as { suggestions?: Array<{ value?: string }> };
+        const payload = parseUpstreamJson(response, 'pro_fetch_search_suggest') as {
+          suggestions?: Array<{ value?: string }>;
+        };
         const results = (payload.suggestions ?? []).map((item) => item.value ?? '').filter(Boolean);
         if (results.length)
           return result(
@@ -48,7 +51,7 @@ export default defineTool({
       cache: false,
     });
     if (response.status >= 400) throw new Error('Google Suggest autocomplete HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as [string, string[]];
+    const payload = parseUpstreamJson(response, 'pro_fetch_search_suggest') as [string, string[]];
     const results = Array.isArray(payload?.[1])
       ? [...new Set(payload[1].filter((item) => typeof item === 'string' && item !== query))]
       : [];

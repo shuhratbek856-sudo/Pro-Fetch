@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_reverse_image_search — Find pages using a similar image
@@ -33,7 +34,7 @@ export default defineTool({
       maxBytes: 3_000_000,
     });
     if (response.status >= 400) throw new Error('Reverse image provider HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_reverse_image_search') as {
       visual_matches?: Array<{ title?: string; link?: string; source?: string; thumbnail?: string }>;
     };
     const results = (payload.visual_matches ?? []).slice(0, limit).map((item) => ({

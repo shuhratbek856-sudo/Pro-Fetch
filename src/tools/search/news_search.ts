@@ -1,5 +1,6 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 import { result } from '../../core/format.js';
 
 /**
@@ -37,7 +38,11 @@ export default defineTool({
       maxBytes: 3_000_000,
     });
     if (response.status >= 400) throw new Error('GDELT news API HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+
+    // GDELT answers throttling and overload with a 200 and a non-JSON body ("OK", an HTML page, an
+    // empty document). The shared helper names the provider and the body preview instead of
+    // surfacing `Unexpected token 'O'`, which told the caller nothing. Observed live.
+    const payload = parseUpstreamJson<{
       articles?: Array<{
         title?: string;
         url?: string;
@@ -46,7 +51,7 @@ export default defineTool({
         language?: string;
         sourceCountry?: string;
       }>;
-    };
+    }>(response, 'GDELT news API');
     const results = (payload.articles ?? []).map((article) => ({
       title: article.title ?? '',
       url: article.url ?? '',

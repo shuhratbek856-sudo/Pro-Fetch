@@ -1,5 +1,6 @@
 import { load } from 'cheerio';
 import { fetchWithOptions } from './http-client.js';
+import { parseUpstreamJson } from './json-response.js';
 import { getCredential } from './credentials.js';
 import { log } from './log.js';
 
@@ -36,9 +37,9 @@ const serperProvider: SearchProvider = {
       cache: false,
     });
     if (response.status >= 400) throw new Error(`provider HTTP ${response.status}`);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson<{
       organic?: Array<{ title?: string; link?: string; snippet?: string }>;
-    };
+    }>(response, 'Serper Search');
     return (payload.organic ?? []).map((item) => ({
       title: item.title ?? '',
       url: item.link ?? '',
@@ -63,9 +64,9 @@ const braveProvider: SearchProvider = {
       cache: false,
     });
     if (response.status >= 400) throw new Error(`provider HTTP ${response.status}`);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson<{
       web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
-    };
+    }>(response, 'Brave Search');
     return (payload.web?.results ?? []).map((item) => ({
       title: item.title ?? '',
       url: item.url ?? '',

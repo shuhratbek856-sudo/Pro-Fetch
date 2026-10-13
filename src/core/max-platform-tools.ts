@@ -1569,7 +1569,18 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
     if (action === 'npm_outdated') return await command('npm', ['outdated', '--json'], cwd);
     if (action === 'license_report') {
       const r = await command('npm', ['ls', '--json', '--all'], cwd);
-      const data = JSON.parse(r.stdout || '{}');
+      // `npm ls` prints problems to stdout as text when the tree is broken, so a bare parse fails
+      // with `Unexpected token` on output the caller could have acted on. The fallback keeps the
+      // tool usable on a broken tree: an empty dependency list rather than a crash.
+      let data: { dependencies?: unknown };
+      try {
+        data = JSON.parse(r.stdout || '{}') as typeof data;
+      } catch {
+        throw new Error(
+          '`npm ls` JSON emas chiqardi (daraxt buzilgan bo‘lishi mumkin). Chiqish boshi: ' +
+            JSON.stringify((r.stdout || r.stderr || '').trim().slice(0, 120)),
+        );
+      }
       const rows: Array<Record<string, unknown>> = [];
       const walk = (deps: unknown) => {
         if (!deps || typeof deps !== 'object') return;

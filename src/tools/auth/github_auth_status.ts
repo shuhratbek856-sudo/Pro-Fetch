@@ -2,6 +2,7 @@ import { getCredential } from '../../core/credentials.js';
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_github_auth_status — Check GitHub token validity and scopes
@@ -27,7 +28,7 @@ export default defineTool({
     });
     let user = '';
     try {
-      user = String((JSON.parse(response.text) as { login?: string }).login ?? '');
+      user = String((parseUpstreamJson(response, 'pro_fetch_github_auth_status') as { login?: string }).login ?? '');
     } catch {
       /* API may return non-JSON error text. */
     }

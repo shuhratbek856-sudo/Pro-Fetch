@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_video_search — Search videos by keyword across platforms
@@ -39,7 +40,7 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('YouTube Data API HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_video_search') as {
       items?: Array<{
         id?: { videoId?: string };
         snippet?: { title?: string; channelTitle?: string; publishedAt?: string; description?: string };

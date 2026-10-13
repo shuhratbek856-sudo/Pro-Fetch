@@ -6,6 +6,7 @@ import { assertSafeUrl } from './ssrf-guard.js';
 import { result } from './format.js';
 import type { ToolResult } from './types.js';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { parseUpstreamJson } from './json-response.js';
 
 type Input = Record<string, unknown>;
 
@@ -201,7 +202,7 @@ async function graphql(toolName: string, input: Input): Promise<ToolResult> {
     body: JSON.stringify({ query }),
   });
   if (response.status >= 400) throw new Error('GraphQL HTTP ' + response.status + ': ' + response.text.slice(0, 1000));
-  const parsed = JSON.parse(response.text) as {
+  const parsed = parseUpstreamJson(response, 'GraphQL introspection') as {
     data?: {
       __schema?: {
         types?: Array<{
@@ -542,7 +543,10 @@ export async function runIntegrationTool(toolName: string, input: Input): Promis
         encodeURIComponent(from + '|' + to);
       const response = await fetchWithOptions(url, { headers: { accept: 'application/json' } });
       if (response.status >= 400) throw new Error('Translation API HTTP ' + response.status);
-      const data = JSON.parse(response.text) as { responseData?: { translatedText?: string }; responseStatus?: number };
+      const data = parseUpstreamJson(response, 'Translation API') as {
+        responseData?: { translatedText?: string };
+        responseStatus?: number;
+      };
       if (data.responseStatus && data.responseStatus >= 400)
         throw new Error('Translation API status ' + data.responseStatus);
       translated.push(data.responseData?.translatedText ?? chunk);

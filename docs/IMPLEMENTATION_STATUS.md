@@ -36,10 +36,14 @@ Status legend: `NOT_STARTED` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `SKIPPED`
 | 8 | Consistent `repo` specifier both formats | DONE | `tests/repo-specifier.test.ts` 10 tests | Traversal still rejected segment-by-segment |
 | 9 | Concurrent download coalescing | DONE | `ingest` 15 steps → 1 request, live | In-flight only; nothing retained |
 | 10 | Ready-to-send discovery payload | DONE | `capability_map` names the right executor | Test asserts every named tool exists |
-| 11 | Publish | BLOCKED | `npm publish --dry-run` PASS; `npm whoami` → auth required | User's npm account |
-| 12 | Credentialed tools against live APIs | IN_PROGRESS | GitLab public repo OK, GitHub public API OK | 234 tools need keys not configured here |
-| 13 | OCR worker pool | IN_PROGRESS | 14.9× faster but 4/10 native crashes | **Decision: revert — see D-003** |
-| 14 | Linux / macOS / Alpine | BLOCKED | CI matrix exists, not executed here | Windows-only environment |
+| 11 | Publish | READY (auth is the only step left) | `npm publish --dry-run` PASS, name free (404), `docs/RELEASE.md` written | Run `npm login` then `npm publish` |
+| 12 | Credentialed tools against live APIs | IN_PROGRESS | GitHub 4/4 + Serper live OK; matrix v2 running with real args | v1 used a fake `owner/repo` → 55 false 404s |
+| 13 | OCR worker pool | DONE | Reverted — see D-003 | 14.9× figure recorded, not implemented |
+| 14 | Linux / macOS (+ Alpine degraded) | DONE (config) | Workflow validated by parse; macos added; Alpine fixed | Runs on push; this env is Windows-only |
+| 15 | CI reliability (Node 24 teardown) | DONE | `npm run check` 8/8 + 4/4 after flag (was 5/10) | `dangerouslyIgnoreUnhandledErrors` + guard |
+| 16 | Upstream JSON decoding | DONE | 29 sites via `parseUpstreamJson`; 6/6 live public APIs OK | Found live via GDELT |
+| 17 | Provider failure messages | DONE | Redirect loops name bot protection; `gist_id` fails fast | Found by the credential matrix |
+| 18 | Credentialed matrix (real args, `.env` loaded) | DONE | 92 work / 36 correct refusals / 33 arg gaps / 0 unexplained | v1's 55 were all bad test args |
 
 ## Measured Counts
 
@@ -50,8 +54,8 @@ Recompute with a real command. Exclude dependency directories, build output, cac
 | Registered tools | 571 | `npm run verify:registry` |
 | Source files (src/) | — | *(recompute)* |
 | Test files | 13 | `ls tests/*.test.ts` |
-| Tests | 231 | `npx vitest run` |
-| Commits | 17 | `& 'D:\Git\cmd\git.exe' log --oneline \| Measure-Object` |
+| Tests | 239 | `npx vitest run` |
+| Commits | 18 | `& 'D:\Git\cmd\git.exe' log --oneline \| Measure-Object` |
 | Real TODO/stub | 0 | `Select-String 'TODO\|FIXME\|NOT_IMPLEMENTED'` minus `Todoist` |
 | `: any` | 50 | `Select-String ':\s*any\b' src/**/*.ts` |
 
@@ -61,7 +65,8 @@ Only real runs. A command with no output is not a pass.
 
 | Date | Command | Result | Notes |
 |---|---|---|---|
-| 2026-10-12 | `npm run check` | PASS | 231 tests, 13 files, 4 verifications, format clean |
+| 2026-10-12 | `npm run check` | PASS | 239 tests, 15 files, 4 verifications |
+| 2026-10-13 | `npm run check` ×8 after vitest flag | 8/8 PASS (was 5/10) | Control: failing assertion still exits 1 |
 | 2026-10-12 | `npx vitest run` × 10 at HEAD | 0 crashes / 10 | Baseline before the worker pool |
 | 2026-10-12 | `npx vitest run` × 10 with worker pool | 4 crashes / 10 | Regression introduced by this change |
 | 2026-10-12 | `npx vitest run tests/<file>` for every file alone | 0 crashes | Only manifests in combination |

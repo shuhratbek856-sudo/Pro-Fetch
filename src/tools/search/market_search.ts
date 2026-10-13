@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_market_search — Search products pricing and marketplaces
@@ -38,7 +39,7 @@ export default defineTool({
       maxBytes: 3_000_000,
     });
     if (response.status >= 400) throw new Error('Google Shopping provider HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_market_search') as {
       shopping_results?: Array<{ title?: string; price?: string; source?: string; link?: string; product_id?: string }>;
     };
     const results = (payload.shopping_results ?? []).slice(0, limit).map((item) => ({

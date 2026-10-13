@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_dataset_search — Search datasets hosted on Hugging Face Hub
@@ -31,7 +32,7 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('Hugging Face dataset API HTTP ' + response.status);
-    const datasets = JSON.parse(response.text) as Array<{
+    const datasets = parseUpstreamJson(response, 'pro_fetch_dataset_search') as Array<{
       id?: string;
       downloads?: number;
       likes?: number;

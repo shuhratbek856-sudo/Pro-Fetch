@@ -6,6 +6,7 @@ import { load } from 'cheerio';
 import { fetchWithOptions } from './http-client.js';
 import { htmlToText } from './parser.js';
 import { assertSafeUrl } from './ssrf-guard.js';
+import { parseUpstreamJson } from './json-response.js';
 
 type Input = Record<string, unknown>;
 type Source = {
@@ -133,9 +134,9 @@ async function searchSources(query: string, limit: number): Promise<SearchSource
       cache: false,
     });
     if (response.status >= 400) throw new Error('Serper Search HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson<{
       organic?: Array<{ title?: string; link?: string; snippet?: string; date?: string }>;
-    };
+    }>(response, 'Serper Search');
     return (payload.organic ?? [])
       .flatMap((item) =>
         item.link
@@ -163,9 +164,9 @@ async function searchSources(query: string, limit: number): Promise<SearchSource
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('Brave Search HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson<{
       web?: { results?: Array<{ title?: string; url?: string; description?: string; age?: string }> };
-    };
+    }>(response, 'Brave Search');
     return (payload.web?.results ?? [])
       .flatMap((item) =>
         item.url

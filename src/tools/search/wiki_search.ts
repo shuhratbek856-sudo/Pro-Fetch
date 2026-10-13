@@ -2,6 +2,7 @@ import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
 import { htmlToText } from '../../core/parser.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_wiki_search — Search Wikipedia and wiki knowledge bases
@@ -39,7 +40,9 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('Wikipedia API HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as { query?: { search?: Array<{ title?: string; snippet?: string }> } };
+    const payload = parseUpstreamJson(response, 'pro_fetch_wiki_search') as {
+      query?: { search?: Array<{ title?: string; snippet?: string }> };
+    };
     const results = (payload.query?.search ?? []).map((item) => ({
       title: item.title ?? '',
       url: 'https://en.wikipedia.org/wiki/' + encodeURIComponent((item.title ?? '').replace(/ /g, '_')),

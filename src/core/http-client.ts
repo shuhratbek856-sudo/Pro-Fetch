@@ -172,6 +172,16 @@ export async function fetchFollowingSafeRedirects(
         headers.delete(name);
       requestInit = { ...requestInit, method: 'GET', body: undefined, headers };
     }
+    // A chain that returns to a URL it already visited is not a long redirect — it is a loop, and
+    // in practice it is bot mitigation: remoteok.com answers an unknown user-agent with `302 /`
+    // from `/` itself, forever. Reporting the generic hop limit there sends the caller counting
+    // redirects instead of recognising that the host is refusing automated access.
+    if (chain.includes(next.toString())) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error(
+        `HTTP redirect loop detected at ${next.toString()} (ehtimol bot himoyasi — host avtomatik so‘rovni qaytarmoqda).`,
+      );
+    }
     current = next;
     chain.push(current.toString());
   }

@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_blog_search — Search DEV Community articles by tag
@@ -31,7 +32,7 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('DEV Community API HTTP ' + response.status);
-    const articles = JSON.parse(response.text) as Array<{
+    const articles = parseUpstreamJson(response, 'pro_fetch_blog_search') as Array<{
       title?: string;
       url?: string;
       description?: string;

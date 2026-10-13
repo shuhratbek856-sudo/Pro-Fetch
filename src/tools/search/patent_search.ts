@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_patent_search — Search patents by keyword or number
@@ -31,7 +32,7 @@ export default defineTool({
       maxBytes: 3_000_000,
     });
     if (response.status >= 400) throw new Error('Google Patents HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_patent_search') as {
       results?: {
         cluster?: Array<{
           result?: Array<{

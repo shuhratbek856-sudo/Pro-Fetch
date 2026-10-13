@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { cache } from '../../core/cache.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_release_watch — Watch a GitHub repository for new releases
@@ -39,7 +40,7 @@ export default defineTool({
     );
     if (response.status === 404) throw new Error(`GitHub repo ${normalized} учун published release топилмади.`);
     if (response.status < 200 || response.status >= 300) throw new Error('GitHub release API HTTP ' + response.status);
-    const release = JSON.parse(response.text) as {
+    const release = parseUpstreamJson(response, 'pro_fetch_release_watch') as {
       tag_name?: string;
       name?: string;
       html_url?: string;

@@ -7,6 +7,7 @@ import { fetchWithOptions } from './http-client.js';
 import { assertSafeUrl } from './ssrf-guard.js';
 import { result } from './format.js';
 import type { ToolResult } from './types.js';
+import { parseUpstreamJson } from './json-response.js';
 
 type Input = Record<string, unknown>;
 
@@ -152,7 +153,7 @@ export async function runArchiveMonitoringTool(toolName: string, input: Input): 
       { headers },
     );
     if (response.status >= 400) throw new Error('GitHub release API HTTP ' + response.status);
-    const release = JSON.parse(response.text) as {
+    const release = parseUpstreamJson(response, 'GitHub release API') as {
       tag_name?: string;
       name?: string;
       html_url?: string;

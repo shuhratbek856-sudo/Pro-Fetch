@@ -2,6 +2,7 @@ import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
 import { USER_AGENT } from '../../core/version.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_jobs_search — Search job postings by role and location
@@ -32,7 +33,7 @@ export default defineTool({
       maxBytes: 3_000_000,
     });
     if (response.status >= 400) throw new Error('Remote OK jobs API HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as Array<{
+    const payload = parseUpstreamJson(response, 'pro_fetch_jobs_search') as Array<{
       id?: string;
       position?: string;
       company?: string;

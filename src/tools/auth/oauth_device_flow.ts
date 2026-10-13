@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_oauth_device_flow — Run the OAuth device flow for a provider
@@ -27,7 +28,7 @@ export default defineTool({
       retries: 0,
     });
     if (response.status < 200 || response.status >= 300) throw new Error('GitHub device flow HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_oauth_device_flow') as {
       device_code?: string;
       user_code?: string;
       verification_uri?: string;

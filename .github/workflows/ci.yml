@@ -25,7 +25,7 @@ jobs:
         # The lower bound comes from `engines.node` (pdfjs-dist@6 requires >=22.13); the upper
         # bound is the current LTS line so new breaking majors surface as a job failure, not
         # silently later.
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: ['22.13', '24']
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +36,11 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        # Strict on purpose: the prebuilt native binaries (`better-sqlite3`, `sharp`,
+        # `@napi-rs/canvas`) exist for ubuntu and Windows, so a failed install is a real problem,
+        # not flakiness. Letting it fail here keeps the cause visible instead of producing confusing
+        # downstream failures in type-check, build or tests against a half-installed tree.
         run: npm ci
-        # The two optional native modules make the matrix flaky on some runners; the server
-        # degrades gracefully when they are absent, which the suite already covers.
-        continue-on-error: true
 
       - name: Type check
         run: npm run lint
@@ -59,9 +60,12 @@ jobs:
       - name: Verify the published tarball is executable and secret-free
         run: npm run verify:package
 
-  # Alpine/musl is where the native image binaries (`sharp`, `@napi-rs/canvas`) usually fail to
-  # build. The server must still boot there and degrade to "this tool is unavailable" rather than
-  # aborting at import time — which is exactly what a static import used to do.
+  # Alpine/musl is where the native binaries (`sharp`, `@napi-rs/canvas`, `better-sqlite3`)
+  # usually fail to build. The server must still boot there and degrade to "this tool is
+  # unavailable" rather than aborting at import time — which is exactly what a static import used
+  # to do. This job asserts the degraded path: install without build scripts, compile, boot, and
+  # verify the registry. The full suite does not run here because several tests exercise the native
+  # modules themselves (SQLite seeding, real OCR); those run in the ubuntu/windows/macos matrix.
   alpine:
     name: Alpine (musl, degraded native deps)
     runs-on: ubuntu-latest
@@ -73,22 +77,27 @@ jobs:
         with:
           node-version: '24'
 
-      # Build first: the boot check below runs the compiled entry point.
+      # Pure-JS install only: no compiler toolchain in the container, and the point of this job is
+      # the host where native builds are absent. `tsc` and `tsx` are pure JS, so build and the
+      # registry check below still run for real.
+      - name: Install without build scripts
+        run: npm ci --ignore-scripts
+
       - name: Build
         run: npm run build
 
-      # The server must boot with the native binaries removed, which is what a slim container or
-      # a failed node-gyp build looks like. The install is best-effort because the compile
-      # toolchain may be absent; the boot check is the assertion that matters.
+      # The server must boot with the native binaries absent, which is what a slim container or a
+      # failed node-gyp build looks like. Removing what `--ignore-scripts` may still have placed
+      # makes the simulation explicit rather than incidental.
       - name: Remove native media binaries to simulate a degraded host
-        run: rm -rf node_modules/sharp node_modules/@napi-rs node_modules/tesseract.js
+        run: rm -rf node_modules/sharp node_modules/@napi-rs node_modules/tesseract.js node_modules/better-sqlite3
 
-      - name: Server must boot without native media binaries
+      - name: Server must boot without native binaries
         run: |
           node -e "import('./dist/server.js').then(()=>{console.log('BOOT_OK')}).catch(e=>{console.error('BOOT_FAIL',e.code||e.message);process.exit(1)})"
 
-      - name: Unit tests still pass without native binaries
-        run: npm test
+      - name: Static checks still pass without native binaries
+        run: npm run verify:static
 
       - name: Registry still verifies
         run: npm run verify:registry

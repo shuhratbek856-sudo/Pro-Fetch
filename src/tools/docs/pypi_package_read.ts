@@ -10,6 +10,7 @@ import { ghApi, ghErr } from '../github/_api.js';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 export default defineTool({
   name: 'pro_fetch_pypi_package_read',
   description: 'Read PyPI package metadata and docs',
@@ -25,7 +26,16 @@ export default defineTool({
     const p = view(input);
     const r = await fetchWithOptions('https://pypi.org/pypi/' + encodeURIComponent(String(p.query)) + '/json');
     if (r.status >= 400) return fail('Paket topilmadi: ' + p.query);
-    const info = JSON.parse(r.text).info;
+    const info = parseUpstreamJson<{
+      info: {
+        version?: string;
+        summary?: string;
+        license?: string;
+        home_page?: string;
+        requires_python?: string;
+        requires_dist?: string[];
+      };
+    }>(r, 'pro_fetch_pypi_package_read').info;
     return jsonBlock('# PyPI: ' + p.query, {
       version: info.version,
       summary: info.summary,

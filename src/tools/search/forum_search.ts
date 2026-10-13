@@ -2,6 +2,7 @@ import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
 import { htmlToText } from '../../core/parser.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_forum_search — Search Stack Overflow questions through the Stack Exchange API
@@ -39,7 +40,7 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('Stack Exchange API HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_forum_search') as {
       items?: Array<{
         title?: string;
         link?: string;

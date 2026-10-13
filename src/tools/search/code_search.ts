@@ -2,6 +2,7 @@ import { getCredential } from '../../core/credentials.js';
 import { defineTool } from '../../core/tool.js';
 import { fetchWithOptions } from '../../core/http-client.js';
 import { result } from '../../core/format.js';
+import { parseUpstreamJson } from '../../core/json-response.js';
 
 /**
  * pro_fetch_code_search — Search GitHub code (requires GITHUB_TOKEN)
@@ -35,7 +36,7 @@ export default defineTool({
       maxBytes: 2_000_000,
     });
     if (response.status >= 400) throw new Error('GitHub code search HTTP ' + response.status);
-    const payload = JSON.parse(response.text) as {
+    const payload = parseUpstreamJson(response, 'pro_fetch_code_search') as {
       items?: Array<{ name?: string; path?: string; html_url?: string; repository?: { full_name?: string } }>;
     };
     const results = (payload.items ?? []).map((item) => ({
