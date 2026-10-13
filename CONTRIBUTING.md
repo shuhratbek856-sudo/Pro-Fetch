@@ -56,7 +56,7 @@ landing without a matching test and manifest update.
 
 ## Security notes
 
-- Never commit `.env`, `qwen-mcp.json`, or any `*_FILE` secret target. `.gitignore` covers these,
+- Never commit `.env`, `mcp.json`, or any `*_FILE` secret target. `.gitignore` covers these,
   but a ZIP of the folder bypasses that — `verify:package` and `verify:static` check the shipped
   file set instead.
 - Keep real API keys in `.env` for local runs; use `<NAME>_FILE` for anything you would not paste

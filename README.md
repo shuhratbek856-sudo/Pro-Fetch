@@ -124,12 +124,12 @@ Shuning uchun:
 - **`uncaughtException` va `unhandledRejection` handler'lari o'rnatilgan.** Kutubxona kelajakda
   noshik bo'lsa, xato stderr'ga yoziladi va sessiya davom etadi.
 
-## Qwen Desktop konfiguratsiyasi
+## MCP mijoz konfiguratsiyasi
 
-Tayyor konfiguratsiya namunasi [qwen-mcp.example.json](qwen-mcp.example.json) da — mashinasiz, nisbiy yo'llar bilan va o'rnatilgan paketni ishlatadi. Nusxalang va `args` ni o'z kompyuteringizga moslang:
+Tayyor konfiguratsiya namunasi [mcp.example.json](mcp.example.json) da — mashinasiz, nisbiy yo'llar bilan va o'rnatilgan paketni ishlatadi. Nusxalang va `args` ni o'z kompyuteringizga moslang:
 
 ```bash
-cp qwen-mcp.example.json qwen-mcp.json   # qwen-mcp.json .gitignore'da
+cp mcp.example.json mcp.json   # mcp.json .gitignore'da
 ```
 
 `smart` profilda modelga 571 schema o'rniga **10 ta Smart System tool** ko'rinadi. Ular to'liq imkoniyatni saqlab qoladi, chunki biri ko'p tool'ni bir chaqiruvda ishga tushiradi. Batafsil: [Smart System](#smart-system). API kalitlari `.env` da yoki `GITHUB_TOKEN_FILE` kabi `*_FILE` o'zgaruvchisida saqlanadi; `.env` hech qachon commit qilinmaydi va nashr paketiga kirmaydi. Nisbiy `*_FILE` yo'llari paket ildiziga nisbatan resolve qilinadi, shuning uchun server istalgan papkadan ishga tushsa ham to'g'ri ishlaydi.
@@ -253,4 +253,4 @@ MAX packlari Git, GitLab/Gitea/Forgejo/Bitbucket, Docker/Kubernetes/Terraform/np
 
 HTTP(S) to‘g‘ridan-to‘g‘ri ulanishlar DNS natijalarini tekshiradi va transport lookup’da pin qiladi. Proxy target DNS’ini proxy o‘zi yechishi mumkinligi sabab proxy DNS pinning standart holatda qo‘llanmaydi; faqat ishonchli proxy uchun `PRO_FETCH_ALLOW_UNPINNED_PROXY_DNS=true` bilan ochiladi.
 
-**Test holati:** `npm run check` to'liq zanjirni bajaradi — `verify:static`, `verify:registry`, `tsc` build, Vitest va `verify:package`. Bu muhitda (Node v24.21.0, npm 11.19.0, Windows) to'liq `tsc` build va 87 ta Vitest testi PASS bo'ldi; CI esa Node 22.13 va 24, Ubuntu va Windows matritasida `npm ci && npm run check` ni qayta ishlatadi. Live provider integratsiyalari (Jira, Slack, Google, storage) credential va o'rnatilgan CLI talab qiladi, shuning uchun ular muhitga bog'liq. MCP SDK v2 migratsiyasi Qwen Desktop compatibility suite bajarilguncha ataylab alohida bosqichda qoldirilgan.
+**Test holati:** `npm run check` to'liq zanjirni bajaradi — `verify:static`, `verify:registry`, `tsc` build, Vitest va `verify:package`. Bu muhitda (Node v24.21.0, npm 11.19.0, Windows) to'liq `tsc` build va 87 ta Vitest testi PASS bo'ldi; CI esa Node 22.13 va 24, Ubuntu va Windows matritasida `npm ci && npm run check` ni qayta ishlatadi. Live provider integratsiyalari (Jira, Slack, Google, storage) credential va o'rnatilgan CLI talab qiladi, shuning uchun ular muhitga bog'liq. MCP SDK v2 migratsiyasi mijoz compatibility suite bajarilguncha ataylab alohida bosqichda qoldirilgan.

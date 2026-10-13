@@ -21,7 +21,8 @@ credentials.json
 service-account*.json
 
 # Machine-specific MCP client config (contains absolute paths and host PATH).
-# Commit `qwen-mcp.example.json` instead and copy it locally.
+# Commit `mcp.example.json` instead and copy it locally.
+mcp.json
 qwen-mcp.json
 
 # Editor / OS noise

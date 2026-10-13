@@ -64,7 +64,7 @@ versiya semver bo'yicha.
 - `.github/workflows/ci.yml` — Node 22.13/24, Ubuntu/Windows matritasi **va Alpine (musl) job'i**:
   native binary'lar olib tashlanganda server boot qilishi, testlar va registry tekshiruvi o'tishi
   majburiy shart.
-- `qwen-mcp.example.json` — mashinasiz, nisbiy konfiguratsiya namunasi.
+- `mcp.example.json` — mashinasiz, nisbiy konfiguratsiya namunasi.
 - `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`.
 
 ### Changed
@@ -79,7 +79,7 @@ versiya semver bo'yicha.
 - `.env.example` ga `PRO_FETCH_BROWSER_CHANNEL`, `PRO_FETCH_BROWSER_TZ` va `<NAME>_FILE` hujjati
   qo'shildi.
 - `verify:registry` endi barcha 4 profil o'lchamini ham tekshiradi.
-- `.gitignore` kengaytirildi: `.secrets/`, `*.pem`, `*.key`, `qwen-mcp.json` va boshqalar.
+- `.gitignore` kengaytirildi: `.secrets/`, `*.pem`, `*.key`, `mcp.json` va boshqalar.
 
 ### Fixed
 
@@ -106,7 +106,7 @@ versiya semver bo'yicha.
 - **`<NAME>_FILE` nisbiy yo'llari ishlamasdi** — server har qanday papkadan ishga tushishi
   mumkin. Endi `package.json` ga nisbatan resolve qilinadi.
 - **`.env.example` chetlashuvi** — 3 ta ishlaydigan kalit hujjatlantirilmagan edi.
-- **CLI konfiguratsiyasi sizib chiqayotdi** — `qwen-mcp.json` da mashina-specifik yo'l va to'liq
+- **CLI konfiguratsiyasi sizib chiqayotdi** — `mcp.json` da mashina-specifik yo'l va to'liq
   Windows PATH (shaxsiy kataloqlar) bor edi.
 
 ### Security
@@ -116,7 +116,7 @@ versiya semver bo'yicha.
   himoya qo'llandi.
 - `verify:static` secret patternlari kengaytirildi: Atlassian (`ATATT3`), GitLab (`glpat-`),
   Serper/SerpAPI shakllari qo'shildi.
-- Qo'shimcha: qo'lda kiritilgan `qwen-mcp.json` endi absolute yo'l yoki host PATH saqlamasligi
+- Qo'shimcha: qo'lda kiritilgan `mcp.json` endi absolute yo'l yoki host PATH saqlamasligi
   tekshiriladi.
 
 ### Known limitations

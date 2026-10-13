@@ -16,7 +16,7 @@
 
 ## Sozlash
 
-1. `qwen-mcp.json` ichidagi `args` yo‘lini ZIP ochilgan joydagi `src\server.ts` manziliga moslang.
+1. `mcp.json` ichidagi `args` yo‘lini ZIP ochilgan joydagi `src\server.ts` manziliga moslang.
 2. GitHub tokenni Windows user environment’iga qo‘ying yoki `GITHUB_TOKEN_FILE` orqali lokal secret fayliga yo‘l ko‘rsating. Qidiruv uchun `SEARCH_API_KEY` / `SEARCH_API_KEY_FILE` xuddi shunday ishlaydi.
 3. Browser tool’lar uchun Playwright ixtiyoriy dependency kerak bo‘ladi.
 
@@ -35,7 +35,7 @@ npm test
 
 Tarmoq (npm registry) mavjud bo'lmagan muhitda `npm ci` bajarib bo'lmaydi, shu sababli real `tsc` build va to'liq Vitest suite (tests/*.test.ts) shu muhitda ishga tushirilmagan. Ularni PASS deb hisoblamang: maqsadli muhitda `npm ci && npm run check` ishga tushiring.
 
-MCP SDK v2 migratsiyasi host mosligi tekshirilmagani uchun bajarilmadi: Qwen Desktop v1 protokol yo'lida saqlanadi, migratsiya alohida compatibility branch va integration test talab qiladi.
+MCP SDK v2 migratsiyasi host mosligi tekshirilmagani uchun bajarilmadi: MCP mijoz v1 protokol yo'lida saqlanadi, migratsiya alohida compatibility branch va integration test talab qiladi.
 
 ## MAX platform packlari
 

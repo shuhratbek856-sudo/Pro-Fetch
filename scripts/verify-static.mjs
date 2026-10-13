@@ -78,7 +78,7 @@ function chainHasCatch(source, start) {
 try {
   const [
     packageText,
-    qwenText,
+    exampleText,
     readme,
     loader,
     allToolsTest,
@@ -89,7 +89,7 @@ try {
     profileModule,
   ] = await Promise.all([
     read('package.json'),
-    read('qwen-mcp.example.json'),
+    read('mcp.example.json'),
     read('README.md'),
     read('src/loader.ts'),
     read('tests/all-tools.test.ts'),
@@ -100,7 +100,7 @@ try {
     read('src/core/profile.ts'),
   ]);
   const packageJson = JSON.parse(packageText);
-  const qwenJson = JSON.parse(qwenText);
+  const exampleJson = JSON.parse(exampleText);
   const countManifest = JSON.parse(countManifestText);
 
   if (!String(packageJson.description ?? '').includes('571 MCP tool'))
@@ -328,26 +328,25 @@ try {
   if (!packageJson.engines?.node)
     failures.push('package.json is missing engines.node (pdfjs-dist 6 requires Node >=22.13)');
   if (!/toBe\(571\)/.test(allToolsTest)) failures.push('tool registry test does not assert 571 tools');
-  const profile = qwenJson?.mcpServers?.['pro-fetch']?.env?.PRO_FETCH_PROFILE;
-  if (profile !== 'smart') failures.push('qwen-mcp.example.json should use the smart profile');
-  const qwenEnv = qwenJson?.mcpServers?.['pro-fetch']?.env ?? {};
-  for (const [name, value] of Object.entries(qwenEnv)) {
+  const profile = exampleJson?.mcpServers?.['pro-fetch']?.env?.PRO_FETCH_PROFILE;
+  if (profile !== 'smart') failures.push('mcp.example.json should use the smart profile');
+  const exampleEnv = exampleJson?.mcpServers?.['pro-fetch']?.env ?? {};
+  for (const [name, value] of Object.entries(exampleEnv)) {
     if (
       /(?:GITHUB_TOKEN|SEARCH_API_KEY|OPENAI_API_KEY|SERPAPI_API_KEY)/i.test(name) &&
       typeof value === 'string' &&
       value.trim()
     ) {
-      failures.push(`qwen-mcp.example.json contains a non-empty credential value for ${name}`);
+      failures.push(`mcp.example.json contains a non-empty credential value for ${name}`);
     }
   }
   // A committed client config must never carry a machine-specific absolute path or a host PATH:
   // both leak the author's user name and local layout to every consumer.
-  const qwenRaw = JSON.stringify(qwenJson);
-  if (/[A-Za-z]:\\\\|[A-Za-z]:\\/.test(qwenRaw))
-    failures.push('qwen-mcp.example.json contains a Windows absolute path');
-  if (/^\/(?:home|Users)\//.test(qwenRaw)) failures.push('qwen-mcp.example.json contains a POSIX home path');
-  for (const [name] of Object.entries(qwenEnv)) {
-    if (name.toLowerCase() === 'path') failures.push('qwen-mcp.example.json must not embed the host PATH');
+  const exampleRaw = JSON.stringify(exampleJson);
+  if (/[A-Za-z]:\\\\|[A-Za-z]:\\/.test(exampleRaw)) failures.push('mcp.example.json contains a Windows absolute path');
+  if (/^\/(?:home|Users)\//.test(exampleRaw)) failures.push('mcp.example.json contains a POSIX home path');
+  for (const [name] of Object.entries(exampleEnv)) {
+    if (name.toLowerCase() === 'path') failures.push('mcp.example.json must not embed the host PATH');
   }
 
   const sourceFiles = await collectTs('src');
@@ -380,7 +379,7 @@ try {
     for (const pattern of forbidden)
       if (pattern.test(content)) failures.push(`${file} contains forbidden placeholder marker ${pattern}`);
   }
-  for (const file of ['qwen-mcp.example.json', '.env.example', 'README.md']) {
+  for (const file of ['mcp.example.json', '.env.example', 'README.md']) {
     const content = await read(file);
     if (secretPattern.test(content)) failures.push(`${file} contains a GitHub-token-like secret`);
   }
@@ -412,7 +411,7 @@ try {
     console.log('STATIC_VERIFICATION_PASS');
     console.log(`source_files=${sourceFiles.length}`);
     console.log(
-      `manifest_tools=${countManifest.total}; manifest_categories=${Object.keys(countManifest.categories ?? {}).length}; smart_tools=5; qwen_config=valid_json; embedded_credentials=none; template_dispatcher=absent`,
+      `manifest_tools=${countManifest.total}; manifest_categories=${Object.keys(countManifest.categories ?? {}).length}; smart_tools=5; example_config=valid_json; embedded_credentials=none; template_dispatcher=absent`,
     );
     console.log(
       'note: manifest checks are not a substitute for `npm run verify:registry`, which loads the actual runtime registry.',

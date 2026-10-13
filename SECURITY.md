@@ -52,7 +52,7 @@ read-only SQL.
 - Secret values are never returned by diagnostics; they report `configured` / `source` only.
 - Error messages are redacted before they leave the process: values from secret-shaped input keys,
   `Bearer`/`Basic` credentials, credential-bearing query parameters, and `scheme://user:pass@` URLs.
-- `.env` and `qwen-mcp.json` are git-ignored and excluded from the published package by the
+- `.env` and `mcp.json` are git-ignored and excluded from the published package by the
   `files` allowlist. `.env.example` ships with every value empty.
 
 ## Known limitations
