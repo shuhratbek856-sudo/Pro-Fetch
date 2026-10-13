@@ -36,7 +36,7 @@ Status legend: `NOT_STARTED` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `SKIPPED`
 | 8 | Consistent `repo` specifier both formats | DONE | `tests/repo-specifier.test.ts` 10 tests | Traversal still rejected segment-by-segment |
 | 9 | Concurrent download coalescing | DONE | `ingest` 15 steps → 1 request, live | In-flight only; nothing retained |
 | 10 | Ready-to-send discovery payload | DONE | `capability_map` names the right executor | Test asserts every named tool exists |
-| 11 | Publish | READY (auth is the only step left) | `npm publish --dry-run` PASS, name free (404), `docs/RELEASE.md` written | Run `npm login` then `npm publish` |
+| 11 | Publish | DONE | `pro-fetch-mcp@0.3.0` live on npm (`latest` tag); install test passed — boots with `smart` profile, 10 tools | npmjs.com/package/pro-fetch-mcp |
 | 12 | Credentialed tools against live APIs | IN_PROGRESS | GitHub 4/4 + Serper live OK; matrix v2 running with real args | v1 used a fake `owner/repo` → 55 false 404s |
 | 13 | OCR worker pool | DONE | Reverted — see D-003 | 14.9× figure recorded, not implemented |
 | 14 | Linux / macOS (+ Alpine degraded) | DONE (config) | Workflow validated by parse; macos added; Alpine fixed | Runs on push; this env is Windows-only |
@@ -68,6 +68,7 @@ Only real runs. A command with no output is not a pass.
 |---|---|---|---|
 | 2026-10-12 | `npm run check` | PASS | 239 tests, 15 files, 4 verifications |
 | 2026-10-13 | `npm run check` ×8 after vitest flag | 8/8 PASS (was 5/10) | Control: failing assertion still exits 1 |
+| 2026-10-13 | `npm publish` | PASS | `+ pro-fetch-mcp@0.3.0`, `latest` tag; install test: BOOT OK (smart, 10 tools) |
 | 2026-10-12 | `npx vitest run` × 10 at HEAD | 0 crashes / 10 | Baseline before the worker pool |
 | 2026-10-12 | `npx vitest run` × 10 with worker pool | 4 crashes / 10 | Regression introduced by this change |
 | 2026-10-12 | `npx vitest run tests/<file>` for every file alone | 0 crashes | Only manifests in combination |
