@@ -49,3 +49,6 @@ npm-debug.log*
 .*-tmp.mjs
 .case*.mts
 .list-tools.mts
+
+# Tesseract language data (installed by npm, not committed)
+eng.traineddata
