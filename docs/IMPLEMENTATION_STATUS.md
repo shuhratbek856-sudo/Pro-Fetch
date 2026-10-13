@@ -44,7 +44,7 @@ Status legend: `NOT_STARTED` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `SKIPPED`
 | 16 | Upstream JSON decoding | DONE | 29 sites via `parseUpstreamJson`; 6/6 live public APIs OK | Found live via GDELT |
 | 17 | Provider failure messages | DONE | Redirect loops name bot protection; `gist_id` fails fast | Found by the credential matrix |
 | 18 | Credentialed matrix (real args, `.env` loaded) | DONE | 92 work / 36 correct refusals / 33 arg gaps / 0 unexplained | v1's 55 were all bad test args |
-| 19 | GitHub repo + README | IN_PROGRESS | Bilingual README.md + README.uz.md (edd5989); branch `main`, remote `origin` added; package.json points at `shuhratbek856-sudo/pro-fetch-mcp` | **User**: create the empty repo on github.com (fine-grained PAT cannot create repos — measured HTTP 403 `Resource not accessible by personal access token`), then authorize the PAT on it or push with browser auth |
+| 19 | GitHub repo + README | DONE | Public repo `shuhratbek856-sudo/Pro-Fetch`, 24 commits on `main`, bilingual README; temp scripts + 5.2 MB `eng.traineddata` removed (commit 9d406eb) | Pushed via GCM browser auth — the fine-grained PAT can read but not push (measured 403) |
 
 ## Measured Counts
 
