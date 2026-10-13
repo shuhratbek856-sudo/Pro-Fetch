@@ -254,16 +254,16 @@ the docs readers now have explicit shapes.
 **Status:** accepted
 
 ### Context
-The credential matrix surfaced two: remoteok.com loops `/` → `/` for unknown user-agents (bot
-mitigation), reported as `HTTP redirect limit exceeded (5)`; and `gist_read` called
-`/gists/undefined` and reported the 404 as "gist not found".
+The credential matrix surfaced two failures that sent the caller after the wrong thing:
+remoteok.com loops `/` back to `/` for unknown user-agents (bot mitigation), reported as a hop
+count; and `gist_read` called `/gists/undefined` and reported the 404 as "gist not found".
 
 ### Decision
 The redirect follower detects a revisited URL and reports the loop with the URL and the likely
 cause. `gist_read` validates `gist_id` before any request.
 
 ### Rationale
-Both failures sent the caller after the wrong thing — counting redirects, hunting a missing gist.
+Both failures sent the caller after the wrong thing - counting redirects, hunting a missing gist.
 The fix is at the layer where the knowledge lives: the follower knows the chain, the tool knows its
 required input.
 
@@ -276,6 +276,31 @@ required input.
 Both covered by `tests/provider-failures.test.ts` against the live providers, plus a
 `verify:static` guard on the loop detection.
 
-
 ---
 
+## D-010: A repository without `main` still downloads
+
+**Status:** accepted
+
+### Context
+`repo_full_clone` defaulted the branch to `main`. Half the public repositories still default to
+`master` - octocat/Hello-World among them - so those failed with a 404 that read as "repository not
+found". The credential matrix surfaced it as one of twelve unexplained failures.
+
+### Decision
+When no ref is requested, try `main` then `master`. An explicitly requested ref is honoured exactly
+and never retried. The failure names the tried branches.
+
+### Rationale
+The retry costs one extra request and only on the failure path. Querying the repository metadata for
+its default branch first would cost a request on *every* call, including the overwhelmingly common
+`main` case.
+
+### Rejected alternatives
+- **Require `ref` always.** Breaks every existing caller that relies on the default.
+- **Silently fall back even for an explicit ref.** An override means something; retrying past it
+  would download a branch the caller did not ask for.
+
+### Consequences
+Covered by three live tests in `tests/provider-failures.test.ts`: a `master` repo with no ref, a
+missing repo naming the tried branches, and an explicit wrong ref tried exactly once.

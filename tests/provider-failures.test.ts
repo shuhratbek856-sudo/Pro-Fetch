@@ -29,6 +29,31 @@ describe('redirect loops name the loop', () => {
   }, 30_000);
 });
 
+describe('a repository without `main` still downloads', () => {
+  it('falls back to `master` when no ref was requested', async () => {
+    // octocat/Hello-World defaults to `master`. Asking for `main` only used to fail it with a 404
+    // that read as "repository not found".
+    const result = await dispatch('pro_gh_repo_full_clone', { owner: 'octocat', repo: 'Hello-World' });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toMatch(/\(master\)/);
+  }, 90_000);
+
+  it('names the tried branches instead of reporting a bare 404', async () => {
+    const result = await dispatch('pro_gh_repo_full_clone', { owner: 'nodejs', repo: 'no-such-repo-xyz' });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/sinab ko‘rildi/);
+    expect(text(result)).not.toMatch(/Download HTTP 404/);
+  }, 90_000);
+
+  it('honours an explicit ref exactly and does not retry it', async () => {
+    const result = await dispatch('pro_gh_repo_full_clone', { owner: 'nodejs', repo: 'node', ref: 'nope' });
+    expect(result.isError).toBe(true);
+    // Only the requested ref was tried — the fallback applies to the default, not to an override.
+    expect(text(result)).toMatch(/nope/);
+    expect(text(result)).not.toMatch(/master/);
+  }, 90_000);
+});
+
 describe('a missing identifier fails before the network', () => {
   it('gist_read names gist_id instead of reporting a 404', async () => {
     // Without the guard the call went out as `/gists/undefined` and came back 404, which reads as

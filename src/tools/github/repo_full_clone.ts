@@ -40,21 +40,44 @@ export default defineTool({
   },
   async handler(input) {
     const p = view(input);
-    const ref = p.ref ?? 'main';
-    const name = p.owner + '-' + p.repo + '-' + String(ref).replace(/[^a-zA-Z0-9._-]/g, '_') + '.tar.gz';
-    const dest = path.join(cacheDir(), name);
-    const info = await downloadToFile(
-      'https://codeload.github.com/' + p.owner + '/' + p.repo + '/tar.gz/refs/heads/' + ref,
-      dest,
+    const requested = typeof p.ref === 'string' && p.ref.trim() ? p.ref.trim() : 'main';
+    const dest = path.join(
+      cacheDir(),
+      p.owner + '-' + p.repo + '-' + requested.replace(/[^a-zA-Z0-9._-]/g, '_') + '.tar.gz',
     );
-    if (info.status >= 400) return fail('Yuklashda xato: HTTP ' + info.status + ' (branch nomini tekshiring)');
+
+    // Half the public repositories still default to `master`. Trying only `main` fails those with a
+    // 404 that reads as "repository not found", so the other conventional default is attempted before
+    // giving up. An explicitly requested ref is honoured exactly - only the default is retried.
+    //
+    // `downloadToFile` throws on HTTP errors rather than returning a status, so each attempt is
+    // caught individually; any other failure (network, disk, size limit) aborts immediately instead
+    // of being retried as if it were a wrong branch name.
+    const candidates = p.ref ? [requested] : [requested, 'master'];
+    let info: { status: number; bytes: number } | undefined;
+    let used = requested;
+    for (const ref of candidates) {
+      try {
+        info = await downloadToFile(
+          'https://codeload.github.com/' + p.owner + '/' + p.repo + '/tar.gz/refs/heads/' + ref,
+          dest,
+        );
+        used = ref;
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/^Download HTTP (404|400)$/.test(message)) throw error;
+      }
+    }
+    if (!info)
+      return fail(`Yuklashda xato: repository yoki branch topilmadi (sinab ko‘rildi: ${candidates.join(', ')}).`);
     return result(
       '✅ ' +
         p.owner +
         '/' +
         p.repo +
         ' (' +
-        ref +
+        used +
         ') tarball yuklandi:\n' +
         dest +
         ' (' +

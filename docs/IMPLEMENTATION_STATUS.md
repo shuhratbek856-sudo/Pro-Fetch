@@ -54,7 +54,7 @@ Recompute with a real command. Exclude dependency directories, build output, cac
 | Registered tools | 571 | `npm run verify:registry` |
 | Source files (src/) | — | *(recompute)* |
 | Test files | 13 | `ls tests/*.test.ts` |
-| Tests | 239 | `npx vitest run` |
+| Tests | 242 | `npx vitest run` |
 | Commits | 18 | `& 'D:\Git\cmd\git.exe' log --oneline \| Measure-Object` |
 | Real TODO/stub | 0 | `Select-String 'TODO\|FIXME\|NOT_IMPLEMENTED'` minus `Todoist` |
 | `: any` | 50 | `Select-String ':\s*any\b' src/**/*.ts` |
