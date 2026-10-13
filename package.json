@@ -18,11 +18,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shuhratbek856-sudo/pro-fetch-mcp.git"
+    "url": "git+https://github.com/shuhratbek856-sudo/Pro-Fetch.git"
   },
-  "homepage": "https://github.com/shuhratbek856-sudo/pro-fetch-mcp#readme",
+  "homepage": "https://github.com/shuhratbek856-sudo/Pro-Fetch#readme",
   "bugs": {
-    "url": "https://github.com/shuhratbek856-sudo/pro-fetch-mcp/issues"
+    "url": "https://github.com/shuhratbek856-sudo/Pro-Fetch/issues"
   },
   "engines": {
     "node": ">=22.13.0"
