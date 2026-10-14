@@ -82,6 +82,30 @@ function functionsIn(text: string): Map<string, string> {
 const coreIndex = new Map<string, Map<string, string>>();
 for (const [file, text] of coreModules) coreIndex.set(file, functionsIn(text));
 
+/**
+ * Every core function, by name, keeping only names that are unambiguous across modules.
+ *
+ * A tool handler that is not a one-line delegation still calls core helpers inline - `css_select` does
+ * `const fr = await sourceFrom(p)` in the middle of its body - and those reads decide what the tool
+ * accepts. Without this index the fourteen `sourceFrom` tools looked as though they never read `url`,
+ * even though that helper fetches it.
+ *
+ * A name defined in two modules is dropped rather than guessed: pulling in the wrong body would
+ * invent reads that do not happen.
+ */
+const allCoreFunctions = new Map<string, string[]>();
+for (const functions of coreIndex.values()) {
+  for (const [name, body] of functions) {
+    const bucket = allCoreFunctions.get(name);
+    if (bucket) bucket.push(body);
+    else allCoreFunctions.set(name, [body]);
+  }
+}
+const uniqueCoreFunctions = new Map<string, string>();
+for (const [name, bodies] of allCoreFunctions) {
+  if (bodies.length === 1) uniqueCoreFunctions.set(name, bodies[0]);
+}
+
 /** Runner per SPECS pack, whose tool names are built at runtime and so have no file. */
 const SPEC_RUNNERS: Record<string, string> = {
   git: 'runGit',
@@ -121,14 +145,15 @@ function gapReads(source: string, consumed: Array<[number, number]>): string[] {
 }
 
 /** Follow local helpers a function calls, so a read hidden one hop down still counts. */
-function withHelpers(body: string, siblings: Map<string, string>, depth = 2): string {
+function withHelpers(body: string, siblings: Map<string, string>, depth = 2, extra?: Map<string, string>): string {
   if (depth <= 0) return body;
   let grown = body;
-  for (const [name, definition] of siblings) {
+  const pool = new Map([...siblings, ...(extra ?? [])]);
+  for (const [name, definition] of pool) {
     if (!new RegExp(`(?<![.\\w])${name}\\s*\\(`).test(body)) continue;
     if (new RegExp(`(?:const|let|var|function)\\s+${name}\\b`).test(body)) continue;
     if (grown.includes(definition)) continue;
-    grown += `\n${withHelpers(definition, siblings, depth - 1)}`;
+    grown += `\n${withHelpers(definition, siblings, depth - 1, extra)}`;
   }
   return grown;
 }
@@ -285,11 +310,11 @@ export function resolveToolSource(toolName: string, category = ''): string | und
 
     // A one-line delegation whose arguments include `input`.
     const delegate = /^\s*return\s+(?:await\s+)?([A-Za-z0-9_]+)\s*\([^)]*\binput\b[^)]*\)\s*;/m.exec(body);
-    if (!delegate) return withHelpers(body, local);
+    if (!delegate) return withHelpers(body, local, 2, uniqueCoreFunctions);
 
     for (const [file, functions] of coreIndex) {
       const target = functions.get(delegate[1]);
-      if (target) return withHelpers(target, functions);
+      if (target) return withHelpers(target, functions, 2, uniqueCoreFunctions);
     }
     return own;
   }

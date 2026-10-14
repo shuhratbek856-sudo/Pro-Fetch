@@ -19,7 +19,11 @@
 process.env.PRO_FETCH_PROFILE ??= 'full';
 await import('../src/loader.js');
 const { allTools } = await import('../src/core/tool.js');
-const { sourceFor, auditedToolCount } = await import('./tool-source-map.mts');
+// The audit measures with the *same* resolver the runtime narrowing uses. A second implementation
+// drifted: the audit still reported `url` as dead for the fourteen `sourceFrom` tools because the
+// older script did not follow that helper, while the runtime kept `url` through their `anyOf`. Two
+// measurements of the same code is one too many, and the disagreement was invisible.
+const { resolveToolSource, resolvedToolCount } = await import('../src/core/source-resolver.js');
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
@@ -95,7 +99,7 @@ let skippedDelegating = 0;
  */
 const resolvedSource = new Map<string, string | undefined>();
 function sourceFileFor(toolName: string, category: string): string | undefined {
-  if (!resolvedSource.has(toolName)) resolvedSource.set(toolName, sourceFor(toolName, category));
+  if (!resolvedSource.has(toolName)) resolvedSource.set(toolName, resolveToolSource(toolName, category));
   return resolvedSource.get(toolName);
 }
 
@@ -156,7 +160,7 @@ if (asJson) {
 
   console.log(
     `SCHEMA_AUDIT audited=${findings.length} skipped_delegating=${skippedDelegating} ` +
-      `resolved_sources=${auditedToolCount}\n`,
+      `resolved_sources=${resolvedToolCount}\n`,
   );
   console.log(
     `  with_dead_properties=${withDead.length}  with_required_empty=${withEmptyRequired.length}  ` +

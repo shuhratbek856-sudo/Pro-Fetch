@@ -416,6 +416,11 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   },
   headers: { type: 'object', description: 'HTTP header’lar', additionalProperties: { type: 'string' } },
   sources: { type: 'array', description: "Manbalar ro'yxati", items: { type: 'object' } },
+  // `list(input, 'sources', 'items', 'documents', ...)` accepts it, and 17 research tools list it in
+  // their property set and their `anyOf`. With no entry here, `applyCategorySchema`'s filter dropped it
+  // from every one of them while their alternatives still named it - so `pro_research_cross_check`
+  // advertised an alternative that `additionalProperties: false` made unreachable.
+  documents: { type: 'array', description: 'Manbalar ro‘yxati (documents aliasi)', items: { type: 'object' } },
   items: { type: 'array', description: "Elementlar ro'yxati", items: {} },
   languages: { type: 'array', description: 'Til kodlari', items: { type: 'string' } },
   target_lang: { type: 'string', description: 'Maqsad til kodi, masalan uz yoki en' },
@@ -616,6 +621,39 @@ function applyCategorySchema(def: ToolDefinition): void {
     // The requirements below are read off the branches in `runIntegrationTool`, not guessed.
     def.inputSchema.required = i18nRequired;
   }
+  /**
+   * Tools whose input is "a URL *or* already-loaded text", declared as neither.
+   *
+   * These resolve their source through `sourceFrom(input)` (`src/core/source-from.ts`), which accepts
+   * `url` or `text` and refuses with "url yoki text talab qiladi" when given neither. Their schemas said
+   * `required: []` with no `anyOf`, so the caller had no way to learn that a source was expected until
+   * the call failed - while `convert`, which accepts the same pair, had declared it correctly all along.
+   *
+   * Verified by calling all of them with `{}`: every one reported the missing source, none reported
+   * anything else, so the alternative set below is exactly what they need.
+   */
+  const URL_OR_TEXT_ANYOF = [{ required: ['url'] }, { required: ['text'] }];
+
+  const URL_OR_TEXT_TOOLS = new Set([
+    'pro_fetch_audit_page',
+    'pro_fetch_comment_strip',
+    'pro_fetch_css_select',
+    'pro_fetch_email_extract',
+    'pro_fetch_footnote_extract',
+    'pro_fetch_form_extract',
+    'pro_fetch_json_ld_extract',
+    'pro_fetch_json_path',
+    'pro_fetch_link_classify',
+    'pro_fetch_list_extract',
+    'pro_fetch_main_content_detect',
+    'pro_fetch_regex_extract',
+    'pro_fetch_schema_org_extract',
+    'pro_fetch_table_to_dataframe',
+    // `pro_page_diff` (crawl) reports the same refusal through the same helper.
+    'pro_page_diff',
+    // `browser_action` is handled separately below: it needs a single required field, not an anyOf.
+  ]);
+
   const apitestRequirement = def.category === 'apitest' ? APITEST_TOOL_REQUIREMENTS[def.name] : undefined;
   if (apitestRequirement) {
     // `required` and `anyOf` are mutually exclusive here: an alternative set is what "url *or*
@@ -635,6 +673,15 @@ function applyCategorySchema(def: ToolDefinition): void {
     // these tools actually accept.
     delete def.inputSchema.required;
     def.inputSchema.anyOf = [{ required: ['url'] }, { required: ['base64'] }];
+  } else if (URL_OR_TEXT_TOOLS.has(def.name)) {
+    // "url or text" is an alternative, not a pair of requirements. `required: ['url','text']` would
+    // demand both and reject every valid call; `anyOf` states the choice.
+    delete def.inputSchema.required;
+    def.inputSchema.anyOf = URL_OR_TEXT_ANYOF;
+  } else if (def.name === 'pro_browser_browser_action') {
+    // The single browser tool where the caller, not the tool name, picks the operation.
+    def.inputSchema.required = ['action'];
+    delete def.inputSchema.anyOf;
   } else if (requirementFix) {
     if (requirementFix.anyOf) {
       delete def.inputSchema.required;
