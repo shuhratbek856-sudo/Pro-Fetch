@@ -14,7 +14,6 @@ export default defineTool({
     type: 'object',
     properties: {
       text: { type: 'string', description: 'Kirish matni' },
-      text2: { type: 'string', description: 'Ikkinchi matn (diff uchun)' },
     },
     required: ['text'],
   },

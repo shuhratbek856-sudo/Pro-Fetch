@@ -143,6 +143,14 @@ export const DATA_PIPELINE_TOOL = defineTool({
       operation_arg: { type: 'string', description: 'Amaliyor argumenti (masalan sort uchun ustun nomi)' },
       limit: { type: 'number', description: 'Qaytariladigan qatorlar soni (standart 50)' },
     },
+    // The handler needs a source: `url`, `text`, or both. Declaring neither as `required` is correct
+    // — a caller supplying only `url` would fail a naive `required: ['url', 'text']` — but with
+    // nothing declared the caller had no way to learn that a source was expected at all, and the
+    // first thing they learned was the failure. `anyOf` states "one of these".
+    //
+    // Nothing in the dispatcher enforces `anyOf`; the handler's own guard is what actually rejects an
+    // empty call. This declaration exists so the requirement is visible before the call, not after.
+    anyOf: [{ required: ['url'] }, { required: ['text'] }],
   },
   async handler(input) {
     const p = view(input);

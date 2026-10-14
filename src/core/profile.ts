@@ -45,6 +45,7 @@ export const SMART_TOOL_NAMES = new Set([
   'pro_pr_review',
   'pro_site_scan',
   'pro_data_pipeline',
+  'pro_synthesize',
 ]);
 
 /** Category → minimum profile level that exposes it. Unlisted categories default to `full`. */

@@ -103,9 +103,9 @@ try {
   const exampleJson = JSON.parse(exampleText);
   const countManifest = JSON.parse(countManifestText);
 
-  if (!String(packageJson.description ?? '').includes('571 MCP tool'))
-    failures.push('package.json description does not report 571 tools');
-  if (!readme.includes('571 MCP tool')) failures.push('README does not report 571 tools');
+  if (!String(packageJson.description ?? '').includes('572 MCP tool'))
+    failures.push('package.json description does not report 572 tools');
+  if (!readme.includes('572 MCP tool')) failures.push('README does not report 572 tools');
   // The smart-profile tool list now lives in `src/core/profile.ts`; `loader.ts` re-exports it.
   // The Smart System contract: the profile must expose the batch executor, the intent mapper and
   // the single-tool escape hatch, so a client that caps its tool budget still reaches everything.
@@ -180,7 +180,7 @@ try {
 
   // A tool that decodes bytes must check what it decoded. The native imaging libraries fault on
   // undecodable input from their own worker threads, where nothing in this process can catch it, so
-  // a PDF handed to an OCR tool ended the process and took all 571 tools with it. Every entry point
+  // a PDF handed to an OCR tool ended the process and took all 572 tools with it. Every entry point
   // needs the guard — fixing the tool that crashed first still left a sibling able to crash.
   //
   // Delegation counts: `src/tools/media/image_ocr.ts` is a one-line wrapper around `runMediaTool`,
@@ -327,7 +327,7 @@ try {
   }
   if (!packageJson.engines?.node)
     failures.push('package.json is missing engines.node (pdfjs-dist 6 requires Node >=22.13)');
-  if (!/toBe\(571\)/.test(allToolsTest)) failures.push('tool registry test does not assert 571 tools');
+  if (!/toBe\(572\)/.test(allToolsTest)) failures.push('tool registry test does not assert 572 tools');
   const profile = exampleJson?.mcpServers?.['pro-fetch']?.env?.PRO_FETCH_PROFILE;
   if (profile !== 'smart') failures.push('mcp.example.json should use the smart profile');
   const exampleEnv = exampleJson?.mcpServers?.['pro-fetch']?.env ?? {};
@@ -399,7 +399,7 @@ try {
   const manifestTotal = Object.values(countManifest.categories ?? {}).reduce((sum, value) => sum + Number(value), 0);
   if (manifestTotal !== countManifest.total)
     failures.push(`independent tool-count manifest sums to ${manifestTotal}, expected ${countManifest.total}`);
-  if (countManifest.total !== 571) failures.push(`independent manifest total is ${countManifest.total}, expected 571`);
+  if (countManifest.total !== 572) failures.push(`independent manifest total is ${countManifest.total}, expected 572`);
   if (!allToolsTest.includes('allTools().length'))
     failures.push('registry tests do not inspect actual registered tools');
 

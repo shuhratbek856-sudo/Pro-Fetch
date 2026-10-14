@@ -9,6 +9,7 @@ import path from 'node:path';
  * pro_gh_repo_search — Search repositories on GitHub
  * Pack: github (REAL ✅) (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 type JsonRow = Record<string, unknown>;
@@ -16,18 +17,14 @@ export default defineTool({
   name: 'pro_gh_repo_search',
   description: 'Search repositories on GitHub',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      query: { type: 'string', description: "Qidiruv so'rovi" },
-      per_page: { type: 'number', description: 'Natija soni (default 10)' },
-    },
-    required: ['query'],
-  },
+  inputSchema: ghSchema(['per_page', 'query'], ['query']),
   async handler(input) {
     const p = view(input);
+    // Without this the request goes out as `q=undefined`, GitHub matches nothing, and the tool
+    // reports "no repositories found" for a query that was never sent.
+    if (!p.query || !String(p.query).trim()) return fail('MISSING_INPUT: query majburiy.');
     const r = await ghApi(
-      '/search/repositories?q=' + encodeURIComponent(String(p.query)) + '&per_page=' + (p.per_page ?? 10),
+      '/search/repositories?q=' + encodeURIComponent(String(p.query).trim()) + '&per_page=' + (p.per_page ?? 10),
     );
     if (r.status >= 400) return ghErr(r.status, r.json);
     const items = (r.json.items ?? []).map(

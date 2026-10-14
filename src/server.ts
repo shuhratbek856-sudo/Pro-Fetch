@@ -36,7 +36,7 @@ async function main(): Promise<void> {
  *
  * An MCP server is a single long-lived process: every tool shares it. Node's default for an
  * unhandled rejection is to terminate, so a library that rejects from its own queue — pdfjs's task
- * worker, a native addon, a detached timer — takes down all 571 tools, and the client sees a dead
+ * worker, a native addon, a detached timer — takes down all 572 tools, and the client sees a dead
  * server rather than a failed call. That was observed: passing a PDF to `pro_fetch_image_ocr` made
  * leptonica reject out of band and killed the process.
  *

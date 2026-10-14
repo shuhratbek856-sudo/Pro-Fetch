@@ -4,22 +4,14 @@ import { ghApiPaginated, paginationNotice, ghErr, md, fail } from './_api.js';
  * pro_gh_repo_contributors — List repository contributors ranked by commit count
  * Pack: github (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 export default defineTool({
   name: 'pro_gh_repo_contributors',
   description: 'List repository contributors ranked by commit count',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      owner: { type: 'string', description: 'Repository egasi' },
-      repo: { type: 'string', description: 'Repository nomi' },
-      per_page: { type: 'number', description: 'Sahifadagi natija soni (1-100, default 30)' },
-      max_pages: { type: 'number', description: 'Avtomatik kuzatiladigan GitHub API sahifalari (1-20)' },
-    },
-    required: ['owner', 'repo'],
-  },
+  inputSchema: ghSchema(['owner', 'repo', 'per_page'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');

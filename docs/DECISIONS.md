@@ -42,7 +42,7 @@ reintroducing a rendering was confirmed to fail the check.
 ### Context
 Leptonica, behind tesseract.js, rejects undecodable input *from its own worker thread*. That
 rejection reaches the process as an uncaught exception, so no `try`/`catch` in the handler contains
-it. Passing a PDF to an OCR tool terminated the server and took all 571 tools with it.
+it. Passing a PDF to an OCR tool terminated the server and took all 572 tools with it.
 
 ### Decision
 `assertImagePayload()` checks signature *and* structure — a marker plus a terminator — before the
@@ -304,3 +304,66 @@ its default branch first would cost a request on *every* call, including the ove
 ### Consequences
 Covered by three live tests in `tests/provider-failures.test.ts`: a `master` repo with no ref, a
 missing repo naming the tried branches, and an explicit wrong ref tried exactly once.
+
+---
+
+## D-004: A truncated test run must fail, not pass
+
+**Date:** 2026-10-14
+**Status:** accepted
+
+### Context
+
+`vitest.config.ts` carried `dangerouslyIgnoreUnhandledErrors: true` with a comment explaining that
+Node 24.21.0 aborts in `node::RemoveEnvironmentCleanupHook` when a native N-API module is torn down,
+and that the flag existed so this environment fault would not redden the build.
+
+The comment's claim - that the abort "fires at process exit, after every assertion has already
+passed" - was false. Measured: the abort kills the shared fork mid-run. Vitest then prints a summary
+covering only the files that had finished, commonly `Test Files 1 passed (2)` / `Tests 29 passed
+(78)` out of 267, and the masking flag kept the exit code at 0.
+
+So the setup did not fail on an environment fault after a verified run. It failed **silently, on a
+run that had verified 11% of its assertions**, and reported success. Two "all tests pass" claims in
+this project's history were produced by that mechanism.
+
+### Decision
+
+Remove the flag. Route `npm test` through `scripts/run-tests.mjs`, which passes only when all
+expected test files and all expected tests actually completed and none failed. Switch the pool to
+`forks` with `singleFork: false`, which measures 0 aborts in 10 runs against 4 in 10 for a shared
+fork.
+
+### Rationale
+
+A false pass is worse than a red build: a red build costs a rerun, a false pass invalidates every
+later claim that depends on it. The original intent - do not let an environment fault block real
+work - is preserved, but by retrying a *failed* run and then failing loudly, instead of by
+suppressing the exit code of a run that never finished.
+
+The runner retries at most 3 times and only when the native-abort signature is present **and** zero
+assertions failed. Verified by injecting a failing assertion: the result was `TEST_RUN_FAIL` with
+`attempts: 1`, so a genuine defect cannot be retried into a pass.
+
+### Rejected alternatives
+
+- **Keep the flag, add a completion assertion elsewhere.** Same information, but the flag still lets
+  a truncated run exit 0, so any invocation that bypasses the assertion is unprotected. `vitest run`
+  stays usable directly and would keep lying.
+- **Set `singleFork: false` and leave the flag.** Measured 0 aborts in 10 runs, but a flag that can
+  hide a truncated run outlives the bug it was added for, and the next toolchain change re-opens it.
+- **Use the `threads` pool.** Zero aborts and all 16 files run, but
+  `tests/product-readiness.test.ts` calls `process.chdir()`, which is unavailable in worker threads,
+  so it fails 1 test. Adopting it would mean weakening a legitimate assertion about cwd-independence.
+- **Fix the abort from project code.** Searched rather than assumed: the project spawns no
+  `worker_threads`, `handler-regression.test.ts` alone reproduces 0/10, excluding the suite that
+  loads the native media binaries still reproduces 3/8, and `isolate: true` makes it worse. The
+  fault is in Node's isolate disposal, above this codebase.
+
+### Consequences
+
+CI can still be reddened by an environment fault, and the first occurrence will be slower because it
+retries. In exchange, a green run means 267 assertions actually ran, which is the property every
+later correctness claim depends on. `scripts/tool-counts.json` now carries `testFiles` and
+`testCount`, so adding or removing a suite without updating that file fails the build instead of
+silently loosening the check.

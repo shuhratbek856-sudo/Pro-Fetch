@@ -9,19 +9,14 @@ import path from 'node:path';
  * pro_gh_gist_read — Read a Gist by ID
  * Pack: github (REAL ✅) (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 export default defineTool({
   name: 'pro_gh_gist_read',
   description: 'Read a Gist by ID',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      gist_id: { type: 'string', description: 'Gist ID' },
-    },
-    required: ['gist_id'],
-  },
+  inputSchema: ghSchema(['gist_id'], ['gist_id']),
   async handler(input) {
     const p = view(input);
     // Without this the call goes out as `/gists/undefined` and comes back a 404, which reads as

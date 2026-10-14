@@ -8,10 +8,10 @@ qator raqam — o'lchilgan natija, taxmin emas. O'lchash skripti:
 
 | Metrika | Qiymat | Qayerdan |
 |---|---|---|
-| Ro'yxatga olingan tool | **571** | `verify:registry` |
+| Ro'yxatga olingan tool | **572** | `verify:registry` |
 | `smart` profilidagi tool | **10** | `listTools('smart').length` |
-| Erishilgan tool | **571/571 — 0 ta yopiq** | `capability_call` + `tool_execute` |
-| Kompozit ichida statik murojaat | 373/571 | `measure:coverage` |
+| Erishilgan tool | **572/572 — 0 ta yopiq** | `capability_call` + `tool_execute` |
+| Kompozit ichida statik murojaat | 373/572 | `measure:coverage` |
 | Dinamik executor kompozitlari | 3 | `pro_capability_call`, `pro_workspace_ops`, `pro_service_ops` |
 | `pro_repo_audit` ichki tool | 23 | `repo_audit.ts` |
 | `pro_audit_page` ichki tool | 16 (10 tasi shartli) | `tests/content-reuse.test.ts` |
@@ -23,9 +23,9 @@ qator raqam — o'lchilgan natija, taxmin emas. O'lchash skripti:
 | Zararli kiritish sinovi | 10,278 chaqiruv — **0 crash** | fuzz |
 | Dekoder sinovi | 175 juftlik — **0 yomon natija** | fuzz |
 | Jarayon-killer sinovi | **0** (avval 4 ta topildi) | `tests/resilience.test.ts` |
-| Tests | 242 | `npx vitest run` |
+| Tests | 267 | `npx vitest run` |
 | Registry / static / package / format | PASS | `npm run check` |
-| Toza install (`--ignore-scripts` bilan ham) | ✅ 571 tool | `prodtest4` |
+| Toza install (`--ignore-scripts` bilan ham) | ✅ 572 tool | `prodtest4` |
 
 ## 2. Nima tuzatildi va nima uchun
 
@@ -135,7 +135,7 @@ boradigan tool'ga boradi. Shuning uchun allowlist, read-only rejim, read-only SQ
 workspace sandbox **har bir ichki chaqiruvga** ham qo'llanadi.
 
 **Dalil:** `tests/smart-system-quality.test.ts` — 8 ta test, jumladan allowlist'ni buzishga
-urinish. Natija: 571/571 erishiladi, 10 ta slot saqlanadi.
+urinish. Natija: 572/572 erishiladi, 10 ta slot saqlanadi.
 
 **Qolgan chegara:** 7 kategoriya (devops, database, security, knowledge, collaboration, storage,
 productivity) faqat **dinamik** executor orqali qamlanadi — model ichida tool nomini yozish

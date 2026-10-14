@@ -9,35 +9,14 @@ import path from 'node:path';
  * pro_gh_repo_full_clone — Download a repository tarball for deep analysis
  * Pack: github (REAL ✅) (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 export default defineTool({
   name: 'pro_gh_repo_full_clone',
   description: 'Download a repository tarball for deep analysis',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      owner: { type: 'string', description: 'Repository egasi' },
-      repo: { type: 'string', description: 'Repository nomi' },
-      path: { type: 'string', description: "Fayl yoki papka yo'li" },
-      ref: { type: 'string', description: 'Branch, tag yoki SHA' },
-      issue_number: { type: 'number', description: 'Issue raqami' },
-      pr_number: { type: 'number', description: 'PR raqami' },
-      sha: { type: 'string', description: 'Commit SHA' },
-      base: { type: 'string', description: 'Taqqoslash bazasi' },
-      head: { type: 'string', description: 'Taqqoslash boshi' },
-      state: { type: 'string', description: 'open | closed | all' },
-      per_page: { type: 'number', description: 'Natija soni (default 20-30)' },
-      page: { type: 'number', description: 'Sahifa raqami' },
-      query: { type: 'string', description: "Qidiruv so'rovi" },
-      user: { type: 'string', description: 'Foydalanuvchi' },
-      org: { type: 'string', description: 'Tashkilot' },
-      gist_id: { type: 'string', description: 'Gist ID' },
-      tag: { type: 'string', description: 'Tag nomi' },
-    },
-    required: [],
-  },
+  inputSchema: ghSchema(['owner', 'repo', 'ref'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     const requested = typeof p.ref === 'string' && p.ref.trim() ? p.ref.trim() : 'main';
@@ -66,7 +45,13 @@ export default defineTool({
         break;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (!/^Download HTTP (404|400)$/.test(message)) throw error;
+        if (!/^Download HTTP (404|400)$/.test(message)) {
+          // A bare "fetch failed" says nothing about what was actually attempted, so a network or
+          // DNS fault and a bad ref look identical to the caller. Name the ref here: any failure
+          // that is not a "this branch does not exist" answer aborts the clone, and the only useful
+          // fact in that error is which ref was requested.
+          throw new Error(`${p.owner}/${p.repo} ref '${ref}' ni yuklab bo'lmadi: ${message}`);
+        }
       }
     }
     if (!info)

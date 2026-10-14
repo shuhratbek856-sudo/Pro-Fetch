@@ -9,6 +9,7 @@ import path from 'node:path';
  * pro_gh_org_repos — List the repositories of an organization
  * Pack: github (REAL ✅) (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 type JsonRow = Record<string, unknown>;
@@ -16,15 +17,7 @@ export default defineTool({
   name: 'pro_gh_org_repos',
   description: 'List the repositories of an organization',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      org: { type: 'string', description: 'Tashkilot nomi' },
-      per_page: { type: 'number', description: 'Natija soni (default 30)' },
-      max_pages: { type: 'number', description: 'Avtomatik kuzatiladigan GitHub API sahifalari (1-20)' },
-    },
-    required: ['org'],
-  },
+  inputSchema: ghSchema(['per_page', 'org'], ['org']),
   async handler(input) {
     const p = view(input);
     if (!p.org) return fail('org parametri kerak.');

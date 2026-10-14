@@ -21,11 +21,13 @@ import memory_stats from './memory_stats.js';
 import registry_summary from './registry_summary.js';
 import capability_map from './capability_map.js';
 import capability_call from './capability_call.js';
+import pro_synthesize from './pro_synthesize.js';
 
 export default [
   // Smart System: intent discovery and batched multi-tool execution.
   capability_map,
   capability_call,
+  pro_synthesize,
   tool_list_details,
   tool_execute,
   profile_switch,

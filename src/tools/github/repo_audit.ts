@@ -1,3 +1,4 @@
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { result, fail } from '../../core/format.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
@@ -19,16 +20,7 @@ export default defineTool({
     'license, contributors, commit activity, open issues and pull requests, releases, topics, ' +
     'CI status and security advisories. Use this instead of calling a dozen GitHub tools by hand.',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
-      repository: { type: 'string', description: 'owner/reko nomi (masalan: facebook/react)' },
-      include_ci: { type: 'boolean', description: 'CI run va workflow holatini ham tekshirish' },
-      include_security: { type: 'boolean', description: 'Dependency zaifliklari va repolardagi secret skani' },
-    },
-    required: ['repository'],
-  },
+  inputSchema: ghSchema(['owner', 'repo', 'detail'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     const repository = strOrEmpty(p, 'repository').trim();
@@ -86,6 +78,9 @@ export const PR_DEEP_TOOL = defineTool({
       include_diff: { type: 'boolean', description: 'To‘liq diffni qo‘shish' },
     },
     required: ['repository', 'pr_number'],
+    // Matches the rest of the category: an unrecognised argument is a typo worth reporting, and
+    // this is the one schema in the folder that was still accepting silent extras.
+    additionalProperties: false,
   },
   async handler(input) {
     const p = view(input);

@@ -4,6 +4,8 @@ import { allTools } from '../../core/tool.js';
 import { currentProfile, isToolVisibleInProfile } from '../../core/profile.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
 import { rankTools } from '../../core/intent-search.js';
+import { inferArguments } from '../../core/argument-inference.js';
+import { detailMode } from '../../core/composite-budget.js';
 
 /**
  * pro_capability_map — Find the right tool without a round trip per guess
@@ -69,7 +71,17 @@ export default defineTool({
     const task = strOrEmpty(p, 'task').trim();
     if (!task) return fail('task talab qilinadi.');
     const category = strOrEmpty(p, 'category').trim().toLowerCase();
-    const includeSchema = p.include_schema !== false;
+    // `detail` was declared in the schema and then never read, so this tool always returned the full
+    // payload whatever the caller asked for. It is the same output-budget knob every composite in the
+    // smart profile exposes, and here the input schemas are by far the bulk of the response - a
+    // 12-tool map with schemas is several times larger without them.
+    const detail = detailMode(p.detail);
+    // `detail` is read raw here rather than through `detailMode`, because "caller said nothing" and
+    // "caller said summary" must not collapse into one state. Schemas are the point of a discovery
+    // call and stay on by default; `detail: 'summary'` is what turns them off. Collapsing the two
+    // made the default response lose its schemas, which is what
+    // `tests/smart-system-quality.test.ts` caught.
+    const includeSchema = p.include_schema ?? p.detail !== 'summary';
     const limit = Math.max(1, Math.min(60, num(p, 'limit', 12, 1, 60)));
     const profile = currentProfile();
 
@@ -92,6 +104,10 @@ export default defineTool({
 
     return jsonBlock(`Capability map: ${task}`, {
       profile,
+      // Echoed so a caller that asked for `summary` can tell a smaller response from a tool set that
+      // simply happened to have nothing to show.
+      detail,
+      schemas_included: includeSchema,
       matched: ranked.length,
       how_to_call:
         'Har bir tool `pro_capability_call` bilan bir chaqiruvda yoki `pro_fetch_tool_execute` bilan ' +
@@ -114,15 +130,20 @@ export default defineTool({
       //
       // Discovery that stops at names leaves the caller to write the invocation, and a malformed
       // argument is the most common way a discovered tool then fails. Returning the exact payload
-      // means the next step is a paste rather than a construction.
+      // means the next step is a paste rather than a construction. Arguments are inferred from the
+      // task text — "research climate change" fills `topic` — so the call is executable as-is.
       suggested_call: {
         tool: batchToolFor(ranked.map((entry) => entry.category)),
         arguments: {
-          calls: ranked.slice(0, 5).map((entry) => ({ tool: entry.name, arguments: {}, label: entry.name })),
+          calls: ranked.slice(0, 5).map((entry) => {
+            const tool = allTools().find((candidate) => candidate.name === entry.name);
+            const inferred = tool ? inferArguments(task, tool.inputSchema) : {};
+            return { tool: entry.name, arguments: inferred, label: entry.name };
+          }),
         },
         note:
-          'Yuqoridagi `calls` ro‘yxatini to‘ldirib, ko‘rsatilgan tool ga yuboring. ' +
-          'Har bir argument o‘z tool‘ining `inputSchema` siga qarab to‘ldiriladi.',
+          'Yuqoridagi `calls` ro‘yxatini to‘g‘ridan-to‘g‘ri yuboring — argumentlar task matnidan ' +
+          'to‘ldirilgan. Agar to‘liqroq kerak bo‘lsa, har bir argumentni o‘z tool‘ining `inputSchema` siga mos o‘zgartiring.',
       },
     });
   },

@@ -1,6 +1,25 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail, jsonBlock } from '../../core/format.js';
 import { asRecord, arr, obj, strOrEmpty, view } from '../../core/input.js';
+import { SMART_TOOL_NAMES } from '../../core/profile.js';
+import { detailMode } from '../../core/composite-budget.js';
+
+/**
+ * Maximum nesting depth for composite execution.
+ *
+ * A batch can call a composite (like pro_research_deep), which itself calls tools. Without a limit,
+ * a composite calling another composite calling another could recurse indefinitely. Three levels
+ * (batch → composite → tool) is enough for any real workflow while preventing runaway recursion.
+ */
+const MAX_COMPOSITE_DEPTH = 3;
+
+/**
+ * Tracks the current composite execution depth.
+ *
+ * Module-level so it works across the recursive dispatch chain. Reset in finally to guarantee
+ * cleanup even on error.
+ */
+let compositeDepth = 0;
 
 /**
  * pro_capability_call — Run many Pro-Fetch tools in one call
@@ -91,7 +110,25 @@ export default defineTool({
     // Run concurrently, bounded by the engine's own semaphores underneath. A 50-entry batch of
     // network calls would otherwise be serialised into 50 round trips, which is exactly the cost
     // this tool exists to avoid.
-    const outcomes = await runParallel(runnable, batchFanout(runnable.length));
+    //
+    // Nested composition: a batch entry can name a composite (e.g. pro_research_deep), which then
+    // calls its own tools. This is what lets one round trip express a whole workflow. Depth is
+    // bounded so a composite calling a composite calling a composite cannot recurse forever.
+    const isComposite = (name: string) => SMART_TOOL_NAMES.has(name);
+    const depthExceeded = runnable.some(([, tool]) => isComposite(tool) && compositeDepth >= MAX_COMPOSITE_DEPTH);
+    if (depthExceeded) {
+      return fail(
+        `Composite nesting limiti (${MAX_COMPOSITE_DEPTH}) oshdi. Murakkab vazifalarni bir necha qadamda bajarib ko'ring.`,
+      );
+    }
+
+    if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth++;
+    let outcomes;
+    try {
+      outcomes = await runParallel(runnable, batchFanout(runnable.length));
+    } finally {
+      if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth--;
+    }
     let aborted = false;
 
     // Rebuild in request order. Indexing `slots` by the outcome index was wrong: an invalid entry
@@ -122,12 +159,29 @@ export default defineTool({
     }
 
     const failed = results.filter((entry) => !entry.ok);
+    // `detail` was declared in the schema and never read, so a batch always returned every step's
+    // full output. At the default fan-out of 50 that is the bulk of the response and often gets
+    // clipped by the caller anyway, losing the per-step error that actually mattered.
+    //
+    // `summary` keeps what identifies the step and whether it worked, and drops the body. `full`
+    // returns it unchanged. A failed step always keeps its error either way: an error that a summary
+    // hides is worse than no summary.
+    const detail = detailMode(p.detail);
+    const shaped = results.map((entry) =>
+      detail === 'full'
+        ? entry
+        : entry.ok
+          ? { label: entry.label, tool: entry.tool, ok: true, ms: entry.ms }
+          : { label: entry.label, tool: entry.tool, ok: false, ms: entry.ms, error: entry.error },
+    );
+
     return jsonBlock('Batch results', {
       total: results.length,
       ok: results.length - failed.length,
       failed: failed.length,
       elapsed_ms: Date.now() - started,
-      results,
+      detail,
+      results: shaped,
     });
   },
 });

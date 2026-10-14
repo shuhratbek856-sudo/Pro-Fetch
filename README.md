@@ -1,8 +1,8 @@
 # pro-fetch-mcp
 
-Professional fetch, deep-research & GitHub MCP server — **571 MCP tool, 26 categories, one security engine**.
+Professional fetch, deep-research & GitHub MCP server — **572 MCP tool, 26 categories, one security engine**.
 
-A model gets the tools it actually needs: the default `smart` profile exposes **10 meta-tools** that compose all 571, so any MCP client works without drowning in schemas.
+A model gets the tools it actually needs: the default `smart` profile exposes **11 meta-tools** that compose all 572, so any MCP client works without drowning in schemas.
 
 ![npm version](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm)
 ![node](https://img.shields.io/badge/node-%3E%3D22.13-blue)
@@ -11,7 +11,7 @@ A model gets the tools it actually needs: the default `smart` profile exposes **
 
 ## Why
 
-- **571 working tools** — fetch, crawl, extract, convert, OCR, search, research, git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite, security, Slack/Jira/Linear/Notion, storage, and more. Every one is a real implementation, not a stub.
+- **572 working tools** — fetch, crawl, extract, convert, OCR, search, research, git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite, security, Slack/Jira/Linear/Notion, storage, and more. Every one is a real implementation, not a stub.
 - **Smart System** — 10 meta-tools (`pro_capability_call`, `pro_capability_map`, `pro_research_deep`, …) that dispatch to the full catalog in a single round trip. Batch execution, BM25 task-to-tool discovery, and a `detail` mode that cut a 17-step audit from 43 KB to 3.8 KB (**91% token savings**, measured).
 - **Security is the engine, not a warning** — SSRF guard with DNS pinning, workspace sandbox with symlink tracking, per-call permission policy, credential stripping on cross-origin redirects, HTTPS→HTTP downgrade blocking. Every composite call passes through the same `dispatch()` gate.
 - **Degrades, never dies** — native binaries (sharp, canvas, tesseract) are lazy-loaded; missing git/docker/kubectl produce a clear `COMMAND_NOT_FOUND`; the server boots and serves 500+ tools on a host with none of them.
@@ -82,7 +82,7 @@ Three round trips become one:
 ## Tool catalog
 
 <details>
-<summary><b>All 26 categories — 571 tools</b></summary>
+<summary><b>All 26 categories — 572 tools</b></summary>
 
 | Category | Tools | Category | Tools |
 |---|---:|---|---:|
@@ -109,7 +109,7 @@ Three round trips become one:
 | `minimal` | 72 | http, convert, admin |
 | `standard` (default) | 177 | + github, search, extract, auth |
 | `smart` | 10 | the Smart System above |
-| `full` | 571 | everything |
+| `full` | 572 | everything |
 
 Real access control lives in the environment: `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_DENIED_TOOLS`, `PRO_FETCH_DENIED_CATEGORIES`, `PRO_FETCH_READ_ONLY`, `PRO_FETCH_MUTATION_ALLOWLIST`, `PRO_FETCH_OUTPUT_ROOT` — enforced on every call, including calls made through the meta-executor.
 
@@ -145,9 +145,9 @@ npm run check   # verify:static → verify:registry → build → test → verif
 ```
 
 - **242 tests** (Vitest): SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, and live provider-failure behaviour.
-- `verify:registry` boots the real registry and asserts **571 tools / 26 categories / all four profile counts**.
+- `verify:registry` boots the real registry and asserts **572 tools / 26 categories / all four profile counts**.
 - `verify:package` proves the published tarball has the shebang, the `files` allowlist, and **zero credentials or source files**.
-- The MCP protocol itself was exercised live: `initialize`, `tools/list` (571/571 unique, valid schemas), `tools/call` for every smart tool, hidden tools refused, clean JSON-RPC on stdout.
+- The MCP protocol itself was exercised live: `initialize`, `tools/list` (572/572 unique, valid schemas), `tools/call` for every smart tool, hidden tools refused, clean JSON-RPC on stdout.
 
 ## License
 

@@ -9,22 +9,21 @@ import path from 'node:path';
  * pro_gh_user_profile — Get a GitHub user profile and stats
  * Pack: github (REAL ✅) (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 export default defineTool({
   name: 'pro_gh_user_profile',
   description: 'Get a GitHub user profile and stats',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      user: { type: 'string', description: 'Foydalanuvchi nomi' },
-    },
-    required: ['user'],
-  },
+  inputSchema: ghSchema(['user'], ['user']),
   async handler(input) {
     const p = view(input);
-    const r = await ghApi('/users/' + p.user);
+    // Without this the path becomes `/users/undefined` and GitHub's 404 reads as "no such user"
+    // when the truth is that no user was named.
+    const user = typeof p.user === 'string' ? p.user.trim() : '';
+    if (!user) return fail('MISSING_INPUT: user majburiy.');
+    const r = await ghApi('/users/' + encodeURIComponent(user));
     if (r.status >= 400) return ghErr(r.status, r.json);
     return jsonBlock('# ' + r.json.login, {
       name: r.json.name,

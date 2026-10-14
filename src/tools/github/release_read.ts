@@ -5,21 +5,14 @@ import { clipToTokens } from '../../core/chunker.js';
  * pro_gh_release_read — Read one release (by tag, or the latest) with notes and assets
  * Pack: github (pro-fetch)
  */
+import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 export default defineTool({
   name: 'pro_gh_release_read',
   description: 'Read one release (by tag, or the latest) with notes and assets',
   category: 'github',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      owner: { type: 'string', description: 'Repository egasi' },
-      repo: { type: 'string', description: 'Repository nomi' },
-      tag: { type: 'string', description: 'Release tag nomi. Berilmasa — eng oxirgi release' },
-    },
-    required: ['owner', 'repo'],
-  },
+  inputSchema: ghSchema(['owner', 'repo', 'tag'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');

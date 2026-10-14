@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import '../src/loader.js'; // barcha 571 toolni ro'yxatga qo'shadi
+import '../src/loader.js'; // barcha 572 toolni ro'yxatga qo'shadi
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -16,7 +16,7 @@ const EXPECTED_COUNTS: Record<string, number> = {
   extract: 24,
   media: 15,
   archive: 15,
-  admin: 23,
+  admin: 24,
   auth: 12,
   apitest: 12,
   data: 26,
@@ -58,9 +58,9 @@ const SCHEMA_CATEGORIES = new Set([
   'productivity',
 ]);
 
-describe('pro-fetch MAX — barcha 571 tool', () => {
+describe('pro-fetch MAX - barcha 572 tool', () => {
   it("jami aynan 569 tool ro'yxatga olinadi", () => {
-    expect(allTools().length).toBe(571);
+    expect(allTools().length).toBe(572);
   });
 
   it('har kategoriya kutilgan sonda', () => {
@@ -73,7 +73,7 @@ describe('pro-fetch MAX — barcha 571 tool', () => {
 
   it('nomlar unikal va MCP formatiga mos', () => {
     const names = allTools().map((t) => t.name);
-    expect(new Set(names).size).toBe(571);
+    expect(new Set(names).size).toBe(572);
     for (const n of names) expect(n).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
   });
 
@@ -207,11 +207,11 @@ describe('pro-fetch MAX — barcha 571 tool', () => {
   });
 
   it('profillar: minimal=72, standard=177, full=569', () => {
-    expect(listTools('minimal').length).toBe(72);
-    expect(listTools('standard').length).toBe(177);
-    expect(listTools('full').length).toBe(571);
+    expect(listTools('minimal').length).toBe(73);
+    expect(listTools('standard').length).toBe(178);
+    expect(listTools('full').length).toBe(572);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
-    expect(listTools('smart').length).toBe(10);
+    expect(listTools('smart').length).toBe(11);
   });
 });
 

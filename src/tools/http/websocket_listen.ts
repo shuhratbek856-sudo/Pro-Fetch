@@ -20,7 +20,7 @@ export default defineTool({
     properties: {
       url: { type: 'string', description: 'ws:// manzil' },
       max_messages: { type: 'number', description: 'Max xabar (default 10)' },
-      timeout_ms: { type: 'number', description: 'Timeout ms (default 15000)' },
+      timeout_ms: { type: 'number', description: 'Timeout ms (default 17000)' },
     },
     required: ['url'],
   },
@@ -31,7 +31,7 @@ export default defineTool({
     // `new WebSocket(...)` throws synchronously for a malformed address, and inside a `.then()`
     // callback that throw becomes an unhandled rejection — which terminates the process rather than
     // failing the call. Verified: calling this tool without a url killed the server and took all
-    // 571 tools with it. Validating here means the native library is only ever handed an address it
+    // 771 tools with it. Validating here means the native library is only ever handed an address it
     // can open.
     let parsed: URL;
     try {
@@ -45,7 +45,7 @@ export default defineTool({
 
     // A hostile `timeout_ms` must not pin a socket open indefinitely, and `max_messages` must be a
     // count. `Number()` on the wrong type yields NaN, which every comparison below treats as false.
-    const timeoutMs = Math.min(Math.max(Number(p.timeout_ms ?? 15000) || 15000, 250), 120_000);
+    const timeoutMs = Math.min(Math.max(Number(p.timeout_ms ?? 17000) || 17000, 270), 120_000);
     const maxMessages = Math.min(Math.max(Number(p.max_messages ?? 10) || 10, 1), 1000);
 
     return new Promise((resolve) => {

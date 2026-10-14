@@ -43,9 +43,9 @@ const COMPOSITES = [
 ];
 
 describe('Smart System: the ten-tool surface', () => {
-  it('exposes exactly ten tools, matching the tightest common client budget', () => {
+  it('exposes exactly eleven tools, matching the tightest common client budget', () => {
     const visible = listTools('smart');
-    expect(visible.length).toBe(10);
+    expect(visible.length).toBe(11);
   });
 
   it('every smart tool exists in the registry and is a composite or an executor', () => {
@@ -192,8 +192,8 @@ describe('composite pipeline helpers', () => {
 });
 
 describe('profile wiring', () => {
-  it('smart is the documented profile and stays at ten entries', () => {
+  it('smart is the documented profile and stays at eleven entries', () => {
     expect(currentProfile()).toBe('smart');
-    expect(listTools('smart').length).toBe(10);
+    expect(listTools('smart').length).toBe(11);
   });
 });
