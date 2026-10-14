@@ -281,3 +281,39 @@ is `return controlCrawlJob(input)` is measured against `controlCrawlJob`, not ag
 | `npm run check` | exit 0 - static, registry, build, 18 files / 292 tests, package, format |
 | `npm run audit:schema` | audited 552, with_dead_properties=0 |
 | npx tsc --noEmit | exit 0 |
+
+
+### Session 29 - Audit resolution: four resolver bugs, one real defect
+
+Triaging the numbers from session 28 turned out to be mostly the measurement, not the code.
+`with_unread_required` walked 31 -> 20 -> 2 -> 1 and the last one was real.
+
+| Resolver bug | False findings it caused |
+|---|---|
+| helper calls not followed (`runGit` -> `requireConfirmation`) | every `confirm` requirement |
+| delegation pattern required the arg list to be exactly `(input)` | 14 crawl tools |
+| a file defining two tools resolved both names to the first | `pro_pr_review` |
+| handler body ran to end of file, not to its matching brace | any multi-tool handler |
+
+Real defect found at the end of that chain: `pro_fetch_export_bundle` declared `required: ['url']`
+while exporting the whole cache and never reading `url`. It now takes an optional `prefix` that
+filters cache keys, and the filter is implemented rather than declared.
+
+**`with_unread_required = 0` across all 552 audited tools.**
+
+Still open, and deliberately not touched this increment:
+
+| Measure | Count | Why it is not a defect to fix blindly |
+|---|---:|---|
+| `with_dead_properties` | 179 | comes from `CATEGORY_SCHEMA_PROPERTIES`, a deliberate per-category vocabulary. `browser` alone is 41 tools each declaring the full browser vocabulary. Narrowing it is a redesign of the published schema, not a bug fix. |
+| `with_required_empty` | 132 | likely mostly listing tools where every argument is an optional filter, like the 5 already allow-listed. Needs triage per category. |
+
+Browser measured, not fixed: 26 of its 41 tools route through `runBrowserAction(input)`, which needs
+an `action` argument, and 15 through `runBrowserTool(name, input)`, which switches on the name. A
+derivation script confirmed only 11 branches of `runBrowserTool` exist, so 4 of the 15 share a
+fall-through. That work is next and was not started.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 |
+| `npm run audit:schema` | audited 552, unread_required=0 |
