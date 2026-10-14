@@ -44,6 +44,18 @@ import './tools/monitoring/index.js';
 import './tools/i18n/index.js';
 import './tools/max-platform/index.js';
 
+import { narrowCategorySchemas, setSourceResolver } from './core/schema-narrowing.js';
+import { resolveToolSource } from './core/source-resolver.js';
+
+// Runs after every `import` above, so the whole registry exists by the time it runs.
+setSourceResolver(resolveToolSource);
+const narrowing = narrowCategorySchemas();
+if (process.env.PRO_FETCH_LOG_NARROWING === '1') {
+  console.error(
+    `[schema-narrowing] narrowed=${narrowing.narrowed} skipped=${narrowing.skipped} resolved=${resolveToolSource('pro_fetch_crawl_speed') ? 'yes' : 'no'}`,
+  );
+}
+
 export function loadCategories(): void {
   /* importlar yuqorida side-effect sifatida ishlaydi */
 }
