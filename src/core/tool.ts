@@ -42,6 +42,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     'content',
     'data',
     'schema',
+    'json',
     'method',
     'headers',
     'body',
@@ -123,6 +124,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   convert: ['url', 'text', 'content', 'data', 'base64', 'timeout_ms', 'max_bytes', 'format', 'language', 'output_path'],
   crawl: [
     'url',
+    'pages',
     'start_url',
     'url2',
     'selector',
@@ -158,6 +160,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     'format',
   ],
   i18n: [
+    'url',
     'text',
     'content',
     'html',
@@ -417,6 +420,17 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   languages: { type: 'array', description: 'Til kodlari', items: { type: 'string' } },
   target_lang: { type: 'string', description: 'Maqsad til kodi, masalan uz yoki en' },
   source_lang: { type: 'string', description: 'Manba til kodi' },
+  // Aliases the i18n branches in `runIntegrationTool` actually accept, declared here because a code
+  // path that reads an argument nobody can name is not reachable from the schema.
+  //
+  // `str(input, 'target_lang', 'to_lang')` and `str(input, 'source_lang', 'from_lang')` both take a
+  // second name, and `str(input, 'text', 'content', 'html')` takes a third. Each was in
+  // `CATEGORY_SCHEMA_PROPERTIES.i18n` and absent here, which meant the filter in
+  // `applyCategorySchema` dropped it from every i18n tool at load time: listed in the source, missing
+  // from the published schema.
+  to_lang: { type: 'string', description: 'Maqsad til kodi (target_lang aliasi)' },
+  from_lang: { type: 'string', description: 'Manba til kodi (source_lang aliasi)' },
+  html: { type: 'string', description: 'Matn yoki HTML (text/content aliasi)' },
   method: { type: 'string', description: 'HTTP method' },
   body: { type: 'string', description: 'HTTP request body' },
   fields_map: { type: 'object', description: 'Maydonlar map’i' },
@@ -464,6 +478,26 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   count: { type: 'number', description: 'So‘rovlar yoki natijalar soni' },
   requests: { type: 'number', description: 'Bajariladigan so‘rovlar soni' },
   schema: { type: 'object', description: 'JSON Schema yoki API schema ma’lumoti' },
+  // `json_schema_infer` reads `str(input, 'json', 'sample', 'text', 'content')`. Without `json`
+  // declared here the filter in `applyCategorySchema` drops it, and the tool's required list then
+  // names a property the published schema does not contain - which is exactly what
+  // `verify-registry.mts` reported when this was first added.
+  json: { type: 'string', description: 'Namuna JSON matni' },
+  // `link_graph` builds a graph from pages the caller has already fetched, so its input is a list of
+  // page records rather than a URL to fetch. Declared here because the category filter drops anything
+  // it does not also find in SHARED_SCHEMA_PROPERTIES.
+  pages: {
+    type: 'array',
+    description: 'Allaqla olingan sahifalar: [{ url, title?, links? }]',
+    items: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        title: { type: 'string' },
+        links: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  },
   path: { type: 'string', description: 'API yoki hujjat yo‘li' },
   server_url: { type: 'string', description: 'API serverining bazaviy URL manzili' },
   id: { type: 'string', description: 'Element yoki monitoring identifikatori' },
@@ -478,6 +512,7 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   source: { type: 'string', description: 'Manba yoki manba identifikatori' },
   style: { type: 'string', description: 'Iqtibos yoki chiqish uslubi' },
   target_script: { type: 'string', description: 'Maqsad yozuv tizimi' },
+  to_script: { type: 'string', description: 'Maqsad yozuv tizimi (target_script aliasi)' },
   model: { type: 'string', description: 'Ishlatiladigan model nomi' },
   extension: { type: 'string', description: 'Chiqish fayli kengaytmasi' },
   bearer_token: { type: 'string', description: 'Bearer access token; maxfiy ma’lumot' },
@@ -566,7 +601,147 @@ function applyCategorySchema(def: ToolDefinition): void {
         ? ['selector']
         : [];
   }
+  const i18nRequired = def.category === 'i18n' ? I18N_TOOL_REQUIREMENTS[def.name] : undefined;
+  if (i18nRequired) {
+    // These eight tools all delegate to `runIntegrationTool`, so the declared `required` list was the
+    // only thing telling the caller what to send - and it was wrong for six of them.
+    //
+    // `required: ['text', 'target_lang']` was applied to the whole category. Four tools
+    // (`locale_detect`, `rtl_normalize`, `i18n_strings_extract`, `mixed_lang_split`) never read
+    // `target_lang` at all, so the caller was forced to invent one. `translate_page` reads `url`, not
+    // `text`. And `script_convert` / `transliterate` read `to_script`/`target_script`, which the
+    // schema never declared - so a caller who followed the schema and sent `target_lang: 'ru'` got
+    // "Hello" back unchanged, silently, with no error.
+    //
+    // The requirements below are read off the branches in `runIntegrationTool`, not guessed.
+    def.inputSchema.required = i18nRequired;
+  }
+  const apitestRequirement = def.category === 'apitest' ? APITEST_TOOL_REQUIREMENTS[def.name] : undefined;
+  if (apitestRequirement) {
+    // `required` and `anyOf` are mutually exclusive here: an alternative set is what "url *or*
+    // content" means, and listing both a bare `required` and an `anyOf` would tell the caller two
+    // contradictory stories about the same fields.
+    if (apitestRequirement.anyOf) {
+      delete def.inputSchema.required;
+      def.inputSchema.anyOf = apitestRequirement.anyOf.map((required) => ({ required }));
+    } else {
+      def.inputSchema.required = apitestRequirement.required ?? [];
+      delete def.inputSchema.anyOf;
+    }
+  }
+  const requirementFix = TOOL_REQUIREMENT_FIXES[def.name];
+  if (def.category === 'media' && MEDIA_TOOL_NAMES.has(def.name)) {
+    // `readBinarySource` takes base64 or data_base64 before it looks at a URL, so "either" is what
+    // these tools actually accept.
+    delete def.inputSchema.required;
+    def.inputSchema.anyOf = [{ required: ['url'] }, { required: ['base64'] }];
+  } else if (requirementFix) {
+    if (requirementFix.anyOf) {
+      delete def.inputSchema.required;
+      def.inputSchema.anyOf = requirementFix.anyOf.map((required) => ({ required }));
+    } else {
+      def.inputSchema.required = requirementFix.required ?? [];
+      delete def.inputSchema.anyOf;
+    }
+  }
 }
+
+/**
+ * What each delegating i18n tool actually reads, taken from the `name ===` branches in
+ * `runIntegrationTool` (`src/core/integration-tools.ts`).
+ *
+ * `str(input, 'text', 'content', 'html')` covers three aliases, so `text` is required and the others
+ * stay optional; requiring all three would reject every valid call.
+ */
+const I18N_TOOL_REQUIREMENTS: Record<string, string[]> = {
+  // Reads text/content/html and nothing else.
+  pro_fetch_locale_detect: ['text'],
+  pro_fetch_rtl_normalize: ['text'],
+  pro_fetch_i18n_strings_extract: ['text'],
+  pro_fetch_mixed_lang_split: ['text'],
+  // Reads text/content/html plus to_script/target_script - NOT target_lang.
+  // Reads text/content/html plus an OPTIONAL to_script/target_script. Not required: `convertScript`
+  // defaults to latin when no target is given, so `script_convert` with only `text` is a valid call.
+  // Requiring `target_script` broke `to_script`, which the code also accepts - caught by
+  // `tests/handler-regression.test.ts`, which passes `to_script` and expected Cyrillic back.
+  pro_fetch_script_convert: ['text'],
+  pro_fetch_transliterate: ['text'],
+  // Reads url (not text) plus target_lang/to_lang.
+  pro_fetch_translate_page: ['url', 'target_lang'],
+  pro_fetch_translate_text: ['text', 'target_lang'],
+};
+
+/**
+ * What each apitest tool reads, read off the `name ===` branches in `runIntegrationTool`.
+ *
+ * `required: ['url']` was applied to the whole category and was wrong for six of the twelve:
+ *
+ * - Five spec tools reach the specification through `bodyFor`, which takes `content|text|spec|
+ *   document|sample` *or* `url`. Requiring `url` made the inline path - the one that needs no network
+ *   and no credentials - unreachable from the schema, even though every one of them works that way.
+ *   Verified: `openapi_parse`, `openapi_endpoints_list`, `swagger_validate`, `wsdl_parse` and
+ *   `openapi_fetch` all return correct results for `{ content }`.
+ * - `json_schema_infer` never looks at a URL at all; it wants inline JSON.
+ * - `openapi_try` calls an endpoint; it needs `base_url` and `path`.
+ * - `api_diff` compares two specifications; it needs both.
+ */
+const APITEST_TOOL_REQUIREMENTS: Record<string, { required?: string[]; anyOf?: string[][] }> = {
+  pro_fetch_openapi_fetch: { anyOf: [['url'], ['content']] },
+  pro_fetch_openapi_parse: { anyOf: [['url'], ['content']] },
+  pro_fetch_openapi_endpoints_list: { anyOf: [['url'], ['content']] },
+  pro_fetch_swagger_validate: { anyOf: [['url'], ['content']] },
+  pro_fetch_wsdl_parse: { anyOf: [['url'], ['content']] },
+  pro_fetch_json_schema_infer: { required: ['json'] },
+  pro_fetch_openapi_try: { required: ['base_url', 'path'] },
+  pro_fetch_api_diff: { required: ['base_url', 'head_url'] },
+  pro_fetch_graphql_introspect: { required: ['url'] },
+  pro_fetch_graphql_schema_read: { required: ['url'] },
+  pro_fetch_api_rate_limit_probe: { required: ['url'] },
+  // A mock with defaults is a valid mock: 200 and an empty body.
+  pro_fetch_api_mock_respond: {},
+};
+
+/**
+ * Requirements for tools whose declared `required` did not match the function they call.
+ *
+ * `required: ['url']` was applied to all 22 crawl tools and all 15 media tools by copying one
+ * sibling's schema. It happens to be right for most, and wrong for several in a way that changed
+ * what callers can do:
+ *
+ * - `crawl_pause_resume` is job control. It calls `controlCrawlJob(input)`, which reads `job_id` and
+ *   `action`. Requiring a URL meant the only way to pause a crawl was to name a page, and passing
+ *   `job_id` + `action` was rejected outright.
+ * - `link_graph` builds a graph from pages the caller has already fetched. It reads `pages` and never
+ *   reads `url` at all.
+ * - The media tools read their bytes through `readBinarySource(input, ...)`, which accepts `base64`
+ *   or `data_base64` before falling back to `url`. Requiring `url` made the inline path - the one
+ *   that needs no network - unreachable, the same defect `convert` already avoided with an `anyOf`.
+ */
+const TOOL_REQUIREMENT_FIXES: Record<string, { required?: string[]; anyOf?: string[][] }> = {
+  pro_fetch_crawl_pause_resume: { required: ['job_id', 'action'] },
+  pro_fetch_link_graph: { required: ['pages'] },
+  // Declares `repository` and describes `url` as "alternative to repository", then requires `url`.
+  // The documented alternative was therefore the only accepted form.
+  pro_fetch_release_watch: { anyOf: [['repository'], ['url']] },
+};
+
+const MEDIA_TOOL_NAMES = new Set([
+  'pro_fetch_audio_transcribe',
+  'pro_fetch_barcode_qr_read',
+  'pro_fetch_exif_read',
+  'pro_fetch_favicon_fetch',
+  'pro_fetch_image_convert',
+  'pro_fetch_image_info',
+  'pro_fetch_image_ocr',
+  'pro_fetch_image_resize',
+  'pro_fetch_media_download',
+  'pro_fetch_pdf_ocr',
+  'pro_fetch_screenshot_full_page',
+  'pro_fetch_screenshot_page',
+  'pro_fetch_svg_to_png',
+  'pro_fetch_thumbnail_generate',
+  'pro_fetch_video_metadata',
+]);
 
 export function defineTool(def: ToolDefinition): ToolDefinition {
   if (!def.name || !NAME_RE.test(def.name)) {

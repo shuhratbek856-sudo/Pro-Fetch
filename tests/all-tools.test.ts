@@ -193,10 +193,21 @@ describe('pro-fetch MAX - barcha 572 tool', () => {
     for (const t of samples) {
       if (NET.has(t.category) || COMPOSITES.has(t.name)) {
         expect(typeof t.handler).toBe('function');
+        continue;
+      }
+      const res = await dispatch(t.name, {});
+      expect(res.content.length).toBeGreaterThan(0);
+
+      // A tool that declares required arguments must reject an empty call, and say which ones.
+      // This assertion used to be "never errors", which only held because nothing enforced
+      // `required` - it now encodes the contract the schema already published.
+      const required = t.inputSchema.required ?? [];
+      if (required.length === 0) {
+        expect(res.isError, t.name).toBeFalsy();
       } else {
-        const res = await dispatch(t.name, {});
-        expect(res.content.length).toBeGreaterThan(0);
-        expect(res.isError).toBeFalsy();
+        expect(res.isError, `${t.name} should reject {}`).toBe(true);
+        const body = res.content.map((entry) => entry.text).join(' ');
+        expect(body, t.name).toContain('majburiy argumentlar');
       }
     }
   });

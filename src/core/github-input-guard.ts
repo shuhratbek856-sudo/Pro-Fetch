@@ -120,43 +120,4 @@ export function assertGithubInput(
   positiveInt(input, 'page', 100_000);
   positiveInt(input, 'per_page', 10_000);
   positiveInt(input, 'max_pages', 10_000);
-
-  assertRequiredPresent(tool, input);
-}
-
-/**
- * Reject a call that omits an argument the tool declares as required.
- *
- * The checks above answer "is this value well formed?". This one answers "was a value supplied at
- * all?", which they cannot: `str()` deliberately maps `''` to `undefined` so format checks skip absent
- * fields, and a caller who omits `owner` produces no malformed value to complain about.
- *
- * That gap was user-visible rather than theoretical. `inputSchema.required` is only advertised to the
- * MCP client - nothing in the dispatcher enforced it - so `pro_gh_repo_readme` called with `{}`
- * assembled `/repos/undefined/undefined` and GitHub answered 404. The caller was told the repository
- * does not exist, which sends them looking for a repository that was never named.
- *
- * Doing this here rather than in each handler keeps it in one place and covers composites such as
- * `pro_pr_review`, which are registered separately from the tool file that would otherwise hold the
- * check. The schema is the single source of truth, so adding a requirement to a tool needs no second
- * edit here.
- */
-function assertRequiredPresent(tool: { inputSchema?: { required?: string[] } }, input: Record<string, unknown>): void {
-  const required = tool.inputSchema?.required;
-  if (!Array.isArray(required) || required.length === 0) return;
-
-  const missing: string[] = [];
-  for (const key of required) {
-    const value = input[key];
-    // Whitespace is present but not usable: `owner: '   '` would otherwise pass presence and reach
-    // the API as a blank path segment, producing the same 404 this check exists to prevent.
-    if (value === undefined || value === null) missing.push(key);
-    else if (typeof value === 'string' && value.trim() === '') missing.push(key);
-  }
-
-  if (missing.length) {
-    // No tool name here: the policy layer already prefixes the message with `Xato (<tool>):`, and
-    // repeating it produced "Xato (pro_gh_repo_readme): pro_gh_repo_readme: ...".
-    throw new GithubInputError(`majburiy argumentlar berilmadi: ${missing.join(', ')}.`);
-  }
 }

@@ -387,6 +387,31 @@ export async function runIntegrationTool(toolName: string, input: Input): Promis
         ),
       );
     }
+    // `openapi_try` issues the request itself and never looks at the spec text, but it used to sit
+    // *after* `bodyFor`, which demands a `url` or `content` first. So calling an endpoint required
+    // supplying a spec document the result never used, and `openapi_try` with just `base_url` and
+    // `path` failed with "url yoki content parametri kerak". Hoisted above `bodyFor`, which is where
+    // it belongs: it is the one branch in this group that does not consume a specification.
+    if (name === 'openapi_try') {
+      const base = str(input, 'base_url', 'server_url');
+      const route = str(input, 'path');
+      if (!base || !route) return result('base_url va path kerak.');
+      const target = await assertSafeUrl(new URL(route, base).toString());
+      const method = str(input, 'method').toUpperCase() || 'GET';
+      const response = await fetchWithOptions(target.toString(), {
+        method,
+        headers: objectInput(input, 'headers'),
+        body: str(input, 'body') || undefined,
+      });
+      return result(
+        JSON.stringify(
+          { url: target.toString(), method, status: response.status, body: response.text.slice(0, 10000) },
+          null,
+          2,
+        ),
+      );
+    }
+
     const text = await bodyFor(input);
     const spec = parseSpec(text);
     const paths =
@@ -414,25 +439,6 @@ export async function runIntegrationTool(toolName: string, input: Input): Promis
           2,
         ),
       );
-    if (name === 'openapi_try') {
-      const base = str(input, 'base_url', 'server_url');
-      const route = str(input, 'path');
-      if (!base || !route) return result('base_url va path kerak.');
-      const target = await assertSafeUrl(new URL(route, base).toString());
-      const method = str(input, 'method').toUpperCase() || 'GET';
-      const response = await fetchWithOptions(target.toString(), {
-        method,
-        headers: objectInput(input, 'headers'),
-        body: str(input, 'body') || undefined,
-      });
-      return result(
-        JSON.stringify(
-          { url: target.toString(), method, status: response.status, body: response.text.slice(0, 10000) },
-          null,
-          2,
-        ),
-      );
-    }
     return result(JSON.stringify(spec, null, 2));
   }
   if (name === 'wsdl_parse') {
@@ -524,6 +530,16 @@ export async function runIntegrationTool(toolName: string, input: Input): Promis
           .join('\n'),
       );
     const to = str(input, 'to_script', 'target_script').toLowerCase();
+    // A language code is not a script, and silently defaulting to latin when one arrives turns a
+    // caller's mistake into a result that looks successful: `script_convert` with `target_lang: 'ru'`
+    // returned "Hello" unchanged, with no error. A script is written, not spoken about, so the fix is
+    // to name the difference rather than to accept the wrong field.
+    if (!to && (str(input, 'target_lang') || str(input, 'to_lang'))) {
+      return result(
+        'Bu tool til emas, yozuv tizimini (script) oladi. `to_script: "cyrillic"` yoki ' +
+          '`to_script: "latin"` yuboring — `target_lang` bu yerda ishlamaydi.',
+      );
+    }
     return result(convertScript(text, to === 'cyrillic' || to === 'cyrl' ? 'cyrillic' : 'latin'));
   }
   if (name === 'translate_text' || name === 'translate_page') {

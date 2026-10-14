@@ -19,6 +19,7 @@
 process.env.PRO_FETCH_PROFILE ??= 'full';
 await import('../src/loader.js');
 const { allTools } = await import('../src/core/tool.js');
+const { sourceFor, auditedToolCount } = await import('./tool-source-map.mts');
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
@@ -77,11 +78,26 @@ interface Finding {
   declared: number;
   deadProperties: string[];
   requiredEmpty: boolean;
+  /** Required properties the tool's own source never mentions. */
+  requiredUnread: string[];
 }
 
 const findings: Finding[] = [];
 let skippedDelegating = 0;
-let skippedPadded = 0;
+
+/**
+ * Reads the source that actually decides which inputs a tool reads.
+ *
+ * `String(tool.handler)` is the compiled function, which for a thin tool says nothing. For a tool
+ * whose handler is `return controlCrawlJob(input)` the tool file also says little - the reads happen
+ * in `src/core/crawl-tools.ts`. `sourceFor` follows one delegation hop so the measurement is taken
+ * where the behaviour is.
+ */
+const resolvedSource = new Map<string, string | undefined>();
+function sourceFileFor(toolName: string, category: string): string | undefined {
+  if (!resolvedSource.has(toolName)) resolvedSource.set(toolName, sourceFor(toolName, category));
+  return resolvedSource.get(toolName);
+}
 
 for (const tool of allTools()) {
   if (onlyCategory && tool.category !== onlyCategory) continue;
@@ -93,21 +109,21 @@ for (const tool of allTools()) {
     skippedDelegating++;
     continue;
   }
-  // `applyCategorySchema` rewrites these schemas at load time; the file is not the source of truth.
-  if (CATEGORY_PADDED.has(tool.category)) {
-    skippedPadded++;
-    continue;
-  }
 
   const schema = tool.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
   const properties = Object.keys(schema.properties ?? {});
   const required = schema.required ?? [];
 
-  const dead = properties.filter((property) => {
+  const haystack = sourceFileFor(tool.name, tool.category) ?? source;
+
+  const mentions = (property: string): boolean => {
     const short = property.replace(/_number$/, '');
     const alternatives = new Set([property, short, `input.${property}`, `p.${property}`]);
-    return ![...alternatives].some((needle) => new RegExp(`\\b${needle.replace(/\./g, '\\.')}\\b`).test(source));
-  });
+    return [...alternatives].some((needle) => new RegExp(`\\b${needle.replace(/\./g, '\\.')}\\b`).test(haystack));
+  };
+
+  const dead = properties.filter((p) => !mentions(p));
+  const requiredUnread = required.filter((property) => !mentions(property));
 
   // A tool may state its requirement as alternatives - "url *or* text" - which `anyOf` expresses and
   // `required` cannot. Counting those as "declares nothing" would report a tool whose schema is
@@ -121,11 +137,13 @@ for (const tool of allTools()) {
     declared: properties.length,
     deadProperties: dead,
     requiredEmpty: !statesRequirement && properties.length > 0,
+    requiredUnread,
   });
 }
 
 const withDead = findings.filter((f) => f.deadProperties.length > 0);
 const withEmptyRequired = findings.filter((f) => f.requiredEmpty && !OPTIONAL_BY_DESIGN.has(f.name));
+const withUnreadRequired = findings.filter((f) => f.requiredUnread.length > 0);
 
 if (asJson) {
   console.log(JSON.stringify(findings, null, 2));
@@ -138,9 +156,27 @@ if (asJson) {
 
   console.log(
     `SCHEMA_AUDIT audited=${findings.length} skipped_delegating=${skippedDelegating} ` +
-      `skipped_category_padded=${skippedPadded}\n`,
+      `resolved_sources=${auditedToolCount}\n`,
   );
-  console.log(`  with_dead_properties=${withDead.length}  with_required_empty=${withEmptyRequired.length}\n`);
+  console.log(
+    `  with_dead_properties=${withDead.length}  with_required_empty=${withEmptyRequired.length}  ` +
+      `with_unread_required=${withUnreadRequired.length}\n`,
+  );
+
+  if (withUnreadRequired.length) {
+    console.log("--- e'lon qilingan, lekin kodda O'QILMAYDIGAN required ---");
+    const byRequiredCategory = new Map<string, Finding[]>();
+    for (const finding of withUnreadRequired) {
+      if (!byRequiredCategory.has(finding.category)) byRequiredCategory.set(finding.category, []);
+      byRequiredCategory.get(finding.category)!.push(finding);
+    }
+    for (const [category, list] of [...byRequiredCategory.entries()].sort((a, b) => b[1].length - a[1].length)) {
+      console.log(`  [${category}] ${list.length} ta`);
+      for (const finding of list.slice(0, 5)) {
+        console.log(`      ${finding.name.padEnd(42)} requires: ${finding.requiredUnread.join(',')}`);
+      }
+    }
+  }
 
   const ranked = [...byCategory.entries()]
     .map(

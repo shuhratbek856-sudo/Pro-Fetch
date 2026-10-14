@@ -2,6 +2,7 @@ import type { ToolDefinition } from './types.js';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { assertGithubInput } from './github-input-guard.js';
+import { assertRequiredPresent } from './required-arguments.js';
 import { currentProfile, isToolVisibleInProfile, profileEnforced } from './profile.js';
 import { isMutationTool } from './tool-classification.js';
 import { boundedEnv } from './bounded-env.js';
@@ -102,7 +103,18 @@ export function assertToolAllowed(tool: ToolDefinition, input: Record<string, un
   const maxInputBytes = boundedEnv('PRO_FETCH_MAX_INPUT_BYTES', 2 * 1024 * 1024, 1024, 20 * 1024 * 1024);
   if (Buffer.byteLength(serialized ?? '', 'utf8') > maxInputBytes)
     throw new PolicyError(`Tool input hajmi ${maxInputBytes} baytdan oshdi.`);
+  // Order matters, and the first attempt had it backwards.
+  //
+  // `assertGithubInput` normalises the combined `repo: "owner/name"` form into separate `owner` and
+  // `repo` fields. Running presence first made that combined form - documented and accepted by 42
+  // tools - look like a call missing `owner`, and `tests/repo-specifier.test.ts` caught it. The github
+  // guard goes first, presence second.
+  //
+  // Presence still has to come before anything that reads the environment: measured across the 200
+  // tools registered from SPECS, `runCollaboration`/`runStorage`/`runProductivity` reported
+  // CREDENTIAL_MISSING while the argument they were missing went unmentioned.
   assertGithubInput(tool, input);
+  assertRequiredPresent(tool, input);
 }
 
 export { boundedEnv } from './bounded-env.js';

@@ -246,3 +246,38 @@ Verification, all real runs:
 | `npm run check` | exit 0 - static, registry, build, tests, package, format |
 
 Not done: ~380 untouched tool files, and no non-schema audit of the 419 padded or 20 delegating tools yet.
+
+
+### Session 28 - Delegating + padded tool audit (required arguments)
+
+What the audit found, all by calling the tools rather than reading the schemas:
+
+| Defect | Scale | Fix |
+|---|---|---|
+| `inputSchema.required` enforced nowhere | 552 tools now guarded centrally | `core/required-arguments.ts` |
+| `required: ['text','target_lang']` on 6 i18n tools that never read `target_lang` | i18n | per-tool map |
+| `script_convert`/`transliterate` read `to_script`, declared only `target_lang` - silent no-op | 2 tools | declare aliases; refuse a language code |
+| `to_script`/`from_lang`/`to_lang`/`html` accepted by code, absent from schema | 4 properties | added to shared vocabulary |
+| `required: ['url']` on 6 apitest tools; 5 also take inline content | apitest | per-tool map, `anyOf` where alternative |
+| `openapi_try` sat after `bodyFor`, so calling an endpoint demanded a spec document | 1 tool | branch hoisted above `bodyFor` |
+| `required: ['url']` on 15 media tools that also take `base64` | media | `anyOf` |
+| `crawl_pause_resume` requires `url`; `controlCrawlJob` reads `job_id`/`action` | 1 tool | corrected |
+| `link_graph` requires `url`; it reads `pages` | 1 tool | corrected |
+| `release_watch` describes `url` as an alternative to `repository`, then requires `url` | 1 tool | `anyOf` |
+
+Two errors of my own, both caught by tests rather than by review:
+
+1. Presence checking ran *before* the github guard, so the documented `repo: "owner/name"` form looked
+   like a call missing `owner`. `tests/repo-specifier.test.ts` caught it. Order reversed.
+2. Requiring `target_script` broke the `to_script` alias, and the script is optional anyway
+   (`convertScript` defaults to latin). `tests/handler-regression.test.ts` caught it.
+
+Audit scope also corrected: the first version skipped 419 padded tools, and the second reported
+552 audited. `scripts/tool-source-map.mts` now follows one delegation hop, so a tool whose handler
+is `return controlCrawlJob(input)` is measured against `controlCrawlJob`, not against its own stub.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - static, registry, build, 18 files / 292 tests, package, format |
+| `npm run audit:schema` | audited 552, with_dead_properties=0 |
+| npx tsc --noEmit | exit 0 |

@@ -32,6 +32,17 @@ function fakeTool(name: string, category: string): ToolDefinition {
   };
 }
 
+/**
+ * A minimal input that satisfies a tool's own declared requirements.
+ *
+ * `assertToolAllowed` now enforces `required` as well as the profile, so passing `{}` is only valid
+ * for a tool that declares nothing. These assertions are about *which tools are allowed*, not about
+ * their arguments, so the arguments are filled from the tool's own contract rather than guessed.
+ */
+function validArgs(tool: { inputSchema: { required?: string[] } }): Record<string, string> {
+  return Object.fromEntries((tool.inputSchema.required ?? []).map((key) => [key, 'x']));
+}
+
 describe('tool classification: annotations and the read-only gate cannot drift', () => {
   it('marks a state-changing tool read-only=false even when its name has no mutation verb', () => {
     // These two drifted before the fix: `isMutationTool` blocked them in read-only mode while the
@@ -135,7 +146,7 @@ describe('profile enforcement', () => {
     process.env.PRO_FETCH_PROFILE = 'minimal';
     process.env.PRO_FETCH_ENFORCE_PROFILE = 'true';
     const visible = allTools().find((tool) => isToolVisibleInProfile(tool, 'minimal'));
-    expect(() => assertToolAllowed(visible!, {})).not.toThrow();
+    expect(() => assertToolAllowed(visible!, validArgs(visible!))).not.toThrow();
   });
 
   it('rejects the smart profile under enforcement instead of silently breaking the server', () => {
@@ -149,9 +160,9 @@ describe('profile enforcement', () => {
     delete process.env.PRO_FETCH_ENFORCE_PROFILE;
     process.env.PRO_FETCH_ALLOWED_TOOLS = 'pro_fetch_health_check';
     const other = allTools().find((tool) => tool.name !== 'pro_fetch_health_check');
-    expect(() => assertToolAllowed(other!, {})).toThrow(/allowlist/);
+    expect(() => assertToolAllowed(other!, validArgs(other!))).toThrow(/allowlist/);
     delete process.env.PRO_FETCH_ALLOWED_TOOLS;
-    expect(() => assertToolAllowed(other!, {})).not.toThrow();
+    expect(() => assertToolAllowed(other!, validArgs(other!))).not.toThrow();
   });
 });
 
