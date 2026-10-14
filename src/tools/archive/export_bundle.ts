@@ -17,13 +17,17 @@ export default defineTool({
   inputSchema: {
     type: 'object',
     properties: {
-      url: { type: 'string', description: 'Manzil (URL)' },
+      // Declared `required: ['url']` while exporting the whole cache. The tool never reads `url`, so a
+      // caller was forced to invent a value that changes nothing. Found by the unread-required arm of
+      // `npm run audit:schema`.
+      prefix: { type: 'string', description: 'Faqat shu kalit prefiksi bilan boshlanadigan yozuvlar' },
     },
-    required: ['url'],
+    required: [],
   },
   async handler(input) {
     const p = view(input);
-    const keys = cache.keys('');
+    const prefix = typeof p.prefix === 'string' ? p.prefix : '';
+    const keys = cache.keys(prefix);
     const bundle: Record<string, unknown> = {};
     for (const k of keys.slice(0, 100)) {
       const hit = cache.get(k);

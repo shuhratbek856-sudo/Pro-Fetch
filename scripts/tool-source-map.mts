@@ -32,8 +32,38 @@ async function walk(dir: string, sink: (file: string, text: string) => void): Pr
   }
 }
 
+/**
+ * A file can define more than one tool: `src/tools/github/repo_audit.ts` exports both
+ * `pro_gh_repo_audit` and `pro_pr_review`, and `pr_review_tool.ts` is a registration shim for the
+ * second. Indexing the whole file per name resolved both names to the *first* `defineTool`, so
+ * `pro_pr_review` was measured against `pro_gh_repo_audit`'s code and reported as not reading
+ * `pr_number` - which it reads, twice.
+ *
+ * So each name is mapped to its own `defineTool({...})` block rather than to the file.
+ */
+function defineToolBlock(text: string, at: number): string {
+  // Walk back to the enclosing `defineTool(`.
+  const before = text.lastIndexOf('defineTool(', at);
+  const braceStart = text.indexOf('{', before < 0 ? at : before);
+  if (braceStart < 0) return text;
+
+  let depth = 0;
+  let i = braceStart;
+  while (i < text.length) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) return text.slice(braceStart, i + 1);
+    }
+    i++;
+  }
+  return text.slice(braceStart);
+}
+
 await walk(path.join(SRC, 'tools'), (file, text) => {
-  for (const match of text.matchAll(/name:\s*'([a-z0-9_]+)'/gi)) byToolName.set(match[1], text);
+  for (const match of text.matchAll(/\bname:\s*'([a-z0-9_]+)'/gi)) {
+    byToolName.set(match[1], defineToolBlock(text, match.index));
+  }
 });
 
 await walk(path.join(SRC, 'core'), (file, text) => {
@@ -85,7 +115,36 @@ const maxPlatformFunctions = coreFunctionIndex.get('max-platform-tools.ts') ?? n
 function specSourceFor(toolName: string, category: string): string | undefined {
   const runner = SPEC_RUNNERS[category];
   if (!runner) return undefined;
-  return maxPlatformFunctions.get(runner);
+  const body = maxPlatformFunctions.get(runner);
+  return body ? expand(body, maxPlatformFunctions) : undefined;
+}
+
+/**
+ * Widen a function body to include the local helpers it calls.
+ *
+ * Without this the audit reported 31 false findings. `runGit` does not read `confirm` itself - it
+ * calls `requireConfirmation(i)` - so a `required: ['confirm']` on a git tool looked like a property
+ * nobody read, when in fact `runGit` verifies it before every mutation. Verified by calling
+ * `pro_fetch_git_branch_create` with a branch and no confirm: it correctly refuses.
+ *
+ * A call is only followed when the callee is a top-level function in the same module, and only when
+ * the body contains no nested `const fn = () =>` of that name, so this cannot pull in an unrelated
+ * shadowed binding. Depth is bounded because two hops cover every helper in these modules; three was
+ * not needed by any tool and a deeper walk starts costing more than it explains.
+ */
+function expand(body: string, siblings: Map<string, string>, depth = 2): string {
+  if (depth <= 0) return body;
+
+  let grown = body;
+  for (const [name, definition] of siblings) {
+    // Only follow an actual call: `foo(` and not a property access like `this.foo(`.
+    const called = new RegExp(`(?<![.\\w])${name}\\s*\\(`).test(body);
+    if (!called) continue;
+    if (new RegExp(`(?:const|let|var|function)\\s+${name}\\b`).test(body)) continue;
+    if (grown.includes(definition)) continue;
+    grown += `\n${expand(definition, siblings, depth - 1)}`;
+  }
+  return grown;
 }
 
 /** What a tool's real code reads, or undefined when it cannot be resolved. */
@@ -100,15 +159,48 @@ export function sourceFor(toolName: string, category?: string): string | undefin
   if (!handler) return own;
 
   const body = own.slice(handler.index + handler[0].length);
-  // One-line delegation: `return <fn>(input)` or `return await <fn>(input)`.
-  const delegate = /^\s*return\s+(?:await\s+)?([A-Za-z0-9_]+)\s*\(\s*input\s*\)\s*;/m.exec(body);
-  if (!delegate) return own;
+  // One-line delegation whose argument list contains `input`. The argument need not be the only one:
+  // `return runCrawlTool('pro_fetch_extract_links', input)` passes the tool name first, and a
+  // pattern anchored on `\(input\)` missed it - which is how 14 crawl tools were wrongly reported as
+  // requiring a `url` their code never reads.
+  const delegate = /^\s*return\s+(?:await\s+)?([A-Za-z0-9_]+)\s*\([^)]*\binput\b[^)]*\)\s*;/m.exec(body);
+  if (!delegate) return expand(handlerBody(own, handler), localFunctions(own));
 
   for (const [, functions] of coreFunctionIndex) {
     const target = functions.get(delegate[1]);
-    if (target) return target;
+    if (target) return expand(target, functions);
   }
   return own;
+}
+
+/** The handler's body, closing at the matching brace rather than running to end of file. */
+function handlerBody(text: string, match: RegExpExecArray): string {
+  const start = match.index + match[0].length;
+  let depth = 1;
+  let i = start;
+  while (i < text.length && depth > 0) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') depth--;
+    i++;
+  }
+  return text.slice(start, i - 1);
+}
+
+/** Top-level and nested named functions in a tool file, so a handler's own helpers are visible. */
+function localFunctions(text: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const match of text.matchAll(/(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\([^)]*\)[^{]*\{/g)) {
+    const start = match.index + match[0].length;
+    let depth = 1;
+    let i = start;
+    while (i < text.length && depth > 0) {
+      if (text[i] === '{') depth++;
+      else if (text[i] === '}') depth--;
+      i++;
+    }
+    found.set(match[1], text.slice(start, i - 1));
+  }
+  return found;
 }
 
 export const auditedToolCount = byToolName.size;
