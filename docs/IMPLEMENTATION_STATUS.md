@@ -317,3 +317,34 @@ fall-through. That work is next and was not started.
 |---|---|
 | `npm run check` | exit 0 |
 | `npm run audit:schema` | audited 552, unread_required=0 |
+
+
+### Session 30 - Browser investigated, and found to have no defect
+
+The plan was to narrow the browser vocabulary from 41 tools down to the fields each reads. Measured
+first, and the measurement says there is nothing to fix:
+
+| Measure (41 browser tools) | Count | Verdict |
+|---|---:|---|
+| `unread_required` | 0 | no required argument is wrong |
+| `required_empty` | 38 | correct: verified by calling them, e.g. `pro_browser_browser_back` with `{}` fails with "Browser session 'default' yo'q" - a real runtime condition, not an argument error |
+| `dead_properties` | 41 | the deliberate `CATEGORY_SCHEMA_PROPERTIES` vocabulary |
+
+The dead properties are the only finding, and they come from a named, intentional per-category
+vocabulary rather than a copy-paste. Narrowing them is a redesign of the published schema and would
+change what callers may send, so it needs a product decision, not a bug fix.
+
+A derivation script was written to build the per-tool table from the code, and was **discarded
+unapplied**: it reproduced the branch logic faithfully but missed declarations that sit *between* branches
+(`const selector = string(input, 'selector')` is on the line before `if (name === 'browser_click')`), so
+its output would have removed `selector` from a tool that cannot work without it. Shipping a generator
+that produces a confidently wrong table is worse than shipping none, and applying one without full
+confidence is exactly the unverified change this project forbids.
+
+What a future pass needs: gap reads between branches resolved, then the table applied only after every
+tool's current `required` list is verified to survive it.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - static, registry, build, 18 files / 292 tests, package, format |
+| `npm run audit:schema` | audited 552, unread_required=0 |
