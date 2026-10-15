@@ -59,10 +59,11 @@ const CATEGORY_PADDED = new Set([
 /**
  * Packs whose one runner serves many tools, so per-tool narrowing would be the runner's union.
  *
- * `runMediaTool` is here for the same reason as `runCodehost`: it dispatches all 15 media tools on
- * the tool name, so the source that "reads `selector`" is shared, and narrowing per tool would leave
- * every media tool advertising the union of all fifteen. Splitting those dispatchers is the only way
- * to narrow them, and that is a larger change than this pass.
+ * `runCodehost` and the other SPECS runners dispatch on a tool name built at runtime, so no tool file
+ * exists to resolve and the whole runner is the only source available - narrowing per tool would
+ * leave every tool in the pack advertising the runner's union. `media` used to sit here for the same
+ * reason; `runMediaTool` switches on the tool name like `runBrowserTool` does, so
+ * `src/core/source-resolver.ts` splits it per branch and media is narrowed like any other category.
  */
 const SHARED_RUNNER_CATEGORIES = new Set([
   'git',
@@ -74,7 +75,6 @@ const SHARED_RUNNER_CATEGORIES = new Set([
   'collaboration',
   'storage',
   'productivity',
-  'media',
 ]);
 
 /** Injected per tool by `source-resolver`. Kept out of this module so resolution stays testable. */
@@ -92,7 +92,16 @@ export function setSourceResolver(resolver: Resolver): void {
   resolveSource = resolver;
 }
 
-function readsProperty(source: string, property: string): boolean {
+/**
+ * Whether the resolved source mentions a property at all.
+ *
+ * Loose on purpose: it matches the bare word anywhere, so keeping a property the code does not really
+ * read is the failure mode. For narrowing that is the safe direction - a too-wide schema misleads,
+ * a too-narrow one rejects a valid call - and `readsPropertyStrictly` covers the places where
+ * precision is required. Exported so the invariant can be asserted with the same definition the
+ * runtime and `npm run audit:schema` both use.
+ */
+export function readsProperty(source: string, property: string): boolean {
   const short = property.replace(/_number$/, '');
   for (const needle of [property, short, `input.${property}`, `p.${property}`, `'${property}'`]) {
     if (needle.includes('.') && !source.includes(needle)) continue;
@@ -109,14 +118,19 @@ function readsProperty(source: string, property: string): boolean {
  * direction: `pro_fetch_pdf_to_text` declares `text`, and its description reads "Extract text from a
  * PDF", so the loose match kept a property the tool cannot use and the schema contradicted its own
  * `anyOf`.
+ *
+ * Exported so the invariant can be asserted in tests against the same definition the runtime uses,
+ * rather than a second copy that could drift.
  */
-function readsPropertyExplicitly(source: string, property: string): boolean {
+export function readsPropertyStrictly(source: string, property: string): boolean {
   const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patterns = [
     // `string(input, 'x')`, `num(input, 'x', ...)`, `bool(p, 'x')`
     new RegExp(`\\b(?:string|num|bool|objectInput)\\s*\\(\\s*(?:input|p)\\s*,\\s*'${escaped}'`),
-    // `input.x`, `p.x`, `input['x']`
-    new RegExp(`\\b(?:input|p)\\s*(?:\\.${escaped}|\\[['"]${escaped}['"]\\])`),
+    // `input.x`, `p.x`, `input['x']` - with a boundary, or `input.data` also matches the start of
+    // `input.data_base64`. `readBinarySource` reads that one and not `data`, so `pro_fetch_pdf_to_text`
+    // kept a `data` property its reader never looks at.
+    new RegExp(`\\b(?:input|p)\\s*(?:\\.${escaped}(?!\\w)|\\[['"]${escaped}['"]\\])`),
     // A whole-object read that hands the property to a helper, as `sourceFrom(input)` does.
     new RegExp(`\\[['"]${escaped}['"]\\]`),
   ];
@@ -155,7 +169,7 @@ function restateConvertAlternatives(tool: ToolDefinition, source: string): void 
   const keep = new Set(alternatives);
   for (const property of Object.keys(schema.properties)) {
     if (keep.has(property)) continue;
-    if (readsPropertyExplicitly(source, property)) continue;
+    if (readsPropertyStrictly(source, property)) continue;
     delete schema.properties[property];
   }
 }

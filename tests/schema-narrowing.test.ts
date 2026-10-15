@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import '../src/loader.js';
 import { allTools } from '../src/core/tool.js';
 import { callTool } from '../src/router.js';
+import { resolveToolSource } from '../src/core/source-resolver.js';
+import { readsProperty } from '../src/core/schema-narrowing.js';
 
 const tool = (name: string) => {
   const found = allTools().find((candidate) => candidate.name === name);
@@ -110,6 +112,49 @@ describe('alternatives are stated as anyOf, not as required', () => {
     expect(tool('pro_browser_browser_action').inputSchema.required).toEqual(['action']);
     const result = await callTool('pro_browser_browser_action', {});
     expect(result.isError).toBe(true);
+  });
+});
+
+describe('shared dispatchers resolve per tool, not per pack', () => {
+  it('a media tool keeps base64 because the reader behind it reads base64', () => {
+    // `runMediaTool` resolves its input with `const media = await bytesFromInput(input)` before it
+    // branches, and `bytesFromInput` reads `str(input, 'base64', 'data_base64')`. Three things had
+    // to line up for that read to be visible: the declaration sits in a gap between branches, the
+    // call is to a module-local helper, and the helper's return type contains an object literal that
+    // a naive signature pattern mistakes for the function body. Missing any one of them reported
+    // base64 unreadable for all 15 media tools, and narrowing would have removed an alternative they
+    // advertise and accept - verified by calling `pro_fetch_image_info` with a base64 PNG.
+    expect(tool('pro_fetch_image_info').inputSchema.anyOf).toEqual([{ required: ['url'] }, { required: ['base64'] }]);
+  });
+
+  it('the screenshot tools require a URL, since their branch never reads base64', async () => {
+    // Their branch runs before `bytesFromInput` - it drives a browser and writes a file - so base64
+    // was advertised as an alternative they cannot use. Calling with base64 answered
+    // "Noma'lum media tool", which names the tool rather than the argument that was wrong.
+    for (const name of ['pro_fetch_screenshot_page', 'pro_fetch_screenshot_full_page']) {
+      const schema = tool(name).inputSchema;
+      expect(schema.anyOf, name).toBeUndefined();
+      expect(schema.required, name).toEqual(['url']);
+      expect(properties(name), name).not.toContain('base64');
+
+      const result = await callTool(name, {});
+      expect(result.isError, name).toBe(true);
+    }
+  });
+
+  it('no tool advertises a property its resolved code never reads', () => {
+    // The invariant the whole pass was measured against, asserted across the registry rather than
+    // left to `npm run audit:schema` alone: a schema that lists an unread property tells a caller
+    // it can send something the tool will ignore, or - with `additionalProperties: false` - rejects.
+    const offenders: string[] = [];
+    for (const candidate of allTools()) {
+      const source = resolveToolSource(candidate.name, candidate.category);
+      if (!source) continue; // unresolved keeps its full vocabulary by design
+      for (const key of Object.keys(candidate.inputSchema.properties ?? {})) {
+        if (!readsProperty(source, key)) offenders.push(`${candidate.name}: ${key}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 

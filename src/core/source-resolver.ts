@@ -62,19 +62,45 @@ await walk(path.join(SRC, 'core'), (file, text) => {
   coreModules.set(path.basename(file), text);
 });
 
-/** Named functions in a module, keyed by name, bodies brace-matched. */
+/**
+ * Named functions in a module, keyed by name, bodies brace-matched.
+ *
+ * The body brace is found by scanning rather than by pattern, because a return type can contain
+ * braces of its own. `bytesFromInput(input: Input): Promise<{ bytes: Buffer; contentType: string;
+ * source: string }>` in `media-tools.ts`: a pattern anchored on `[^{]*` stopped at the `{` of the
+ * type literal and took *that* as the function body, so the `str(input, 'base64')` read inside the
+ * real body was invisible and all 15 media tools looked as though they ignored the `base64` they
+ * advertise and accept.
+ *
+ * Prettier puts a multi-line function body's `{` at the end of its line, which is what tells a type
+ * brace from a body brace. When no such brace exists - a one-line body - the first brace after the
+ * parameter list is used, which is what this did before.
+ */
 function functionsIn(text: string): Map<string, string> {
   const found = new Map<string, string>();
-  for (const match of text.matchAll(/(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\([^)]*\)[^{]*\{/g)) {
-    const start = match.index + match[0].length;
+  const signature = /(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/g;
+
+  for (const match of text.matchAll(signature)) {
+    const afterParams = text.indexOf(')', match.index + match[0].length - 1);
+    if (afterParams < 0) continue;
+
+    let brace = text.indexOf('{', afterParams);
+    let lineEnd = text.indexOf('\n', afterParams);
+    while (brace >= 0) {
+      lineEnd = text.indexOf('\n', brace);
+      if (lineEnd < 0 || text.slice(brace + 1, lineEnd).trim() === '') break;
+      brace = text.indexOf('{', brace + 1);
+    }
+    if (brace < 0) continue;
+
     let depth = 1;
-    let i = start;
+    let i = brace + 1;
     while (i < text.length && depth > 0) {
       if (text[i] === '{') depth++;
       else if (text[i] === '}') depth--;
       i++;
     }
-    found.set(match[1], text.slice(start, i - 1));
+    found.set(match[1], text.slice(brace + 1, i - 1));
   }
   return found;
 }
@@ -123,15 +149,28 @@ const maxPlatform = coreIndex.get('max-platform-tools.ts') ?? new Map<string, st
 /**
  * Declarations between branches, which the branches after them read.
  *
- * Only `const x = <reader>(input, 'y')` counts, and only outside any branch, so a declaration that
- * belongs to one action's body cannot leak into the next action.
+ * Two shapes matter. `const selector = string(input, 'selector')` names the property directly. But a
+ * dispatcher may also resolve its input once, before branching, through a helper - `runMediaTool`
+ * does `const media = await readMediaSource(input)`, and `readMediaSource` is where `base64` is read.
+ * Without following that call every one of the 15 media tools looked as though it ignored `base64`,
+ * which their schemas advertise as an alternative and which they accept: verified by calling
+ * `pro_fetch_image_info` with a base64 PNG, which answers `{"source": "input base64", ...}`.
+ *
+ * Only declarations outside any branch count, so a declaration belonging to one action's body cannot
+ * leak into the next action.
  */
-function gapReads(source: string, consumed: Array<[number, number]>): string[] {
+function gapReads(source: string, consumed: Array<[number, number]>, siblings?: Map<string, string>): string[] {
   const inside = (index: number) => consumed.some(([from, to]) => index >= from && index <= to);
   const found: string[] = [];
 
+  // Any reader called with a literal key after `input` counts, not just the shared input helpers.
+  //
+  // `bytesFromInput` - which every media tool resolves through - reads `str(input, 'base64',
+  // 'data_base64')`, and `str` is a function local to `media-tools.ts` rather than one of the shared
+  // helpers. Listing only `string|num|bool|objectInput` missed it, so all 15 media tools looked as
+  // though they ignored the `base64` their schemas advertise and accept.
   for (const m of source.matchAll(
-    /^\s*const\s+[A-Za-z0-9_]+\s*=\s*(?:string|num|bool|objectInput)\s*\(\s*input\s*,\s*'([a-z_0-9]+)'/gm,
+    /^\s*const\s+[A-Za-z0-9_]+\s*=\s*(?:await\s+)?[A-Za-z0-9_]+\s*\(\s*input\s*,\s*'([a-z_0-9]+)'/gm,
   )) {
     if (!inside(m.index)) found.push(m[1]);
   }
@@ -140,6 +179,17 @@ function gapReads(source: string, consumed: Array<[number, number]>): string[] {
   }
   for (const m of source.matchAll(/^\s*const\s+[A-Za-z0-9_]+\s*=\s*Number\s*\(\s*input\.([a-z_0-9]+)/gm)) {
     if (!inside(m.index)) found.push(m[1]);
+  }
+
+  if (siblings) {
+    for (const m of source.matchAll(
+      /^\s*const\s+[A-Za-z0-9_]+\s*=\s*(?:await\s+)?([A-Za-z0-9_]+)\s*\(\s*input\s*(?:,|\))/gm,
+    )) {
+      if (inside(m.index)) continue;
+      const body = siblings.get(m[1]) ?? uniqueCoreFunctions.get(m[1]);
+      if (!body) continue;
+      for (const nested of gapReads(body, [], siblings)) if (!found.includes(nested)) found.push(nested);
+    }
   }
   return found;
 }
@@ -159,31 +209,62 @@ function withHelpers(body: string, siblings: Map<string, string>, depth = 2, ext
 }
 
 /** Branch bodies of an `if (x === 'label') { ... }` chain, plus the declarations between them. */
-function ifChain(source: string, label: string): Map<string, string> {
+function ifChain(source: string, label: string, siblings?: Map<string, string>): Map<string, string> {
   const found = new Map<string, string>();
   const consumed: Array<[number, number]> = [];
-  const marker = new RegExp(
-    `(?:if|else\\s+if)\\s*\\(\\s*${label}\\s*===\\s*'([a-z_]+)'\\s*\\)\\s*(?:return\\s+[^{]*?)?\\{`,
-    'g',
-  );
 
-  for (let m = marker.exec(source); m; m = marker.exec(source)) {
-    const braceStart = source.indexOf('{', m.index + m[0].length - 1);
+  // The condition is read as balanced parentheses rather than a fixed pattern, because a dispatcher
+  // groups several tools into one branch. `runMediaTool` has
+  //   if (name === 'image_info' || name === 'exif_read' || name === 'image_convert' || ...) {
+  // and a pattern anchored on `name === 'x')` matched none of the group, leaving 11 of the 15 media
+  // tools resolved to the whole runner - and therefore advertising the union of all fifteen.
+  const opener = /\b(?:else\s+)?if\s*\(/g;
+  const test = new RegExp(`\\b${label}\\s*===\\s*'([a-z_]+)'`, 'g');
+
+  const record = (labels: string[], from: number, to: number, chunk: string): void => {
+    consumed.push([from, to]);
+    for (const name of labels) found.set(name, (found.get(name) ?? '') + chunk);
+  };
+
+  for (let m = opener.exec(source); m; m = opener.exec(source)) {
+    const open = source.indexOf('(', m.index);
     let depth = 0;
-    let i = braceStart;
-    while (i < source.length) {
-      if (source[i] === '{') depth++;
-      else if (source[i] === '}') {
+    let i = open;
+    for (; i < source.length; i++) {
+      if (source[i] === '(') depth++;
+      else if (source[i] === ')') {
         depth--;
         if (depth === 0) break;
       }
-      i++;
     }
-    consumed.push([m.index, i]);
-    found.set(m[1], source.slice(braceStart, i + 1));
+    const labels = [...source.slice(open + 1, i).matchAll(test)].map((x) => x[1]);
+    if (!labels.length) continue;
+
+    let j = i + 1;
+    while (j < source.length && /\s/.test(source[j])) j++;
+
+    if (source[j] === '{') {
+      let d = 0;
+      let end = j;
+      for (let k = j; k < source.length; k++) {
+        if (source[k] === '{') d++;
+        else if (source[k] === '}') {
+          d--;
+          if (d === 0) {
+            end = k + 1;
+            break;
+          }
+        }
+      }
+      record(labels, m.index, end, source.slice(j, end));
+    } else if (source.startsWith('return', j)) {
+      // A single-statement branch: `if (name === 'svg_to_png') assertSvg(media.bytes);`
+      const semi = source.indexOf(';', j);
+      if (semi > 0) record(labels, m.index, semi, source.slice(j, semi + 1));
+    }
   }
 
-  const shared = gapReads(source, consumed);
+  const shared = gapReads(source, consumed, siblings);
   if (shared.length) {
     const header = `/* reads: ${shared.join(', ')} */`;
     for (const [key, body] of found) found.set(key, `${header}\n${body}`);
@@ -192,7 +273,7 @@ function ifChain(source: string, label: string): Map<string, string> {
 }
 
 /** Branch bodies of a `switch (label) { case 'a': { ... } }`, which `runBrowserAction` uses. */
-function switchChain(source: string, label: string): Map<string, string> {
+function switchChain(source: string, label: string, siblings?: Map<string, string>): Map<string, string> {
   const found = new Map<string, string>();
   const at = source.indexOf(`switch (${label})`);
   if (at < 0) return found;
@@ -234,7 +315,7 @@ function switchChain(source: string, label: string): Map<string, string> {
     for (const name of labels) found.set(name, (found.get(name) ?? '') + chunk);
   }
 
-  const shared = gapReads(body, consumed);
+  const shared = gapReads(body, consumed, siblings);
   if (shared.length) {
     const header = `/* reads: ${shared.join(', ')} */`;
     for (const [key, chunk] of found) found.set(key, `${header}\n${chunk}`);
@@ -248,24 +329,41 @@ function preamble(region: string): string {
   return region.slice(0, boundaries.length ? boundaries[0].index : 600);
 }
 
-/** Per-branch source for `runBrowserTool`, keyed by full tool name. */
-const browserByName = new Map<string, string>();
-const browserToolAt = coreModules.get('browser-tools.ts') ?? '';
-if (browserToolAt.includes('runBrowserTool')) {
-  const region = browserToolAt.slice(browserToolAt.indexOf('export async function runBrowserTool'));
+/**
+ * Index a `run<X>Tool(name, input)` dispatcher so each tool resolves to its own branch.
+ *
+ * Both `runBrowserTool` and `runMediaTool` dispatch on the tool name with an `if` chain, which makes
+ * a tool's branch knowable from the code rather than guessable from the schema. Without this, all 15
+ * media tools resolved to the whole of `runMediaTool` and every one of them advertised the union of
+ * all fifteen - `runMediaTool` reads `selector` somewhere, so `pro_fetch_favicon_fetch` claimed it
+ * too.
+ */
+function nameDispatcher(moduleFile: string, functionName: string, toolPrefix: string): Map<string, string> {
+  const index = new Map<string, string>();
+  const source = coreModules.get(moduleFile);
+  if (!source?.includes(functionName)) return index;
+
+  const region = source.slice(source.indexOf(`export async function ${functionName}`));
   const shared = preamble(region);
-  for (const [name, body] of ifChain(region, 'name')) {
-    browserByName.set(`pro_browser_${name}`, shared + '\n' + body);
+  const siblings = functionsIn(source);
+  for (const [name, body] of ifChain(region, 'name', siblings)) {
+    index.set(`${toolPrefix}${name}`, withHelpers(shared + '\n' + body, siblings, 2, uniqueCoreFunctions));
   }
+  return index;
 }
+
+const browserByName = nameDispatcher('browser-tools.ts', 'runBrowserTool', 'pro_browser_');
+const mediaByName = nameDispatcher('media-tools.ts', 'runMediaTool', 'pro_fetch_');
 
 /** Per-action source for `runBrowserAction`, keyed by action value. */
 const browserByAction = new Map<string, string>();
+const browserToolAt = coreModules.get('browser-tools.ts') ?? '';
 if (browserToolAt.includes('runBrowserAction')) {
   const region = browserToolAt.slice(browserToolAt.indexOf('export async function runBrowserAction'));
   const shared = preamble(region);
-  for (const [action, body] of switchChain(region, 'action')) {
-    browserByAction.set(action, shared + '\n' + body);
+  const siblings = functionsIn(browserToolAt);
+  for (const [action, body] of switchChain(region, 'action', siblings)) {
+    browserByAction.set(action, withHelpers(shared + '\n' + body, siblings, 2, uniqueCoreFunctions));
   }
 }
 
@@ -285,13 +383,13 @@ export function resolveToolSource(toolName: string, category = ''): string | und
   const action = actionByTool.get(toolName);
   if (action) {
     const branch = browserByAction.get(action);
-    if (branch) return withHelpers(branch, coreIndex.get('browser-tools.ts') ?? new Map());
+    if (branch) return branch;
   }
 
-  const browserBranch = browserByName.get(toolName);
-  if (browserBranch) {
-    return withHelpers(browserBranch, coreIndex.get('browser-tools.ts') ?? new Map());
-  }
+  // Dispatchers that switch on the tool name answer before the tool file is consulted: their branch
+  // is what the tool actually runs, while the file only says which dispatcher to call.
+  const dispatched = browserByName.get(toolName) ?? mediaByName.get(toolName);
+  if (dispatched) return dispatched;
 
   const own = fileByToolName.get(toolName);
   if (own) {

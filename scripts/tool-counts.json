@@ -48,7 +48,7 @@
     "pro_synthesize"
   ],
   "testFiles": 19,
-  "testCount": 301,
+  "testCount": 304,
   "coverageComposites": {
     "pro_workspace_ops": {
       "categories": ["git", "devops", "database", "security"],

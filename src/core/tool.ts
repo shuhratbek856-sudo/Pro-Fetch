@@ -780,6 +780,15 @@ const TOOL_REQUIREMENT_FIXES: Record<string, { required?: string[]; anyOf?: stri
   pro_fetch_release_watch: { anyOf: [['repository'], ['url']] },
 };
 
+/**
+ * Media tools whose input is a URL *or* base64.
+ *
+ * The two screenshot tools are deliberately absent. `runMediaTool` handles them in a branch that
+ * runs *before* `bytesFromInput` - it navigates a browser and writes a file - so they never look at
+ * `base64`. Their schema advertised it as an alternative anyway, and calling
+ * `pro_fetch_screenshot_page` with base64 answered "Noma'lum media tool", which tells a caller
+ * nothing about the argument it got wrong.
+ */
 const MEDIA_TOOL_NAMES = new Set([
   'pro_fetch_audio_transcribe',
   'pro_fetch_barcode_qr_read',
@@ -791,8 +800,6 @@ const MEDIA_TOOL_NAMES = new Set([
   'pro_fetch_image_resize',
   'pro_fetch_media_download',
   'pro_fetch_pdf_ocr',
-  'pro_fetch_screenshot_full_page',
-  'pro_fetch_screenshot_page',
   'pro_fetch_svg_to_png',
   'pro_fetch_thumbnail_generate',
   'pro_fetch_video_metadata',
