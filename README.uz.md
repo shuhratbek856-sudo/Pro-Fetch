@@ -55,6 +55,7 @@ Ko'p MCP mijoz yuzlab tool schema'iga chidamaydi. `smart` (standart) modelga **1
 | Tool | Nima qiladi |
 |---|---|
 | `pro_capability_call` | **Batch executor** — `{tool, arguments}` ro'yxatini bitta chaqiruvda bajaradi; natijada har biri alohida `ok`/`error` |
+| `pro_synthesize` | Ko'p tool natijasini bitta izchil javobga aylantiradi |
 | `pro_capability_map` | Oddiy tildagi vazifa → aniq tool va uning schema'si (BM25 + morfologik kengaytirish) |
 | `pro_fetch_tool_execute` | Aniq nom bilan bitta tool chaqirish |
 | `pro_research_deep` | Qidiruv → o'qish → faktlar → tekshiruv → hisobot |
@@ -74,6 +75,19 @@ Ko'p MCP mijoz yuzlab tool schema'iga chidamaydi. `smart` (standart) modelga **1
     { "tool": "pro_fetch_academic_search", "arguments": { "query": "retrieval augmented generation" }, "label": "papers" },
     { "tool": "pro_fetch_news_search",     "arguments": { "query": "RAG news" }, "label": "news" }
   ]
+}}
+```
+
+Keyin uchta javobni bittaga birlashtirasiz:
+
+```jsonc
+{ "tool": "pro_synthesize", "arguments": {
+  "results": [
+    { "tool": "pro_fetch_web_search",      "output": "…" },
+    { "tool": "pro_fetch_academic_search", "output": "…" },
+    { "tool": "pro_fetch_news_search",     "output": "…" }
+  ],
+  "task": "RAG'ning joriy holatini qisqacha bayon qilib, har bir da'vo qayerdan kelganini ko'rsat"
 }}
 ```
 
