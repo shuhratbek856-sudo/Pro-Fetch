@@ -17,7 +17,7 @@ export default defineTool({
   name: 'pro_gh_org_repos',
   description: 'List the repositories of an organization',
   category: 'github',
-  inputSchema: ghSchema(['per_page', 'org'], ['org']),
+  inputSchema: ghSchema(['per_page', 'max_pages', 'org'], ['org']),
   async handler(input) {
     const p = view(input);
     if (!p.org) return fail('org parametri kerak.');

@@ -17,7 +17,7 @@ export default defineTool({
   name: 'pro_gh_tags_list',
   description: 'List the tags of a repository',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo'], ['owner', 'repo']),
+  inputSchema: ghSchema(['owner', 'repo', 'max_pages'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');

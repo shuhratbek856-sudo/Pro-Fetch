@@ -21,6 +21,9 @@ export default defineTool({
     properties: {
       url: { type: 'string', description: 'GraphQL endpoint' },
       query: { type: 'string', description: "GraphQL so'rov" },
+      // `JSON.stringify({ query, variables: p.variables ?? {} })`. The handler read it and the schema
+      // did not name it, so a query could not be parameterised through the tool at all.
+      variables: { type: 'object', description: 'GraphQL o‘zgaruvchilari', additionalProperties: true },
     },
     required: ['url', 'query'],
   },

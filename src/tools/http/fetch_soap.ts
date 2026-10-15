@@ -20,6 +20,9 @@ export default defineTool({
     properties: {
       url: { type: 'string', description: 'SOAP endpoint' },
       xml: { type: 'string', description: "SOAP XML so'rov" },
+      // Sent as the `SOAPAction` header. The handler read it, the schema did not name it, and a
+      // service that routes on SOAPAction would reject the call with no way to say which one.
+      action: { type: 'string', description: 'SOAPAction header qiymati' },
     },
     required: ['url', 'xml'],
   },

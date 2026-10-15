@@ -19,6 +19,9 @@ export default defineTool({
     type: 'object',
     properties: {
       url: { type: 'string', description: 'Manzil (URL)' },
+      // `fetchUrl(url, { maxTokens: Number(p.max_tokens ?? 8000) })`. Without it the response is cut at
+      // 8 000 tokens and the caller has no way to ask for more.
+      max_tokens: { type: 'number', description: 'Javob uzunligi limiti, token' },
     },
     required: ['url'],
   },

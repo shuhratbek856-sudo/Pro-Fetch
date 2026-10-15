@@ -15,6 +15,9 @@ export default defineTool({
     properties: {
       text: { type: 'string', description: 'Kirish matni' },
       text2: { type: 'string', description: 'Ikkinchi matn (diff uchun)' },
+      // Read as the fallback second value: the handler takes `text2` when given and `other` otherwise,
+      // so a caller who sent only `other` had a working comparison with no way to name it.
+      other: { type: 'string', description: 'Ikkinchi matn (text2 o‘rniga)' },
     },
     required: ['text'],
   },

@@ -17,7 +17,7 @@ export default defineTool({
   name: 'pro_gh_issues_search',
   description: 'Advanced issue search by label author and state',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo', 'per_page', 'query'], ['owner', 'repo', 'query']),
+  inputSchema: ghSchema(['owner', 'repo', 'per_page', 'max_pages', 'query'], ['owner', 'repo', 'query']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');

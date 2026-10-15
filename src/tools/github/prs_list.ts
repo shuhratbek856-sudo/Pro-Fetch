@@ -17,7 +17,7 @@ export default defineTool({
   name: 'pro_gh_prs_list',
   description: 'List pull requests with open closed or merged filters',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo', 'state', 'per_page'], ['owner', 'repo']),
+  inputSchema: ghSchema(['owner', 'repo', 'state', 'per_page', 'max_pages'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');

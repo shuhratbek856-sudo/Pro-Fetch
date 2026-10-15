@@ -153,7 +153,11 @@ for (const tool of allTools()) {
   for (const pattern of READ_PATTERNS) {
     for (const match of haystack.matchAll(pattern)) reads.add(match[1]);
   }
-  for (const match of haystack.matchAll(/\[\s*((?:'[a-z_0-9]+'\s*,\s*)*'[a-z_0-9]+'\s*)\]/g)) {
+  // Fallback key lists - `list(input, 'sources', 'items', 'documents')`. Recognised only inside a call
+  // that actually receives `input`, not as a bare array: `runCrawlTool` has
+  // `!['pause', 'resume', 'stop', 'list'].includes(action)`, and reading those as input keys reported
+  // all four as undeclared on all 22 crawl tools.
+  for (const match of haystack.matchAll(/\(\s*(?:input|p)\s*,\s*((?:'[a-z_0-9]+'\s*,\s*)*'[a-z_0-9]+')/g)) {
     for (const key of match[1].matchAll(/'([a-z_0-9]+)'/g)) reads.add(key[1]);
   }
   const undeclaredReads = [...reads]

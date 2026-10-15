@@ -23,6 +23,10 @@ export default defineTool({
       headers: { type: 'object', description: 'Qo‘shimcha HTTP headerlar', additionalProperties: { type: 'string' } },
       body: { type: 'string', description: 'Optional request body' },
       max_chars: { type: 'number', description: 'Javob matni limiti' },
+      // Read by `fetchWithOptions` - `Number(input.timeout_ms ?? 15_000)`,
+      // `Number(input.max_bytes ?? 2_000_000)` - so both were fixed values the caller could not set.
+      timeout_ms: { type: 'number', description: 'Download timeout, millisekund' },
+      max_bytes: { type: 'number', description: 'Yuklab olinadigan maksimal hajm, byte' },
     },
     required: ['url'],
     anyOf: [{ required: ['token'] }, { required: ['key_name'] }],

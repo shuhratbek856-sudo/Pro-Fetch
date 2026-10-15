@@ -20,7 +20,7 @@ export default defineTool({
     'license, contributors, commit activity, open issues and pull requests, releases, topics, ' +
     'CI status and security advisories. Use this instead of calling a dozen GitHub tools by hand.',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo', 'detail'], ['owner', 'repo']),
+  inputSchema: ghSchema(['owner', 'repo', 'detail', 'include_ci', 'include_security'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     const repository = strOrEmpty(p, 'repository').trim();

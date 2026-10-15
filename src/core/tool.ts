@@ -28,6 +28,20 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'collaboration',
   'storage',
   'productivity',
+  // These four were never in the list, so `applyCategorySchema` did not run for them and their
+  // schemas stayed open: 83 tools where any extra argument was silently accepted and ignored. An open
+  // schema is not merely lax - it cannot tell a caller which arguments do anything, and a typo like
+  // `max_tokns` was indistinguishable from a correct one.
+  //
+  // Closing them is only safe where the tool declares everything its code reads, which is what the
+  // audit's `undeclaredReads` arm measures. It found four real gaps, all fixed here:
+  // `max_tokens` on `fetch_url`, `variables` on `fetch_graphql`, `action` on `fetch_soap` and `other`
+  // on `diff_json`. The remaining four findings were the measurement's own noise - stopwords in
+  // `language_detect`, algorithm names in `hash_string`, a response header in `http_status`.
+  'data',
+  'admin',
+  'http',
+  'docs',
 ]);
 const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   apitest: [
@@ -162,6 +176,13 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     'action',
     'format',
     'output_path',
+    // Read by the shared `runCrawlTool` for every crawl tool: a filter pair and a list of pages.
+    'include',
+    'exclude',
+    'pattern',
+    'urls',
+    'items',
+    'results',
   ],
   extract: [
     'url',
@@ -205,6 +226,8 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     'selector',
     'timeout_ms',
     'output_path',
+    // Returned by `bytesFromInput` alongside the decoded bytes.
+    'mime_type',
   ],
   monitoring: [
     'url',
@@ -277,22 +300,22 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   ],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
-  pro_research_research_plan: ['query', 'sources'],
-  pro_research_research_iterate: ['query', 'sources', 'items', 'documents', 'results'],
-  pro_research_crawl_for_topic: ['query', 'limit'],
-  pro_research_gather_sources: ['query', 'limit'],
-  pro_research_verify_claim: ['claim', 'query', 'sources', 'limit'],
+  pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],
+  pro_research_research_iterate: ['query', 'topic', 'sources', 'items', 'documents', 'results'],
+  pro_research_crawl_for_topic: ['query', 'topic', 'limit'],
+  pro_research_gather_sources: ['query', 'topic', 'limit'],
+  pro_research_verify_claim: ['claim', 'query', 'sources', 'items', 'documents', 'results', 'limit'],
   pro_research_cross_check: ['sources', 'items', 'documents', 'text', 'claims', 'query'],
-  pro_research_extract_facts: ['text', 'content', 'document', 'sources'],
+  pro_research_extract_facts: ['text', 'content', 'document', 'sources', 'items', 'documents'],
   pro_research_build_knowledge_graph: ['sources', 'items', 'documents', 'text', 'content', 'query'],
   pro_research_dedupe_sources: ['sources', 'items', 'documents', 'results'],
   pro_research_rank_sources: ['sources', 'items', 'documents', 'results'],
   pro_research_citation_format: ['sources', 'items', 'documents', 'title', 'author', 'year', 'url', 'style', 'format'],
-  pro_research_research_summarize: ['text', 'content', 'notes', 'sources', 'items', 'documents', 'query'],
+  pro_research_research_summarize: ['text', 'content', 'notes', 'sources', 'items', 'documents', 'query', 'topic'],
   pro_research_timeline_build: ['sources', 'items', 'documents'],
   pro_research_compare_sources: ['sources', 'items', 'documents'],
   pro_research_gap_analysis: ['sources', 'items', 'documents', 'results'],
-  pro_research_research_report: ['text', 'content', 'notes', 'sources', 'items', 'documents', 'query'],
+  pro_research_research_report: ['text', 'content', 'notes', 'sources', 'items', 'documents', 'query', 'topic'],
   pro_research_hypothesis_generate: [
     'query',
     'topic',
@@ -309,8 +332,8 @@ const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_contradiction_detect: ['sources', 'items', 'documents', 'text', 'claims', 'query'],
   pro_research_source_bias_detect: ['text', 'content', 'claim', 'sources', 'items', 'documents'],
   pro_research_entity_resolve: ['sources', 'items', 'documents', 'text', 'content', 'query'],
-  pro_research_multi_lang_research: ['query', 'languages', 'limit'],
-  pro_research_fact_ledger: ['text', 'content', 'document', 'source', 'sources'],
+  pro_research_multi_lang_research: ['query', 'topic', 'languages', 'limit'],
+  pro_research_fact_ledger: ['text', 'content', 'document', 'source', 'sources', 'items', 'documents'],
   pro_research_followup_questions: ['query', 'topic', 'claim', 'sources', 'items', 'documents'],
   pro_research_evidence_strength: ['sources', 'items', 'documents', 'url', 'author', 'published', 'text'],
   pro_research_citation_graph: ['sources', 'items', 'documents'],
@@ -422,6 +445,9 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   base64: { type: 'string', description: 'Faylning Base64 kontenti' },
   // Alias `readBinarySource` accepts alongside `base64`: `str(input, 'base64', 'data_base64')`.
   data_base64: { type: 'string', description: 'Faylning Base64 kontenti (data_base64 aliasi)' },
+  // `bytesFromInput` returns it alongside the decoded bytes: `contentType: str(input, 'mime_type')`.
+  // Undeclared, a caller supplying base64 had no way to say what type it was.
+  mime_type: { type: 'string', description: 'Manba faylning MIME turi' },
   selector: { type: 'string', description: 'CSS/XPath selector' },
   xpath: { type: 'string', description: 'XPath ifodasi' },
   script: { type: 'string', description: 'Browser sahifasida bajariladigan JavaScript' },
@@ -441,6 +467,14 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   // advertised an alternative that `additionalProperties: false` made unreachable.
   documents: { type: 'array', description: 'Manbalar ro‘yxati (documents aliasi)', items: { type: 'object' } },
   items: { type: 'array', description: "Elementlar ro'yxati", items: {} },
+  // `runCrawlTool` reads these through aliases rather than under one canonical name:
+  // `str(input, 'include', 'pattern')`, `str(input, 'exclude')` and
+  // `arr(input, 'pages', 'results', 'items', 'urls')`. The crawl vocabulary offered none of them, so a
+  // caller could not pass a filter or a list of pages to any crawl tool.
+  include: { type: 'string', description: 'Qamrab olinadigan naqsh (pattern bilan bir xil)' },
+  exclude: { type: 'string', description: 'Chetlab o‘tiladigan naqsh' },
+  pattern: { type: 'string', description: 'Qamrab olinadigan naqsh (include bilan bir xil)' },
+  urls: { type: 'array', description: 'Manzillar ro‘yxati', items: { type: 'string' } },
   languages: { type: 'array', description: 'Til kodlari', items: { type: 'string' } },
   target_lang: { type: 'string', description: 'Maqsad til kodi, masalan uz yoki en' },
   source_lang: { type: 'string', description: 'Manba til kodi' },

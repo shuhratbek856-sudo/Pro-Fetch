@@ -158,6 +158,15 @@ describe('shared dispatchers resolve per tool, not per pack', () => {
     expect(properties('pro_browser_browser_screenshot')).toContain('output_path');
   });
 
+  it('every tool in the registry rejects properties it does not declare', () => {
+    // `data`, `admin`, `http` and `docs` were never in CATEGORY_SCHEMA_CATEGORIES, so
+    // `applyCategorySchema` did not run for them and their 83 schemas stayed open. An open schema
+    // cannot tell a caller which arguments do anything: a typo like `max_tokns` was
+    // indistinguishable from a correct one.
+    const open = allTools().filter((candidate) => candidate.inputSchema.additionalProperties !== false);
+    expect(open.map((candidate) => candidate.name)).toEqual([]);
+  });
+
   it('no tool advertises a property its resolved code never reads', () => {
     // The invariant the whole pass was measured against, asserted across the registry rather than
     // left to `npm run audit:schema` alone: a schema that lists an unread property tells a caller

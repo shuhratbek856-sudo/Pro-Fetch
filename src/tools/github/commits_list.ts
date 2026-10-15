@@ -17,7 +17,7 @@ export default defineTool({
   name: 'pro_gh_commits_list',
   description: 'List commits with author and message filters',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo', 'path', 'per_page', 'sha'], ['owner', 'repo']),
+  inputSchema: ghSchema(['owner', 'repo', 'path', 'per_page', 'max_pages', 'sha'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');

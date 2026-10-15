@@ -34,6 +34,11 @@ export const GH_PROPERTIES: Record<string, Record<string, unknown>> = {
   ref: { type: 'string', description: 'Branch, tag yoki SHA' },
   state: { type: 'string', description: 'open | closed | all' },
   per_page: { type: 'number', description: 'Sahifadagi natija soni (1–100, default 30)' },
+  // `assertGithubInput` validates it for every github tool - `positiveInt(input, 'max_pages', 10_000)`
+  // in src/core/github-input-guard.ts - so the code accepts it while the schema never named it. With
+  // these schemas closed a caller could not send it, and the pagination ceiling was fixed at whatever
+  // `per_page` alone allowed.
+  max_pages: { type: 'number', description: 'Ko‘rib chiqiladigan maksimal sahifa soni' },
   page: { type: 'number', description: 'Sahifa raqami, 1 dan boshlanadi' },
   query: { type: 'string', description: 'Qidiruv so‘rovi' },
   user: { type: 'string', description: 'Foydalanuvchi login' },
@@ -48,6 +53,10 @@ export const GH_PROPERTIES: Record<string, Record<string, unknown>> = {
   // Not a GitHub addressing property: this is the composite output-budget knob every composite in
   // the smart profile exposes, and `pro_repo_audit` reads it through `detailMode`.
   detail: { type: 'string', description: 'Natijaning batafsilligi', enum: ['summary', 'full'] },
+  // Read by `repo_audit` to decide whether to run the CI and security sections. Undeclared, so a
+  // caller asking for a CI-inclusive audit had the flag silently dropped.
+  include_ci: { type: 'boolean', description: 'CI holatini ham kiritish' },
+  include_security: { type: 'boolean', description: 'Xavfsizlik hisobotini ham kiritish' },
 };
 
 export type GhPropertyName = keyof typeof GH_PROPERTIES;

@@ -11,7 +11,7 @@ export default defineTool({
   name: 'pro_gh_repo_contributors',
   description: 'List repository contributors ranked by commit count',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo', 'per_page'], ['owner', 'repo']),
+  inputSchema: ghSchema(['owner', 'repo', 'per_page', 'max_pages'], ['owner', 'repo']),
   async handler(input) {
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');
