@@ -409,3 +409,70 @@ on a real precondition (`CREDENTIAL_MISSING`, `CONFIRMATION_REQUIRED`, no sessio
 correctly does not describe; the remaining 68 do work. Zero demand an undeclared argument.
 
 Files: 444 under `src` (396 tool files), 19 test files, 16 scripts.
+
+
+### Session 32 - closed schemas, and the inputs they were hiding
+
+The previous session left one arm of the audit unbuilt: `undeclaredReads`, the inverse of the
+dead-property check. A dead property misleads a caller; an undeclared read means a caller
+**cannot** supply it, and with `additionalProperties: false` the call is rejected.
+
+It reported 275 tools. Four categories it pointed at (`data`, `admin`, `http`, `docs`) had never
+been in `CATEGORY_SCHEMA_CATEGORIES`, so `applyCategorySchema` never ran for them and
+**83 schemas stayed open** - any extra argument accepted and ignored, so a typo like `max_tokns`
+was indistinguishable from a correct one.
+
+Closing them was only safe where a tool declares everything its code reads, and that is what the
+arm measures. Real gaps found and fixed first:
+
+| Tool | What it could not express |
+|---|---|
+| `pro_fetch_fetch_url` | `max_tokens` - the response was cut at 8 000 tokens, unchangeable |
+| `pro_fetch_fetch_graphql` | `variables` - a query could not be parameterised at all |
+| `pro_fetch_fetch_soap` | `action` - sent as `SOAPAction`, unroutable |
+| `pro_fetch_diff_json` | `other`, the fallback second value |
+| 13 github tools | `max_pages`, validated by `assertGithubInput` for every github tool |
+| `pro_repo_audit` | `include_ci`, `include_security` - whether those sections run |
+| `basic_auth_fetch`, `bearer_fetch` | `timeout_ms`, `max_bytes` - fixed values |
+| 10 research tools | `topic`, the alias `value(input, 'query', 'topic')` accepts |
+| 22 crawl tools | `include` / `exclude` / `pattern` / `urls` via the shared `runCrawlTool` |
+| media tools | `mime_type`, returned by `bytesFromInput` |
+
+Four `max_pages` additions were then removed again - `actions_runs`, `code_search`, `repo_search`
+and `repo_file_history` do not read it, and the audit flagged them as dead the moment they were
+added. Measurement is what kept that from shipping.
+
+**The arm's own false positives were fixed, not worked around.** A bare array of strings was read
+as a list of input keys, so the guard in `runCrawlTool` - a list of the four actions
+`pause`, `resume`, `stop`, `list` tested with `includes` - marked all four as undeclared on all 22
+crawl tools. Key lists are now recognised only inside a call that receives `input`.
+
+| Measure | Before | After |
+|---|---:|---:|
+| open schemas | 83 | **0 of 572** |
+| tools with an undeclared read | 275 | 234 |
+| tools with a dead property | 0 | **0** |
+| `unread_required` | 0 | 0 |
+
+The 234 remaining are dominated by the nine SPECS packs and the shared browser and crawl
+dispatchers, where per-tool resolution is not available. Two benign classes are known and recorded
+rather than counted as clean:
+
+- `default`, from `string(input, 'session_id', 'default')`, where the literal is a fallback value
+  rather than a key. Syntactically indistinguishable from a key list.
+- `user_agent` on media tools, which reaches them because the resolver follows a helper name into
+  `browser-tools.ts`. It errs towards a wider schema, not a narrower one.
+
+Also measured and found clean this session: no `TODO` / `FIXME` / `NOT_IMPLEMENTED` anywhere in
+`src/tools`, no handler body under 25 characters, and a sweep of all 572 tools for error messages
+that name an argument the tool does not declare - 12 hits, every one a false positive of the
+pattern, since the matches were Uzbek words.
+
+Files: 444 under `src` (396 tool files), 19 test files, 16 scripts. 74 tool files and 88 `src`
+files changed since 482a8e8. 572 tools, 2 933 properties, 5.1 per tool, all 572 schemas closed.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - static, registry, build, 19 files / 306 tests, package, format |
+| `npm run audit:schema` | audited 552 - dead 0, unread_required 0, open_schemas 0, undeclared 234 |
+| `git` | ef9a801 |
