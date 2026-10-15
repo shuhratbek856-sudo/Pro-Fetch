@@ -1,8 +1,8 @@
 # pro-fetch-mcp
 
-Professional fetch, deep-research va GitHub MCP serveri — **572 tool, 26 kategoriya, bitta xavfsizlik enginei**.
+Professional fetch, deep-research va GitHub MCP serveri — **577 tool, 26 kategoriya, bitta xavfsizlik enginei**.
 
-Modelga kerak bo'lgan tool beriladi: standart `smart` profil **11 ta meta-tool** orqali barcha 572 ni tarkibiy tarzda ochadi — MCP mijoz schema'lar botinishiga yo'l qo'ymaydi.
+Modelga kerak bo'lgan tool beriladi: standart `smart` profil **11 ta meta-tool** orqali barcha 577 ni tarkibiy tarzda ochadi — MCP mijoz schema'lar botinishiga yo'l qo'ymaydi.
 
 ![npm version](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm)
 ![node](https://img.shields.io/badge/node-%3E%3D22.13-blue)
@@ -11,7 +11,7 @@ Modelga kerak bo'lgan tool beriladi: standart `smart` profil **11 ta meta-tool**
 
 ## Nima uchun
 
-- **572 ishlaydigan tool** — fetch, crawl, ekstraksiya, konvertatsiya, OCR, qidiruv, tadqiqot, git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite, xavfsizlik, Slack/Jira/Linear/Notion, storage va yana. Har biri haqiqiy amalga oshirilgan, stub emas.
+- **577 ishlaydigan tool** — fetch, crawl, ekstraksiya, konvertatsiya, OCR, qidiruv, tadqiqot, git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite, xavfsizlik, Slack/Jira/Linear/Notion, storage va yana. Har biri haqiqiy amalga oshirilgan, stub emas.
 - **Smart System** — 11 ta meta-tool (`pro_capability_call`, `pro_capability_map`, `pro_research_deep`, …) barcha katalogni bitta round trip'da ishga tushiradi. Batch ijro, BM25 vazifa→tool discovery va `detail` rejimi 17-qadamli auditni 43 KB dan 3.8 KB ga qisqartirdi (**o'lchangan: 91% token tejash**).
 - **Xavfsizlik — ogohlantirish emas, engine** — DNS pinning'li SSRF himoyasi, symlink kuzatiladigan workspace sandboxi, har bir chaqiruvda permission siyosati, cross-origin redirect'larda credential stripping, HTTPS→HTTP downgrade blokirovkasi. Har bir kompozit chaqiruv bir xil `dispatch()` darvozasidan o'tadi.
 - **Nobud bo'lmaydi** — native binary'lar (sharp, canvas, tesseract) lazy yuklanadi; git/docker/kubectl yo'qligida aniq `COMMAND_NOT_FOUND`; hech biri o'rnatilmagan hostda ham server ishga tushib 500+ tool xizmat qiladi.
@@ -136,7 +136,7 @@ MAX rejimda yana bitta quvvat chegarasi saqlanadi: `PRO_FETCH_MAX_PER_HOST_CONCU
 ## Tool katalogi
 
 <details>
-<summary><b>Barcha 26 kategoriya — 572 tool</b></summary>
+<summary><b>Barcha 26 kategoriya — 577 tool</b></summary>
 
 | Kategoriya | Tool | Kategoriya | Tool |
 |---|---:|---|---:|
@@ -163,7 +163,7 @@ MAX rejimda yana bitta quvvat chegarasi saqlanadi: `PRO_FETCH_MAX_PER_HOST_CONCU
 | `minimal` | 73 | http, convert, admin |
 | `standard` (default) | 178 | + github, search, extract, auth |
 | `smart` | 11 | yuqoridagi Smart System |
-| `full` | 572 | hammasi |
+| `full` | 577 | hammasi |
 
 Haqiqiy kirish nazorati environment'da: `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_DENIED_TOOLS`, `PRO_FETCH_DENIED_CATEGORIES`, `PRO_FETCH_READ_ONLY`, `PRO_FETCH_MUTATION_ALLOWLIST`, `PRO_FETCH_OUTPUT_ROOT` — har bir chaqiruvda, meta-executor orqali chaqirilganlarda ham, qo'llaniladi.
 
@@ -199,10 +199,10 @@ npm run check   # verify:static → verify:registry → build → test → verif
 ```
 
 - **333 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
-- `verify:registry` haqiqiy registry'ni yuklab **572 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
-- `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 572 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
+- `verify:registry` haqiqiy registry'ni yuklab **577 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
+- `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 577 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
 - `verify:package` nashr paketida shebang, `files` allowlist va **nol credential/manba fayl** ekanligini isbotlaydi.
-- MCP protokoli o'zi jonli sinovdan o'tkazildi: `initialize`, `tools/list` (572/572 unique, valid schemalar), har bir smart tool uchun `tools/call`, yashirin tool'lar rad etildi, stdout toza JSON-RPC.
+- MCP protokoli o'zi jonli sinovdan o'tkazildi: `initialize`, `tools/list` (577/577 unique, valid schemalar), har bir smart tool uchun `tools/call`, yashirin tool'lar rad etildi, stdout toza JSON-RPC.
 
 ## Litsenziya
 

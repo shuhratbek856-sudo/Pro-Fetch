@@ -15,6 +15,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'crawl',
   'extract',
   'i18n',
+  'llm',
   'media',
   'monitoring',
   'research',
@@ -229,6 +230,20 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     // Returned by `bytesFromInput` alongside the decoded bytes.
     'mime_type',
   ],
+  // The LLM category reads only what the gateway and these handlers read. Listed here because
+  // `applyCategorySchema` does not run for a category that is not in `CATEGORY_SCHEMA_CATEGORIES`,
+  // which leaves its schemas open: a typo like `max_tokns` becomes indistinguishable from `max_tokens`.
+  // The LLM category reads only what the gateway and these handlers read. Listed here because
+  // `applyCategorySchema` does not run for a category that is not in `CATEGORY_SCHEMA_CATEGORIES`,
+  // which leaves its schemas open: a typo like `max_tokns` becomes indistinguishable from `max_tokens`.
+  //
+  // `llm` is listed with an *empty* vocabulary on purpose. Being present is what matters: it is what
+  // makes `applyCategorySchema` run and close the schemas. Every tool in the category declares its
+  // own properties explicitly, so a shared list only ever added arguments to tools that do not read
+  // them - `pro_llm_providers` takes no input at all, and the list had put `model`, `timeout_ms` and
+  // `max_chars` on it. A dead property is worse than a missing one: it advertises an argument that
+  // silently does nothing.
+  llm: [],
   monitoring: [
     'url',
     'url2',
