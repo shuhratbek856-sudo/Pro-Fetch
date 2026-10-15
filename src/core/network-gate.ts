@@ -27,13 +27,13 @@ class Semaphore {
   }
 }
 
-const totalGate = new Semaphore(boundedEnv('PRO_FETCH_MAX_NETWORK_CONCURRENCY', 32, 1, 256));
+const totalGate = new Semaphore(boundedEnv('PRO_FETCH_MAX_NETWORK_CONCURRENCY', 64, 1, 4096));
 const hostGates = new Map<string, Semaphore>();
 const activeHosts = new Map<string, number>();
 function hostGate(host: string): Semaphore {
   let gate = hostGates.get(host);
   if (!gate) {
-    gate = new Semaphore(boundedEnv('PRO_FETCH_MAX_PER_HOST_CONCURRENCY', 4, 1, 64));
+    gate = new Semaphore(boundedEnv('PRO_FETCH_MAX_PER_HOST_CONCURRENCY', 8, 1, 512));
     hostGates.set(host, gate);
   }
   return gate;

@@ -100,7 +100,7 @@ export function assertToolAllowed(tool: ToolDefinition, input: Record<string, un
   } catch {
     throw new PolicyError('Tool input JSON formatida bo‘lishi kerak.');
   }
-  const maxInputBytes = boundedEnv('PRO_FETCH_MAX_INPUT_BYTES', 2 * 1024 * 1024, 1024, 20 * 1024 * 1024);
+  const maxInputBytes = boundedEnv('PRO_FETCH_MAX_INPUT_BYTES', 8 * 1024 * 1024, 1024, 512 * 1024 * 1024);
   if (Buffer.byteLength(serialized ?? '', 'utf8') > maxInputBytes)
     throw new PolicyError(`Tool input hajmi ${maxInputBytes} baytdan oshdi.`);
   // Order matters, and the first attempt had it backwards.

@@ -43,7 +43,7 @@ export class ExecutionError extends Error {
   }
 }
 
-const globalGate = new Semaphore(boundedEnv('PRO_FETCH_MAX_CONCURRENCY', 32, 1, 256));
+const globalGate = new Semaphore(boundedEnv('PRO_FETCH_MAX_CONCURRENCY', 64, 1, 4096));
 const categoryGates = new Map<string, Semaphore>();
 const counters = new Map<
   string,
@@ -63,7 +63,7 @@ const inFlight = new Map<string, number>();
 function gateFor(category: string): Semaphore {
   let gate = categoryGates.get(category);
   if (!gate) {
-    gate = new Semaphore(boundedEnv('PRO_FETCH_MAX_CATEGORY_CONCURRENCY', 8, 1, 128));
+    gate = new Semaphore(boundedEnv('PRO_FETCH_MAX_CATEGORY_CONCURRENCY', 16, 1, 2048));
     categoryGates.set(category, gate);
   }
   return gate;
@@ -130,7 +130,7 @@ export async function executeTool<T>(
   try {
     globalRelease = await globalGate.acquire();
     inFlight.set(tool.category, (inFlight.get(tool.category) ?? 0) + 1);
-    const timeoutMs = boundedEnv('PRO_FETCH_TOOL_TIMEOUT_MS', 180_000, 1_000, 900_000);
+    const timeoutMs = boundedEnv('PRO_FETCH_TOOL_TIMEOUT_MS', 600_000, 1_000, 86_400_000);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let abandonTimer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
@@ -163,7 +163,7 @@ export async function executeTool<T>(
             // Handlers are not cancellable, so slots stay reserved while a timed-out handler is still
             // running (prevents over-commit). That reservation is bounded: a handler that never settles
             // must not hold a category/global slot forever, so force-release after a grace period.
-            const graceMs = boundedEnv('PRO_FETCH_ABANDON_GRACE_MS', 30_000, 100, 600_000);
+            const graceMs = boundedEnv('PRO_FETCH_ABANDON_GRACE_MS', 60_000, 100, 3_600_000);
             abandonTimer = setTimeout(() => {
               if (!released)
                 log(

@@ -350,7 +350,7 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
     10 * 60_000,
   );
   const maxBytes = boundedOption(
-    opts.maxBytes ?? (Number(process.env.PRO_FETCH_MAX_BYTES) || 2 * 1024 * 1024),
+    opts.maxBytes ?? (Number(process.env.PRO_FETCH_MAX_BYTES) || 16 * 1024 * 1024),
     2 * 1024 * 1024,
     1,
     512 * 1024 * 1024,
