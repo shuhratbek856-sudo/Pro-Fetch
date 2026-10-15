@@ -7,12 +7,12 @@ A model gets the tools it actually needs: the default `smart` profile exposes **
 ![npm version](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm)
 ![node](https://img.shields.io/badge/node-%3E%3D22.13-blue)
 ![license](https://img.shields.io/npm/l/pro-fetch-mcp)
-![tests](https://img.shields.io/badge/tests-242%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-306%20passing-brightgreen)
 
 ## Why
 
 - **572 working tools** — fetch, crawl, extract, convert, OCR, search, research, git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite, security, Slack/Jira/Linear/Notion, storage, and more. Every one is a real implementation, not a stub.
-- **Smart System** — 10 meta-tools (`pro_capability_call`, `pro_capability_map`, `pro_research_deep`, …) that dispatch to the full catalog in a single round trip. Batch execution, BM25 task-to-tool discovery, and a `detail` mode that cut a 17-step audit from 43 KB to 3.8 KB (**91% token savings**, measured).
+- **Smart System** — 11 meta-tools (`pro_capability_call`, `pro_capability_map`, `pro_research_deep`, …) that dispatch to the full catalog in a single round trip. Batch execution, BM25 task-to-tool discovery, and a `detail` mode that cut a 17-step audit from 43 KB to 3.8 KB (**91% token savings**, measured).
 - **Security is the engine, not a warning** — SSRF guard with DNS pinning, workspace sandbox with symlink tracking, per-call permission policy, credential stripping on cross-origin redirects, HTTPS→HTTP downgrade blocking. Every composite call passes through the same `dispatch()` gate.
 - **Degrades, never dies** — native binaries (sharp, canvas, tesseract) are lazy-loaded; missing git/docker/kubectl produce a clear `COMMAND_NOT_FOUND`; the server boots and serves 500+ tools on a host with none of them.
 
@@ -50,7 +50,7 @@ Credentials go in a `.env` next to the server (or `*_FILE` env vars pointing at 
 
 ## The Smart System
 
-Most MCP clients choke on hundreds of tool schemas. `smart` (the default) shows the model **10 tools** that compose everything:
+Most MCP clients choke on hundreds of tool schemas. `smart` (the default) shows the model **11 tools** that compose everything:
 
 | Tool | What it does |
 |---|---|
@@ -97,7 +97,7 @@ Three round trips become one:
 | devops (docker/kubectl/terraform/npm) | 24 | docs (arXiv/npm/PyPI/RFC/PubMed) | 15 |
 | database (SQLite/Postgres/MySQL/Redis) | 24 | auth (sessions & keys, in-memory only) | 12 |
 | security (OSV/secret scan/SBOM) | 24 | apitest (OpenAPI/GraphQL/WSDL) | 12 |
-| admin (discovery, metrics, policy) | 23 | i18n | 12 |
+| admin (discovery, metrics, policy) | 24 | i18n | 12 |
 | git | 23 | monitoring | 10 |
 
 </details>
@@ -106,9 +106,9 @@ Three round trips become one:
 
 | Profile | Tools | Contents |
 |---|---:|---|
-| `minimal` | 72 | http, convert, admin |
-| `standard` (default) | 177 | + github, search, extract, auth |
-| `smart` | 10 | the Smart System above |
+| `minimal` | 73 | http, convert, admin |
+| `standard` (default) | 178 | + github, search, extract, auth |
+| `smart` | 11 | the Smart System above |
 | `full` | 572 | everything |
 
 Real access control lives in the environment: `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_DENIED_TOOLS`, `PRO_FETCH_DENIED_CATEGORIES`, `PRO_FETCH_READ_ONLY`, `PRO_FETCH_MUTATION_ALLOWLIST`, `PRO_FETCH_OUTPUT_ROOT` — enforced on every call, including calls made through the meta-executor.
@@ -144,8 +144,9 @@ npm ci
 npm run check   # verify:static → verify:registry → build → test → verify:package → format:check
 ```
 
-- **242 tests** (Vitest): SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, and live provider-failure behaviour.
+- **306 tests** (Vitest): SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, and live provider-failure behaviour.
 - `verify:registry` boots the real registry and asserts **572 tools / 26 categories / all four profile counts**.
+- `npm run audit:schema` checks every schema against the code behind it: a property a tool's handler never reads, or a required argument nothing reads, or an open schema that accepts anything. It currently reports **0 dead properties and 0 unread required across 552 audited tools**, and all 572 schemas reject properties they do not declare.
 - `verify:package` proves the published tarball has the shebang, the `files` allowlist, and **zero credentials or source files**.
 - The MCP protocol itself was exercised live: `initialize`, `tools/list` (572/572 unique, valid schemas), `tools/call` for every smart tool, hidden tools refused, clean JSON-RPC on stdout.
 

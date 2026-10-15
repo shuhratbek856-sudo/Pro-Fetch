@@ -7,12 +7,12 @@ Modelga kerak bo'lgan tool beriladi: standart `smart` profil **11 ta meta-tool**
 ![npm version](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm)
 ![node](https://img.shields.io/badge/node-%3E%3D22.13-blue)
 ![license](https://img.shields.io/npm/l/pro-fetch-mcp)
-![tests](https://img.shields.io/badge/tests-242%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-306%20passing-brightgreen)
 
 ## Nima uchun
 
 - **572 ishlaydigan tool** — fetch, crawl, ekstraksiya, konvertatsiya, OCR, qidiruv, tadqiqot, git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite, xavfsizlik, Slack/Jira/Linear/Notion, storage va yana. Har biri haqiqiy amalga oshirilgan, stub emas.
-- **Smart System** — 10 ta meta-tool (`pro_capability_call`, `pro_capability_map`, `pro_research_deep`, …) barcha katalogni bitta round trip'da ishga tushiradi. Batch ijro, BM25 vazifa→tool discovery va `detail` rejimi 17-qadamli auditni 43 KB dan 3.8 KB ga qisqartirdi (**o'lchangan: 91% token tejash**).
+- **Smart System** — 11 ta meta-tool (`pro_capability_call`, `pro_capability_map`, `pro_research_deep`, …) barcha katalogni bitta round trip'da ishga tushiradi. Batch ijro, BM25 vazifa→tool discovery va `detail` rejimi 17-qadamli auditni 43 KB dan 3.8 KB ga qisqartirdi (**o'lchangan: 91% token tejash**).
 - **Xavfsizlik — ogohlantirish emas, engine** — DNS pinning'li SSRF himoyasi, symlink kuzatiladigan workspace sandboxi, har bir chaqiruvda permission siyosati, cross-origin redirect'larda credential stripping, HTTPS→HTTP downgrade blokirovkasi. Har bir kompozit chaqiruv bir xil `dispatch()` darvozasidan o'tadi.
 - **Nobud bo'lmaydi** — native binary'lar (sharp, canvas, tesseract) lazy yuklanadi; git/docker/kubectl yo'qligida aniq `COMMAND_NOT_FOUND`; hech biri o'rnatilmagan hostda ham server ishga tushib 500+ tool xizmat qiladi.
 
@@ -50,7 +50,7 @@ Kalitlar server yonidagi `.env` da (yoki qiymat o'rnini ko'rsatuvchi `*_FILE` o'
 
 ## Smart System
 
-Ko'p MCP mijoz yuzlab tool schema'iga chidamaydi. `smart` (standart) modelga **10 ta tool** ko'rsatadi, ular hammasini tarkib qiladi:
+Ko'p MCP mijoz yuzlab tool schema'iga chidamaydi. `smart` (standart) modelga **11 ta tool** ko'rsatadi, ular hammasini tarkib qiladi:
 
 | Tool | Nima qiladi |
 |---|---|
@@ -97,7 +97,7 @@ Ko'p MCP mijoz yuzlab tool schema'iga chidamaydi. `smart` (standart) modelga **1
 | devops (docker/kubectl/terraform/npm) | 24 | docs (arXiv/npm/PyPI/RFC/PubMed) | 15 |
 | database (SQLite/Postgres/MySQL/Redis) | 24 | auth (session va kalitlar, faqat xotirada) | 12 |
 | security (OSV/secret scan/SBOM) | 24 | apitest (OpenAPI/GraphQL/WSDL) | 12 |
-| admin (discovery, metrics, policy) | 23 | i18n | 12 |
+| admin (discovery, metrics, policy) | 24 | i18n | 12 |
 | git | 23 | monitoring | 10 |
 
 </details>
@@ -106,9 +106,9 @@ Ko'p MCP mijoz yuzlab tool schema'iga chidamaydi. `smart` (standart) modelga **1
 
 | Profil | Tool | Tarkibi |
 |---|---:|---|
-| `minimal` | 72 | http, convert, admin |
-| `standard` (default) | 177 | + github, search, extract, auth |
-| `smart` | 10 | yuqoridagi Smart System |
+| `minimal` | 73 | http, convert, admin |
+| `standard` (default) | 178 | + github, search, extract, auth |
+| `smart` | 11 | yuqoridagi Smart System |
 | `full` | 572 | hammasi |
 
 Haqiqiy kirish nazorati environment'da: `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_DENIED_TOOLS`, `PRO_FETCH_DENIED_CATEGORIES`, `PRO_FETCH_READ_ONLY`, `PRO_FETCH_MUTATION_ALLOWLIST`, `PRO_FETCH_OUTPUT_ROOT` — har bir chaqiruvda, meta-executor orqali chaqirilganlarda ham, qo'llaniladi.
@@ -144,8 +144,9 @@ npm ci
 npm run check   # verify:static → verify:registry → build → test → verify:package → format:check
 ```
 
-- **242 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
+- **306 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
 - `verify:registry` haqiqiy registry'ni yuklab **572 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
+- `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 572 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
 - `verify:package` nashr paketida shebang, `files` allowlist va **nol credential/manba fayl** ekanligini isbotlaydi.
 - MCP protokoli o'zi jonli sinovdan o'tkazildi: `initialize`, `tools/list` (572/572 unique, valid schemalar), har bir smart tool uchun `tools/call`, yashirin tool'lar rad etildi, stdout toza JSON-RPC.
 

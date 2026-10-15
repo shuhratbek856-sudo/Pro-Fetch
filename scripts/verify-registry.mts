@@ -14,8 +14,36 @@ const manifest = JSON.parse(await readFile(path.join(root, 'scripts/tool-counts.
   total: number;
   categories: Record<string, number>;
   profiles: Record<string, number | null>;
+  testCount: number;
 };
 const failures: string[] = [];
+
+/**
+ * The published counts in both READMEs must match the manifest.
+ *
+ * The manifest is already checked against the running registry below, so it cannot be wrong. What
+ * could be wrong is the README: both files stated 242 tests, a `smart` profile of 10, `minimal` 72
+ * and `standard` 177 after every one of those had changed, because nothing compared the prose to the
+ * numbers. A reader is the one who pays for that.
+ */
+for (const readme of ['README.md', 'README.uz.md']) {
+  const text = await readFile(path.join(root, readme), 'utf8');
+  const claims: Array<[string, RegExp, number]> = [
+    ['test count', /\*\*(\d+) tests?\*\*/i, manifest.testCount],
+    ['test count (uz)', /\*\*(\d+) ta test\*\*/i, manifest.testCount],
+    ['smart profile', /`smart`\s*\|\s*(\d+)/, manifest.profiles.smart],
+    ['minimal profile', /`minimal`\s*\|\s*(\d+)/, manifest.profiles.minimal],
+    ['standard profile', /`standard`[^|]*\|\s*(\d+)/, manifest.profiles.standard],
+    ['total tools', /(\d+) MCP tool/, manifest.total],
+  ];
+  for (const [label, pattern, expected] of claims) {
+    if (expected == null) continue;
+    const found = pattern.exec(text);
+    if (found && Number(found[1]) !== expected) {
+      failures.push(`${readme} ${label}: states ${found[1]}, manifest says ${expected}`);
+    }
+  }
+}
 const tools = allTools();
 const actual: Record<string, number> = {};
 const names = new Set<string>();
