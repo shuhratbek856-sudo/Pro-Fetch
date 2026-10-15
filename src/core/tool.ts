@@ -415,7 +415,9 @@ const ARCHIVE_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_fetch_cache_get: ['key'],
   pro_fetch_cache_search: ['needle'],
   pro_fetch_cache_put: ['key', 'value', 'ttl_ms'],
-  pro_fetch_cache_delete: ['pattern'],
+  // `pro_fetch_cache_delete` does not exist in the registry; deletion and TTL live in
+  // `pro_fetch_cache_tune`. The stale entry could never match, so it silently narrowed nothing.
+  pro_fetch_cache_tune: ['pattern', 'ttl_ms'],
   pro_fetch_cache_clear: [],
   pro_fetch_cache_stats: [],
   pro_fetch_offline_browse: ['url', 'query', 'limit'],
@@ -427,7 +429,7 @@ const ARCHIVE_TOOL_REQUIREMENTS: Record<string, string[]> = {
   pro_fetch_cache_get: ['key'],
   pro_fetch_cache_search: ['needle'],
   pro_fetch_cache_put: ['key', 'value'],
-  pro_fetch_cache_delete: ['pattern'],
+  pro_fetch_cache_tune: ['pattern', 'ttl_ms'],
   pro_fetch_archive_org_fetch: ['url'],
   pro_fetch_archive_org_save: ['url'],
   pro_fetch_google_cache_fetch: ['url'],
@@ -701,7 +703,10 @@ function applyCategorySchema(def: ToolDefinition): void {
   const URL_OR_TEXT_ANYOF = [{ required: ['url'] }, { required: ['text'] }];
 
   const URL_OR_TEXT_TOOLS = new Set([
-    'pro_fetch_audit_page',
+    // `pro_audit_page` is the registered name. This entry read `pro_fetch_audit_page`, which matched
+    // nothing, so the audit page never received its url-or-text alternative even though it resolves
+    // through the same `sourceFrom(input)` as the fourteen tools below.
+    'pro_audit_page',
     'pro_fetch_comment_strip',
     'pro_fetch_css_select',
     'pro_fetch_email_extract',

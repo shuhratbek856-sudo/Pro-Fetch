@@ -48,6 +48,9 @@ export const GH_PROPERTIES: Record<string, Record<string, unknown>> = {
   pr_number: { type: 'number', description: 'Pull request raqami' },
   sha: { type: 'string', description: 'Commit SHA' },
   base: { type: 'string', description: 'Taqqoslash bazasi (masalan main)' },
+  // `pro_repo_audit` reads it, and `pro_pr_review` already uses this spelling. Declaring it here is
+  // what lets a caller name the repository the way the tool's own description describes it.
+  repository: { type: 'string', description: 'Repository manzili, "owner/repo" shaklida' },
   head: { type: 'string', description: 'Taqqoslash boshi (masalan feature-branch)' },
   gist_id: { type: 'string', description: 'Gist ID' },
   // Not a GitHub addressing property: this is the composite output-budget knob every composite in

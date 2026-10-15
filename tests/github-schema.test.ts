@@ -46,11 +46,16 @@ describe('github schema precision', () => {
   it('every repository-scoped tool declares a requirement', () => {
     // A tool that takes no required argument at all is the signature of the old blanket block: it
     // means nothing tells the caller what must be supplied.
+    //
+    // An `anyOf` counts as declaring one. `pro_repo_audit` states its requirement as alternatives -
+    // `repository` *or* `owner` + `repo` - because either one addresses the repository, and
+    // `required: ['owner','repo']` rejected the spelling its own description invites.
     const offenders = github()
       .filter((tool) => {
         const required = tool.inputSchema.required ?? [];
+        const anyOf = tool.inputSchema.anyOf ?? [];
         const declared = Object.keys(tool.inputSchema.properties ?? {});
-        return required.length === 0 && declared.length > 0;
+        return required.length === 0 && anyOf.length === 0 && declared.length > 0;
       })
       .map((tool) => tool.name);
 

@@ -20,13 +20,28 @@ export default defineTool({
     'license, contributors, commit activity, open issues and pull requests, releases, topics, ' +
     'CI status and security advisories. Use this instead of calling a dozen GitHub tools by hand.',
   category: 'github',
-  inputSchema: ghSchema(['owner', 'repo', 'detail', 'include_ci', 'include_security'], ['owner', 'repo']),
+  inputSchema: {
+    ...ghSchema(['owner', 'repo', 'repository', 'detail', 'include_ci', 'include_security'], []),
+    // Either spelling addresses the repository, so `required: ['owner','repo']` rejected the
+    // `repository` that this tool's own description invites. An `anyOf` states the choice where
+    // `required` would demand both.
+    anyOf: [{ required: ['repository'] }, { required: ['owner', 'repo'] }],
+  },
   async handler(input) {
     const p = view(input);
-    const repository = strOrEmpty(p, 'repository').trim();
-    if (!repository) return fail('repository talab qilinadi (owner/reko).');
-    const [owner, repo] = repository.includes('/') ? repository.split('/') : ['', repository];
-    if (!owner || !repo) return fail('repository "owner/reko" shaklida bo‘lishi kerak.');
+    // The schema required `owner` and `repo` while this handler read only `repository`, so neither
+    // spelling worked: passing the pair the schema demanded failed here with "repository talab
+    // qilinadi", and passing `repository` failed validation. Both are accepted now.
+    //
+    // `repo` is also accepted in the `owner/repo` form, which `assertGithubInput` already allows for
+    // the other 48 tools - `pro_repo_audit` was the one place that did not.
+    const ownerInput = strOrEmpty(p, 'owner').trim();
+    const repoInput = strOrEmpty(p, 'repo').trim();
+    const combined = strOrEmpty(p, 'repository').trim() || (repoInput.includes('/') ? repoInput : '');
+    const [owner, repo] = combined ? combined.split('/') : [ownerInput, repoInput];
+    if (!owner || !repo) {
+      return fail('repository talab qilinadi: "owner/reko" shaklida, yoki owner va repo alohida.');
+    }
     const base = { owner, repo };
 
     const steps: Array<[string, string, Record<string, unknown>]> = [
@@ -52,13 +67,18 @@ export default defineTool({
     }
     if (p.include_security === true) {
       steps.push(
-        ['Dependency advisories', 'pro_sec_ossv_query', { package: `${owner}/${repo}` }],
-        ['Secret scan', 'pro_sec_secret_scan', { path: '.', limit: 20 }],
+        // Both were `pro_sec_*`, which is not in the registry: the security pack prefixes with
+        // `pro_fetch_security_`. The advisories step was also pointed at the wrong tool for the job -
+        // `pro_fetch_security_package_advisories` requires `package` *and* `version`, which a
+        // repository does not have. `pro_fetch_security_dependency_files` reads the repo's actual
+        // manifests, which is what an audit is asking for.
+        ['Dependency files', 'pro_fetch_security_dependency_files', { path: '.', recursive: true }],
+        ['Secret scan', 'pro_fetch_security_secret_scan_files', { path: '.', limit: 20 }],
       );
     }
 
     const outcomes = await runParallel(steps);
-    return result(renderBudgeted(`Repository audit: ${repository}`, outcomes, detailMode(p.detail)));
+    return result(renderBudgeted(`Repository audit: ${owner}/${repo}`, outcomes, detailMode(p.detail)));
   },
 });
 

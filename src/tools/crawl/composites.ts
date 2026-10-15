@@ -102,16 +102,22 @@ export const SITE_SCAN_TOOL = defineTool({
     const maxPages = Math.max(1, Math.min(100, num(p, 'max_pages', 10, 1, 100)));
     const maxDepth = Math.max(1, Math.min(5, num(p, 'max_depth', 2, 1, 5)));
 
+    // The names here were `pro_crawl_*`, which does not exist in the registry - the real names carry a
+    // `fetch_` infix (`pro_fetch_robots_check`, `pro_fetch_crawl_site`). Every step of the scan
+    // therefore failed with "Nomalum tool", so `pro_site_scan` reported 0/7 while still returning
+    // `isError: false`. `tests/composite-tool-names.test.ts` now checks every internal reference.
     const steps: Array<[string, string, Record<string, unknown>]> = [
-      ['robots.txt check', 'pro_crawl_robots_check', { url }],
-      ['Sitemap', 'pro_crawl_sitemap_read', { url }],
-      ['Crawl', 'pro_crawl_crawl_site', { url, max_pages: maxPages, max_depth: maxDepth }],
-      ['Page metadata', 'pro_crawl_extract_metadata', { url }],
-      ['Tables found', 'pro_crawl_extract_tables', { url, limit: 20 }],
-      ['Broken links', 'pro_crawl_broken_links', { url, limit: 20 }],
+      ['robots.txt check', 'pro_fetch_robots_check', { url }],
+      ['Sitemap', 'pro_fetch_sitemap_read', { url }],
+      ['Crawl', 'pro_fetch_crawl_site', { url, max_pages: maxPages, max_depth: maxDepth }],
+      ['Page metadata', 'pro_fetch_extract_metadata', { url }],
+      ['Tables found', 'pro_fetch_extract_tables', { url, limit: 20 }],
+      ['Broken links', 'pro_fetch_broken_links', { url, limit: 20 }],
     ];
     if (bool(p, 'include_links', true)) {
-      steps.push(['Link graph', 'pro_crawl_link_graph', { url, limit: 50 }]);
+      // `pro_fetch_link_graph` takes a list of pages, not a single URL - it was called with `url`
+      // here, so the seventh step of every scan failed even after its name was fixed.
+      steps.push(['Link graph', 'pro_fetch_link_graph', { pages: [url], limit: 50 }]);
     }
 
     const outcomes = await runParallel(steps);
@@ -159,24 +165,27 @@ export const DATA_PIPELINE_TOOL = defineTool({
     if (!url && !text) return fail('url yoki text talab qilinadi.');
 
     const source = url ? { url } : { text };
+    // Every name below is `pro_fetch_*` in the registry. These were `pro_data_*`, so all five base
+    // steps and all five optional operations failed with "Nomalum tool" - which is why the pipeline
+    // reported 1/5, with only the two load steps succeeding.
     const steps: Array<[string, string, Record<string, unknown>]> = [
       ['Load as CSV', 'pro_fetch_csv_to_json', source],
       ['Load as JSON', 'pro_fetch_json_to_yaml', source],
-      ['Column statistics', 'pro_data_csv_stats', source],
-      ['Text statistics', 'pro_data_text_stats', source],
-      ['Language', 'pro_data_language_detect', source],
+      ['Column statistics', 'pro_fetch_csv_stats', source],
+      ['Text statistics', 'pro_fetch_text_stats', source],
+      ['Language', 'pro_fetch_language_detect', source],
     ];
 
     const operation = strOrEmpty(p, 'operation').trim().toLowerCase();
     const operationArg = strOrEmpty(p, 'operation_arg').trim();
     const limit = Math.max(1, Math.min(500, num(p, 'limit', 50, 1, 500)));
 
-    if (operation === 'sort') steps.push(['Sort', 'pro_data_json_diff', { ...source, limit }]);
-    if (operation === 'group') steps.push(['Group by', 'pro_data_group_by', { ...source, limit }]);
-    if (operation === 'dedupe') steps.push(['Deduplicate', 'pro_data_dedupe_text', { ...source, limit }]);
-    if (operation === 'flatten') steps.push(['Flatten', 'pro_data_json_flatten', source]);
-    if (operation === 'diff') steps.push(['Diff', 'pro_data_diff_json', { ...source, text2: operationArg }]);
-    if (operationArg && operation === '') steps.push(['Array ops', 'pro_data_array_ops', { ...source, limit }]);
+    if (operation === 'sort') steps.push(['Sort', 'pro_fetch_json_diff', { ...source, limit }]);
+    if (operation === 'group') steps.push(['Group by', 'pro_fetch_group_by', { ...source, limit }]);
+    if (operation === 'dedupe') steps.push(['Deduplicate', 'pro_fetch_dedupe_text', { ...source, limit }]);
+    if (operation === 'flatten') steps.push(['Flatten', 'pro_fetch_json_flatten', source]);
+    if (operation === 'diff') steps.push(['Diff', 'pro_fetch_diff_json', { ...source, text2: operationArg }]);
+    if (operationArg && operation === '') steps.push(['Array ops', 'pro_fetch_array_ops', { ...source, limit }]);
 
     const outcomes = await runParallel(steps);
     return result(renderBudgeted(`Data pipeline: ${url || 'inline data'}`, outcomes, detailMode(p.detail)));
