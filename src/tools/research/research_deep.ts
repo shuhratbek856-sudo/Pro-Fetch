@@ -25,6 +25,10 @@ export default defineTool({
     properties: {
       detail: { type: 'string', enum: ['summary', 'full'], description: 'Natija hajmi: summary yoki full' },
       topic: { type: 'string', description: 'Tadqiqot mavzusi (masalan: "RAG arxitekturalari 2025")' },
+      // The other 23 research tools take `query`, and `research-tools.ts` already reads this one as
+      // `value(input, 'query', 'topic')`. Only the schema insisted on `topic`, so a caller who learned
+      // the name from any sibling tool was rejected here with "majburiy argumentlar berilmadi: topic".
+      query: { type: 'string', description: 'Tadqiqot mavzusi (topic bilan bir xil)' },
       depth: {
         type: 'number',
         description:
@@ -33,12 +37,14 @@ export default defineTool({
       max_sources: { type: 'number', description: 'Tahlil qilinadigan manba soni (1-20, standart 6)' },
       languages: { type: 'string', description: 'Til kodi (masalan en, uz). Bo‘sh qoldirilsa standart' },
     },
-    required: ['topic'],
+    // Either name states the topic, so requiring one would reject the other. `anyOf` says the choice
+    // where `required` would demand both.
+    anyOf: [{ required: ['topic'] }, { required: ['query'] }],
   },
   async handler(input) {
     const p = view(input);
-    const topic = strOrEmpty(p, 'topic').trim();
-    if (!topic) return fail('topic talab qilinadi.');
+    const topic = (strOrEmpty(p, 'topic') || strOrEmpty(p, 'query')).trim();
+    if (!topic) return fail('topic (yoki query) talab qilinadi.');
 
     const depth = Math.max(1, Math.min(3, num(p, 'depth', 2, 1, 3)));
     const maxSources = Math.max(1, Math.min(20, num(p, 'max_sources', 6, 1, 20)));

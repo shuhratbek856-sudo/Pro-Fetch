@@ -22,7 +22,12 @@ export default defineTool({
     required: ['url'],
   },
   async handler(input) {
-    const html = await readTextSource(input, 'HTML to text');
+    // Markup is stripped here, so a response that arrived cut off still yields the text it contained -
+    // and the truncation is stated in the output rather than swallowed. Without it this tool refused
+    // any page over `max_bytes`, which is what made `pro_research_deep` fail its read step on pages
+    // that are merely large (Google's own RAG page measures 2.16 MiB; the research pipeline caps
+    // each read at 400 KB by design).
+    const html = await readTextSource(input, 'HTML to text', { allowTruncated: true });
     const $ = load(html);
     $('script,style,noscript,template,svg,canvas,iframe').remove();
     $('br').replaceWith('\n');
