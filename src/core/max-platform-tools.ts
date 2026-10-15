@@ -55,6 +55,13 @@ const P: Record<string, { type: string; description: string; enum?: string[]; [k
     type: 'string',
     description: 'Provider API base URL (SSRF siyosati bilan tekshiriladi)',
   },
+  // Read by the jira branch ahead of any credential lookup, so it can be given per call instead of
+  // only through JIRA_BASE_URL. Without a schema entry it fell back to `{ type: 'string' }`, which
+  // tells a caller nothing about the form the value must take.
+  base: {
+    type: 'string',
+    description: 'Jira instance URL, masalan https://sizning-jira.example.com (JIRA_BASE_URL o‘rniga)',
+  },
   method: {
     type: 'string',
     description: 'HTTP usuli',
@@ -713,14 +720,21 @@ const collabOps: Record<string, Array<[string, string, string[]]>> = {
     ['issue_create', 'Create issue after confirmation', ['team_id', 'title', 'description', 'confirm']],
     ['issue_update', 'Update issue after confirmation', ['issue_id', 'title', 'description', 'status', 'confirm']],
   ],
+  // Every jira operation goes through the branch that resolves the instance URL, so `base` is on all
+  // of them rather than only the ones that happen to need it today. It is read before the provider's
+  // credentials, so a caller who cannot set JIRA_BASE_URL can still use the tools.
   jira: [
-    ['search', 'Search Jira issues using JQL', ['query', 'limit']],
-    ['issue_get', 'Get issue', ['issue_id']],
-    ['projects', 'List projects', ['limit']],
-    ['comments', 'List issue comments', ['issue_id', 'limit']],
-    ['issue_create', 'Create issue after confirmation', ['project', 'title', 'description', 'confirm']],
-    ['issue_update', 'Update issue after confirmation', ['issue_id', 'title', 'description', 'status', 'confirm']],
-    ['transitions', 'List issue transitions', ['issue_id']],
+    ['search', 'Search Jira issues using JQL', ['base', 'query', 'limit']],
+    ['issue_get', 'Get issue', ['base', 'issue_id']],
+    ['projects', 'List projects', ['base', 'limit']],
+    ['comments', 'List issue comments', ['base', 'issue_id', 'limit']],
+    ['issue_create', 'Create issue after confirmation', ['base', 'project', 'title', 'description', 'confirm']],
+    [
+      'issue_update',
+      'Update issue after confirmation',
+      ['base', 'issue_id', 'title', 'description', 'status', 'confirm'],
+    ],
+    ['transitions', 'List issue transitions', ['base', 'issue_id']],
   ],
   notion: [
     ['search', 'Search pages and databases', ['query', 'limit']],
@@ -2256,7 +2270,18 @@ async function runCollaboration(provider: string, action: string, i: Record<stri
     return data;
   }
   if (provider === 'jira') {
-    const base = (await assertSafeUrl(need({ base: process.env.JIRA_BASE_URL }, 'base'))).toString().replace(/\/$/, '');
+    // `base` comes from the argument first, then the environment. It was environment-only, and the
+    // refusal it produced was `MISSING_INPUT: 'base' majburiy.` - which names an argument the tool
+    // never read. A caller who believed it and passed `base` would have it ignored, because
+    // `additionalProperties: false` drops it before the handler sees it, and the same error would
+    // come back. Found by calling `pro_fetch_collab_jira_projects` with `{}` and reading what it said.
+    const jiraBase = inputString(i, 'base') || process.env.JIRA_BASE_URL || '';
+    if (!jiraBase.trim())
+      throw new Error(
+        'JIRA_BASE_URL muhit o‘zgaruvchisi yo‘q va `base` argumenti ham berilmagan. ' +
+          'Ikkalasidan birini bering: https://sizning-jira.example.com shaklida.',
+      );
+    const base = (await assertSafeUrl(jiraBase.trim())).toString().replace(/\/$/, '');
     const email = getCredential('JIRA_EMAIL');
     if (!email) throw new Error('CREDENTIAL_MISSING: Jira API uchun JIRA_EMAIL ham talab qilinadi.');
     const auth = Buffer.from(`${email}:${token}`).toString('base64');
