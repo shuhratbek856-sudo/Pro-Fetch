@@ -595,3 +595,53 @@ bounds requests to a *third party's* server.
 
 **Unresolved:** news 429 (Serper quota) and Medium 403 (bot protection) are upstream answers, not
 defects here. The SPECS packs from Session 33 remain declared but unverified.
+
+### Session 35 - MAX mode enabled; tool expansion to 1000 planned
+
+User enabled MAX mode and asked for deep internet research plus a sorted set of tools to reach 1000.
+
+**MAX mode switched on** in `.env`: `PRO_FETCH_MODE=max`. Verified through the live MCP path, not
+in-process - `pro_capability_call` with `mode: "max"`, `confirm_large_batch: true`, and
+`detail: "full"` returned real results for 10 concurrent web searches.
+
+**Measured the baseline** rather than trusting the manifest: 572 tools across 26 categories,
+`minimal` 73 / `standard` 178 / `smart` 11 / `full` 572.
+
+**Answered the batch question with a measurement, not an assurance.** With `confirm_large_batch: true`,
+a batch still does not go out at once: `PRO_FETCH_BATCH_CHUNK` awaits each chunk before starting the next.
+Proved it by timing - 20 real HTTP requests at `PRO_FETCH_BATCH_CHUNK=1` took 11.38 s, which is
+sequential. Also stated the limit honestly: 9 999 999 999 is a *ceiling*, not a plan. At the measured
+~446 req/s it is ~260 days; with `chunk=1` at ~0.57 s per request it is ~180 years, and a
+`detail: "full"` response would be ~50 TB. The ceiling is generous; the ceiling is not infinity.
+
+**One unfixed finding:** a fetched README came back truncated at ~32 KB regardless of `max_bytes`
+(8 MB requested, 32 185 bytes returned, and only 3 headings parsed out of a document with dozens).
+`readTextSource` is not the limiter - the value passed through. The cap is somewhere downstream, most
+likely the MCP result envelope. Not yet located.
+
+**Research that grounded the gap analysis** (read, not assumed): Knit MCP advertises 10 000+ tools
+across HRIS, ATS, CRM, Accounting, Calendar, Meeting, Ticketing - none of those seven verticals exist
+here. Firecrawl's 2026 list names GitHub, Vercel, Linear, Notion, Supabase, Stripe, Figma as the hosted
+default. MapTiler-class geospatial (geocoding, reverse geocoding, static maps, elevation) has no home in
+any of the 26 categories. apis.io's industry taxonomy treats weather, geospatial, finance, healthcare,
+legal, education, travel, jobs and real estate as separate industries; Pro-Fetch has one thin `search`
+category spanning all of them.
+
+**Plan written** to `docs/TOOL_EXPANSION_PLAN.md`: 430 new tools in four tiers, `llm` first because
+embeddings and reranking are inputs to `research`, `knowledge` and `vector`. Two category boundaries
+(`geo_data` vs `maps`, `finance` vs `finance_data`) are flagged as likely wrong and should be settled
+before implementation rather than after 80 tools sit on the wrong side of them.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 333 tests (before this session's doc changes) |
+| profile inventory, measured | minimal 73, standard 178, smart 11, full 572 |
+| `mode:"max"` + 10 searches via MCP | ok, real results |
+| 20 requests, `PRO_FETCH_BATCH_CHUNK=1` | 11.38 s - sequential, confirmed |
+| 200 requests, chunk 1000 | 0.4 s (446 req/s) |
+| awesome-mcp-servers README | truncated at 32 185 bytes - unresolved |
+
+**Next exact action:** implement Wave 0 - `src/tools/llm/`, 26 tools. First file
+`src/tools/llm/index.ts` exporting the category, then providers under `src/tools/llm/providers/`.
+Run `npm run audit:schema` before declaring the wave done; a new category that ships schemas which do
+not match their handlers reproduces the exact defect class that cost three composites their steps.
