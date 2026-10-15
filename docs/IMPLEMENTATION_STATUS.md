@@ -348,3 +348,64 @@ tool's current `required` list is verified to survive it.
 |---|---|
 | `npm run check` | exit 0 - static, registry, build, 18 files / 292 tests, package, format |
 | `npm run audit:schema` | audited 552, unread_required=0 |
+
+
+### Session 31 - category vocabulary narrowed, then the resolver fixed behind it
+
+The user asked for the ~328 tools that had not been strengthened. The measurable defect across
+them was `CATEGORY_SCHEMA_PROPERTIES`: every tool in a category declared the same ~20-property
+vocabulary and each read one to five. With `additionalProperties: false` that padding invites a caller
+to send arguments the tool cannot honour, and nothing in the schema says which are real.
+
+| Measure | Before | After |
+|---|---:|---:|
+| tools declaring >= 1 property their code never reads | 179 of 552 | **0** |
+| `unread_required` | 0 | 0 |
+| tools with neither `required` nor `anyOf` that still demand an argument | 1 of 123 | **0 of 123** |
+| average properties per tool (572 tools, 2724 total) | not measured | 4.8 |
+
+`src/core/schema-narrowing.ts` runs once from `loader.ts` and drops a category property when the
+tool's resolved source never reads it. `src/core/source-resolver.ts` does the resolving, and getting it
+right took four corrections, each found by asking what a tool does rather than by reading it:
+
+- **grouped branches.** `runMediaTool` dispatches with `if (name === 'a' || name === 'b' || ...)`. A pattern
+  anchored on `name === 'x')` matched none of a group, leaving 11 of 15 media tools on the whole runner.
+- **gap declarations through a helper.** A dispatcher may resolve its input once before branching -
+  `const media = await bytesFromInput(input)` - and that is where `base64` is read.
+- **a brace in a return type.** `bytesFromInput(...): Promise<{ bytes: Buffer; ... }>` - the signature pattern
+  `[^{]*\\{` took the *type literal's brace as the function body. An intermediate attempt allowed one
+  level of braces in the type; it failed on `Promise<{ a: { b: string } }>` and broke 59 tools' required
+  properties, so a scan replaced it rather than an extension of it.
+- **a module-local reader.** `gapReads` knew only the shared input helpers; `bytesFromInput` calls `str`,
+  which is local to `media-tools.ts`.
+
+Two findings were real, not measurement:
+
+| Tool | Advertised | Actually | Fix |
+|---|---|---|---|
+| `pro_fetch_screenshot_page`, `..._full_page` | `base64` | the branch drives a browser and returns before `bytesFromInput`; base64 answered "Noma'lum media tool" | require `url` |
+| `pro_fetch_collab_jira_*` (7 tools) | - | `base` read only from `JIRA_BASE_URL`, and the refusal said `MISSING_INPUT: 'base'`, naming an argument it never read | accepts `base`, error names both sources |
+
+Also corrected: all 30 convert tools stated one five-way `anyOf` across two different source readers
+(`readTextSource` takes text/content/data/url, `readBinarySource` takes base64/url), so each advertised
+alternatives it cannot read. Verified by calling every tool with every alternative it advertises:
+100 calls, 100 accepted. `AUTH_TOOL_PROPERTIES` suppressed the union with each tool's own declarations,
+so `pro_fetch_bearer_fetch` lost `body` and `max_chars` although it reads both; and its `anyOf`
+advertised `bearer_token`, which only `runIntegrationTool` reads - sending it failed.
+
+**Environment note, not a clean run:** the first `npm run check` after the jira change failed with 9 vitest
+worker timeouts (`Timeout calling fetch ... ssr`), 97 of 304 tests completing, **zero** failed. The
+immediate re-run passed 19/19 files and 304 tests. That is the Node 24 + vitest 2.1.9 `forks` flakiness
+already recorded in docs/DECISIONS.md, but it is an observation rather than a clean pass.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - static, registry, build, 19 files / 304 tests, package, format |
+| `npm run audit:schema` | audited 552 - dead 0, unread_required 0, required_empty 117 |
+| `git` | 21cf6cb |
+
+`required_empty = 117` is now measured, not assumed: all 123 candidates were called with `{}`. 55 stop
+on a real precondition (`CREDENTIAL_MISSING`, `CONFIRMATION_REQUIRED`, no session) which a schema
+correctly does not describe; the remaining 68 do work. Zero demand an undeclared argument.
+
+Files: 444 under `src` (396 tool files), 19 test files, 16 scripts.

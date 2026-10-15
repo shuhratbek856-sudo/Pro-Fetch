@@ -367,3 +367,87 @@ retries. In exchange, a green run means 267 assertions actually ran, which is th
 later correctness claim depends on. `scripts/tool-counts.json` now carries `testFiles` and
 `testCount`, so adding or removing a suite without updating that file fails the build instead of
 silently loosening the check.
+
+
+---
+
+## D-005: Narrow the category vocabulary at load time, not per file
+
+**Date:** 2026-10-15
+**Status:** accepted
+
+### Context
+
+`CATEGORY_SCHEMA_PROPERTIES` gave every tool in a category the same ~20-property list, so
+`pro_fetch_crawl_speed` - which reads a concurrency setting and a delay - advertised `selector`,
+`xpath` and `output_path`. Measured: 179 of 552 tools declared at least one property their code
+never reads. The github category had already been fixed by hand with `ghSchema`; the rest were padded
+from one central constant.
+
+### Decision
+
+Keep the category vocabulary as the upper bound and remove, at load time, any property whose
+resolved source does not read it. A single pass in `loader.ts` after every pack registers.
+
+### Rationale
+
+Per-file rewriting of ~300 tools cannot be kept in step with the code, and a hand-maintained
+table would drift. Deriving the property set from the source means the schema describes what the
+handler does, and a tool that starts reading a new field regains it by running, not by editing a list.
+
+### Rejected alternatives
+
+- **Rewrite each tool file with a precise schema, as github got.** Correct per tool, but ~300 files
+  to maintain by hand and no mechanism to keep them honest afterwards.
+- **Leave the vocabulary and rely on the description.** With `additionalProperties: false` the schema
+  is a contract: it tells a caller sending `base64` to a PDF tool that this is accepted. It is not.
+- **Remove `additionalProperties: false` instead.** Makes the padding harmless but drops real validation, and
+  a closed schema is what let the audit find these at all.
+
+### Consequences
+
+Enables: dead properties 179 -> 0, average 4.8 properties per tool.
+Costs: resolution becomes part of correctness. A resolver that misses a read removes a property a
+tool needs, which turns a misleading schema into a broken one. That risk is bounded three ways -
+only category-vocabulary keys are considered, `required` and every `anyOf` alternative are never
+touched, and an unresolvable tool keeps its full vocabulary. `npm test` is the backstop: any tool a
+test calls with a now-missing argument fails validation.
+
+---
+
+## D-006: The audit and the runtime must use one resolver
+
+**Date:** 2026-10-15
+**Status:** accepted
+
+### Context
+
+`npm run audit:schema` used `scripts/tool-source-map.mts` while the runtime narrowing used its own
+resolution. They disagreed invisibly: the audit reported `url` as dead for the fourteen `sourceFrom`
+tools because the script did not follow that helper, while the runtime correctly kept `url` through their
+`anyOf`. Two measurements of the same code, and no signal that they had diverged.
+
+### Decision
+
+Delete the script-side resolver. `npm run audit:schema` imports `src/core/source-resolver.ts`,
+
+the same module the runtime uses.
+
+### Rationale
+
+A metric whose implementation can drift from the thing it measures stops being evidence. The audit is
+what justifies every schema change, so it has to measure the same way the product behaves.
+
+### Rejected alternatives
+
+- **Keep both and reconcile the numbers by hand.** Two implementations of one rule, and the next change
+  re-introduces the gap.
+- **Make the runtime import the script.** A measurement script reading source text at import time would
+  become a production dependency of module loading.
+
+### Consequences
+
+The resolver is now production code and is tested as such. Its own gaps became visible as audit
+findings - grouped branches, gap declarations, braces in return types, module-local readers - and every
+one of them was a false positive that would have driven a wrong "fix". Fixing them took dead properties
+from 39 to 0 while `unread_required` stayed 0 throughout.
