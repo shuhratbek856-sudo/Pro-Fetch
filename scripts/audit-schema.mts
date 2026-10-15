@@ -84,6 +84,10 @@ interface Finding {
   requiredEmpty: boolean;
   /** Required properties the tool's own source never mentions. */
   requiredUnread: string[];
+  /** Properties the code reads that the schema never declares, so a caller cannot supply them. */
+  undeclaredReads: string[];
+  /** Whether the schema rejects undeclared properties at all. */
+  closed: boolean;
 }
 
 const findings: Finding[] = [];
@@ -98,6 +102,13 @@ let skippedDelegating = 0;
  * where the behaviour is.
  */
 const resolvedSource = new Map<string, string | undefined>();
+
+/** Every key a tool's schema treats as part of its input contract, including `anyOf` alternatives. */
+function anyOfKeys(schema: { required?: string[]; anyOf?: Array<{ required?: string[] }> }): Set<string> {
+  const keys = new Set(schema.required ?? []);
+  for (const alternative of schema.anyOf ?? []) for (const key of alternative.required ?? []) keys.add(key);
+  return keys;
+}
 function sourceFileFor(toolName: string, category: string): string | undefined {
   if (!resolvedSource.has(toolName)) resolvedSource.set(toolName, resolveToolSource(toolName, category));
   return resolvedSource.get(toolName);
@@ -129,6 +140,26 @@ for (const tool of allTools()) {
   const dead = properties.filter((p) => !mentions(p));
   const requiredUnread = required.filter((property) => !mentions(property));
 
+  // The inverse of `dead`: a property the code reads that the schema does not declare. A dead
+  // property misleads a caller; an undeclared read means a caller *cannot* supply it, and - where
+  // `additionalProperties` is false - the call is rejected. It is also the precondition for closing
+  // a schema: a tool can only be closed once it declares everything its code reads.
+  const READ_PATTERNS = [
+    /\b(?:string|num|bool|objectInput)\s*\(\s*input\s*,\s*'([a-z_0-9]+)'/g,
+    /\b(?:input|p)\s*\.\s*([a-z_0-9]+)/g,
+    /\b(?:input|p)\s*\[\s*['"]([a-z_0-9]+)['"]\s*\]/g,
+  ];
+  const reads = new Set<string>();
+  for (const pattern of READ_PATTERNS) {
+    for (const match of haystack.matchAll(pattern)) reads.add(match[1]);
+  }
+  for (const match of haystack.matchAll(/\[\s*((?:'[a-z_0-9]+'\s*,\s*)*'[a-z_0-9]+'\s*)\]/g)) {
+    for (const key of match[1].matchAll(/'([a-z_0-9]+)'/g)) reads.add(key[1]);
+  }
+  const undeclaredReads = [...reads]
+    .filter((key) => !properties.includes(key) && !anyOfKeys(tool.inputSchema).has(key))
+    .sort();
+
   // A tool may state its requirement as alternatives - "url *or* text" - which `anyOf` expresses and
   // `required` cannot. Counting those as "declares nothing" would report a tool whose schema is
   // exactly as informative as one that uses `required`.
@@ -142,12 +173,17 @@ for (const tool of allTools()) {
     deadProperties: dead,
     requiredEmpty: !statesRequirement && properties.length > 0,
     requiredUnread,
+    undeclaredReads,
+    closed: (tool.inputSchema as { additionalProperties?: unknown }).additionalProperties === false,
   });
 }
 
 const withDead = findings.filter((f) => f.deadProperties.length > 0);
 const withEmptyRequired = findings.filter((f) => f.requiredEmpty && !OPTIONAL_BY_DESIGN.has(f.name));
 const withUnreadRequired = findings.filter((f) => f.requiredUnread.length > 0);
+const withUndeclared = findings.filter((f) => f.undeclaredReads.length > 0);
+const openSchemas = findings.filter((f) => !f.closed);
+const closable = openSchemas.filter((f) => f.undeclaredReads.length === 0);
 
 if (asJson) {
   console.log(JSON.stringify(findings, null, 2));
@@ -166,6 +202,17 @@ if (asJson) {
     `  with_dead_properties=${withDead.length}  with_required_empty=${withEmptyRequired.length}  ` +
       `with_unread_required=${withUnreadRequired.length}\n`,
   );
+  console.log(
+    `  open_schemas=${openSchemas.length}  with_undeclared_reads=${withUndeclared.length}  ` +
+      `closable_now=${closable.length}\n`,
+  );
+
+  if (withUndeclared.length) {
+    console.log("\n--- e'lonlanmagan, lekin kodda o'qiladigan property ---");
+    for (const finding of withUndeclared.slice(0, 15)) {
+      console.log(`  ${finding.name.padEnd(42)} ${finding.undeclaredReads.slice(0, 6).join(',')}`);
+    }
+  }
 
   if (withUnreadRequired.length) {
     console.log("--- e'lon qilingan, lekin kodda O'QILMAYDIGAN required ---");

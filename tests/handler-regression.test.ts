@@ -240,7 +240,7 @@ describe('implemented tool behavior', () => {
 
     // The binary half of the category is the mirror image: no text, but base64.
     const pdfTool = allTools().find((tool) => tool.name === 'pro_fetch_pdf_to_text');
-    expect(alternatives(pdfTool?.inputSchema)).toEqual(['base64', 'url']);
+    expect(alternatives(pdfTool?.inputSchema)).toEqual(['base64', 'data_base64', 'url']);
     expect(pdfTool?.inputSchema.properties).not.toHaveProperty('text');
   });
 

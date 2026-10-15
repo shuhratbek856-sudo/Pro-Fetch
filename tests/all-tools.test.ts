@@ -99,7 +99,8 @@ describe('pro-fetch MAX - barcha 572 tool', () => {
       // cannot read it and `text` to tools that cannot either.
       const alternatives = (tool.inputSchema.anyOf ?? []).map((entry) => (entry as { required: string[] }).required[0]);
       const isBinary = alternatives.includes('base64');
-      expect(alternatives.length, tool.name).toBe(isBinary ? 2 : 4);
+      // Binary tools read `str(input, 'base64', 'data_base64')` - both spellings are one input.
+      expect(alternatives.length, tool.name).toBe(isBinary ? 3 : 4);
       expect(alternatives, tool.name).toContain('url');
       // Each alternative must name a property the tool actually declares, or the call is rejected.
       for (const key of alternatives) {

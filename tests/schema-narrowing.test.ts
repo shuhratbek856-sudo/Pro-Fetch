@@ -142,6 +142,22 @@ describe('shared dispatchers resolve per tool, not per pack', () => {
     }
   });
 
+  it('declares inputs the code reads, so a caller can actually supply them', () => {
+    // The inverse of the check below, and the reason it exists: `readBinarySource` reads
+    // `str(input, 'base64', 'data_base64')` and the browser dispatcher reads `input.max_chars` for
+    // every tool it serves, but neither was in `SHARED_SCHEMA_PROPERTIES` or the category
+    // vocabulary. With `additionalProperties: false` a conforming client could not send them at all.
+    const pdf = tool('pro_fetch_pdf_to_text');
+    expect(pdf.inputSchema.properties).toHaveProperty('data_base64');
+    const pdfAlternatives = ((pdf.inputSchema.anyOf ?? []) as Array<{ required: string[] }>).map((e) => e.required[0]);
+    expect(pdfAlternatives).toContain('data_base64');
+
+    for (const name of ['pro_browser_browser_extract_after_action', 'pro_browser_browser_screenshot']) {
+      expect(properties(name), name).toContain('max_chars');
+    }
+    expect(properties('pro_browser_browser_screenshot')).toContain('output_path');
+  });
+
   it('no tool advertises a property its resolved code never reads', () => {
     // The invariant the whole pass was measured against, asserted across the registry rather than
     // left to `npm run audit:schema` alone: a schema that lists an unread property tells a caller

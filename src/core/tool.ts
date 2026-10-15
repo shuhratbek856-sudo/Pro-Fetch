@@ -120,8 +120,25 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     'height',
     'limit',
     'timeout_ms',
+    // Read by browser-tools.ts: `Number(input.max_chars ?? 20000)` clips every response, and
+    // `saveScreenshot`, `capturePageScreenshot` and `handleDownload` each read a destination.
+    'max_chars',
+    'output_path',
+    'save_path',
   ],
-  convert: ['url', 'text', 'content', 'data', 'base64', 'timeout_ms', 'max_bytes', 'format', 'language', 'output_path'],
+  convert: [
+    'url',
+    'text',
+    'content',
+    'data',
+    'base64',
+    'data_base64',
+    'timeout_ms',
+    'max_bytes',
+    'format',
+    'language',
+    'output_path',
+  ],
   crawl: [
     'url',
     'pages',
@@ -403,6 +420,8 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   content: { type: 'string', description: 'Matn yoki source content' },
   data: { type: 'string', description: 'JSON, CSV yoki boshqa source data' },
   base64: { type: 'string', description: 'Faylning Base64 kontenti' },
+  // Alias `readBinarySource` accepts alongside `base64`: `str(input, 'base64', 'data_base64')`.
+  data_base64: { type: 'string', description: 'Faylning Base64 kontenti (data_base64 aliasi)' },
   selector: { type: 'string', description: 'CSS/XPath selector' },
   xpath: { type: 'string', description: 'XPath ifodasi' },
   script: { type: 'string', description: 'Browser sahifasida bajariladigan JavaScript' },
@@ -449,6 +468,11 @@ const SHARED_SCHEMA_PROPERTIES: Record<string, unknown> = {
   max_depth: { type: 'number', description: 'Crawl chuqurligi' },
   timeout_ms: { type: 'number', description: 'Timeout millisekundlarda' },
   max_bytes: { type: 'number', description: 'Fayl hajmi limiti' },
+  // Read by the browser dispatcher for every tool it serves - `Number(input.max_chars ?? 20000)` in
+  // `runBrowserAction`'s preamble, and in `runBrowserTool`'s clip helper - but absent from the shared
+  // property table and from the browser vocabulary, so no browser tool could declare it. Output was
+  // truncated at 20 000 characters with no way for a caller to ask for more or less.
+  max_chars: { type: 'number', description: 'Javob matni limiti (belgi)' },
   wait_ms: { type: 'number', description: 'Kutish millisekundlarda' },
   amount: { type: 'number', description: 'Scroll miqdori pikselda' },
   username: { type: 'string', description: 'Foydalanuvchi nomi' },

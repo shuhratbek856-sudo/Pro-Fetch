@@ -163,7 +163,11 @@ function restateConvertAlternatives(tool: ToolDefinition, source: string): void 
   // Neither reader visible: leave whatever the category declared rather than guessing.
   if (binary === text) return;
 
-  const alternatives = binary ? ['base64', 'url'] : ['data', 'content', 'text', 'url'];
+  // `readBinarySource` reads `str(input, 'base64', 'data_base64')`, so both spellings are one input.
+  // Only `base64` was declared, and with `additionalProperties: false` a conforming client could not
+  // send the alias - verified by calling `pro_fetch_pdf_to_text` with `data_base64`, which reached the
+  // PDF parser and failed on its content rather than on the argument.
+  const alternatives = binary ? ['base64', 'data_base64', 'url'] : ['data', 'content', 'text', 'url'];
   schema.anyOf = alternatives.map((required) => ({ required: [required] }));
 
   const keep = new Set(alternatives);
