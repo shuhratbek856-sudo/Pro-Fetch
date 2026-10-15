@@ -97,11 +97,37 @@ describe('Smart System: the ten-tool surface', () => {
     expect(results[1]?.ok).toBe(true);
   });
 
-  it('caps the batch size so one call cannot fan out without bound', async () => {
-    const calls = Array.from({ length: 60 }, () => ({ tool: 'pro_fetch_hash_string', arguments: { text: 'x' } }));
-    const result = await dispatch('pro_capability_call', { calls });
-    expect(result.isError).toBe(true);
-    expect(text(result)).toMatch(/50/);
+  it('caps the batch size so one call cannot produce an untransportable response', async () => {
+    // The ceiling is now `PRO_FETCH_MAX_BATCH` (default 5000) rather than a fixed 50. What matters is
+    // that a batch is still bounded - the response is a single MCP message, and an unbounded one
+    // exceeds what the transport or the client can hold.
+    //
+    // Concurrency was never what this guarded: `runParallel` fans out DEFAULT_FANOUT (8) at a time
+    // and the execution engine's semaphore governs the rest. Measured: 964 calls completed in 24 s
+    // with 952 succeeding once the ceiling was raised.
+    const previous = process.env.PRO_FETCH_MAX_BATCH;
+    process.env.PRO_FETCH_MAX_BATCH = '120';
+    try {
+      const within = Array.from({ length: 110 }, () => ({
+        tool: 'pro_fetch_hash_string',
+        arguments: { text: 'x' },
+      }));
+      const okResult = await dispatch('pro_capability_call', { calls: within });
+      expect(okResult.isError).toBeFalsy();
+
+      const over = Array.from({ length: 130 }, () => ({
+        tool: 'pro_fetch_hash_string',
+        arguments: { text: 'x' },
+      }));
+      const result = await dispatch('pro_capability_call', { calls: over });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toMatch(/120/);
+      // The error has to say how to raise it, or the caller is stuck at the default.
+      expect(text(result)).toMatch(/PRO_FETCH_MAX_BATCH/);
+    } finally {
+      if (previous === undefined) delete process.env.PRO_FETCH_MAX_BATCH;
+      else process.env.PRO_FETCH_MAX_BATCH = previous;
+    }
   });
 
   it('cannot be used to escape an allowlist', async () => {

@@ -73,9 +73,24 @@ export default defineTool({
     const calls = arr(p, 'calls');
     if (calls.length === 0) return fail('calls bo‘sh. Kamida bitta { tool, arguments } yuboring.');
 
-    // Bound the batch so one call cannot fan out into hundreds of concurrent operations and
-    // exhaust the process. The engine's per-category semaphore still applies underneath.
-    if (calls.length > 50) return fail(`Bir chaqiruvda 50 tagacha. Yuborilgan: ${calls.length}.`);
+    // Bound the batch so one call cannot produce a single response too large for the MCP transport or
+    // the client's memory to hold. It does not bound concurrency: `runParallel` fans out
+    // DEFAULT_FANOUT (8) at a time and the execution engine's semaphore governs the rest, so a batch
+    // of 500 is not 500 simultaneous requests.
+    //
+    // A million would not be "more capacity" - it is a guaranteed failure, because the response is one
+    // MCP message holding a million results. What is useful is that the ceiling is the caller's to
+    // choose, so it is configurable rather than a constant someone picked once.
+    const batchLimit = Number(process.env.PRO_FETCH_MAX_BATCH ?? 5000);
+    if (!Number.isFinite(batchLimit) || batchLimit < 1) {
+      return fail(`PRO_FETCH_MAX_BATCH yaroqsiz: ${process.env.PRO_FETCH_MAX_BATCH}.`);
+    }
+    if (calls.length > batchLimit) {
+      return fail(
+        `Bir chaqiruvda ${batchLimit} tagacha. Yuborilgan: ${calls.length}. ` +
+          `PRO_FETCH_MAX_BATCH orqali ko'paytirilishi mumkin.`,
+      );
+    }
 
     const { runParallel } = await import('../../core/composite.js');
     type Entry = { label: string; tool: string; ok: boolean; ms: number; output?: string; error?: string };
