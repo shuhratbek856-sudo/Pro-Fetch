@@ -104,6 +104,58 @@ describe('MAX mode raises capacity', () => {
   });
 });
 
+describe('the caller selects the mode per batch', () => {
+  // The environment variable is server-wide and is an operator's decision. The per-call flag is a
+  // batch-size decision and belongs to whoever asked for the work, which is a different question and
+  // so a different input.
+  it('defaults to simple when neither the flag nor the environment says otherwise', async () => {
+    delete process.env.PRO_FETCH_MODE;
+    const result = await dispatch('pro_capability_call', { calls: calls(5001) });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/5000/);
+  });
+
+  it('carries a batch the default would refuse when the caller asks for max', async () => {
+    delete process.env.PRO_FETCH_MODE;
+    const result = await dispatch('pro_capability_call', {
+      calls: calls(5001),
+      mode: 'max',
+      detail: 'summary',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toMatch(/"ok":\s*5001/);
+  });
+
+  it('still refuses when the caller explicitly asks for simple', async () => {
+    process.env.PRO_FETCH_MODE = 'max';
+    const result = await dispatch('pro_capability_call', { calls: calls(5001), mode: 'simple' });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/5000/);
+  });
+
+  it('rejects a mode it does not recognise rather than guessing', async () => {
+    const result = await dispatch('pro_capability_call', { calls: calls(1), mode: 'bekor' });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toMatch(/simple.*max|max.*simple/s);
+  });
+
+  it('does not lift concurrency, which is fixed before a handler can run', async () => {
+    // The per-call flag raises this batch's ceiling only. `boundedEnv` reads PRO_FETCH_MODE while the
+    // semaphores are constructed at import time, so a flag inside a handler is too late to widen
+    // them - and claiming otherwise in a description would be a claim the code cannot keep.
+    delete process.env.PRO_FETCH_MODE;
+    process.env.PRO_FETCH_BATCH_CHUNK = '400';
+    const result = await dispatch('pro_capability_call', {
+      calls: calls(900),
+      mode: 'max',
+      detail: 'summary',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toMatch(/"ok":\s*900/);
+    delete process.env.PRO_FETCH_BATCH_CHUNK;
+  });
+});
+
 describe('the batch queue', () => {
   it('refuses above the ceiling in simple mode', async () => {
     process.env.PRO_FETCH_MODE = 'simple';

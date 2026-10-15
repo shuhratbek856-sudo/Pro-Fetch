@@ -10,7 +10,7 @@ catalog in a single round trip.
 [![npm](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm&logo=npm)](https://www.npmjs.com/package/pro-fetch-mcp)
 [![node](https://img.shields.io/badge/node-%3E%3D22.13-5FA04E?logo=node.js)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/pro-fetch-mcp?color=blue)](./LICENSE)
-[![tests](https://img.shields.io/badge/tests-328%20passing-success?logo=vitest)](./)
+[![tests](https://img.shields.io/badge/tests-333%20passing-success?logo=vitest)](./)
 
 </div>
 
@@ -156,9 +156,20 @@ exactly as the versions before this option existed.
 | self-serve ceiling | — | `PRO_FETCH_MAX_SELF_SERVE` (99 999), then the user is asked |
 
 ```bash
-PRO_FETCH_MODE=max          # MAX
+PRO_FETCH_MODE=max          # MAX, server-wide
 PRO_FETCH_MAX_BATCH=250     # holds MAX back down, in either mode
 ```
+
+The model can also pick per batch, which is usually what you want — the size of a sweep is a decision
+about the work, not about the server:
+
+```json
+{ "tool": "pro_capability_call", "mode": "max", "calls": [ … ] }
+```
+
+`mode` on a call lifts **that batch's** ceiling only. It cannot widen concurrency, because the semaphores
+are built at start-up and a handler runs after — so `PRO_FETCH_MODE=max` remains the only way to raise
+those, and the two are deliberately not interchangeable. Omitting `mode` uses the server's setting.
 
 MAX exists for one job the default cannot do: a sweep whose size is counted in the thousands rather than
 the dozens — reading a whole repository, or crawling a documentation set. It raises *capacity* only.
@@ -278,7 +289,7 @@ Each step answers a different question:
 |---|---|
 | `verify:static` | Structural invariants must not regress: the tool count in `package.json` and in the READMEs, the smart profile's required meta-tools, the intent-search synonym vocabulary, no template dispatcher in the MAX packs, OSV batch bounds, knowledge content size, Windows `npm-cli.js` resolution, image-byte validation before OCR |
 | `verify:registry` | Boots the real registry: **572 tools / 26 categories / all four profile counts**, every tool has a schema and a handler, and the published counts in both READMEs still match |
-| `test` | **328 tests** across 21 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
+| `test` | **333 tests** across 21 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
 | `verify:package` | The published tarball has its shebang and `files` allowlist, and **zero credentials or source files** |
 | `audit:schema` *(on demand)* | Schemas against their code — 0 dead properties, 0 unread required |
 

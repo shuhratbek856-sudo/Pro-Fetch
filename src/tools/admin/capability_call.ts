@@ -3,7 +3,7 @@ import { result, fail, jsonBlock } from '../../core/format.js';
 import { asRecord, arr, obj, strOrEmpty, view } from '../../core/input.js';
 import { SMART_TOOL_NAMES } from '../../core/profile.js';
 import { detailMode } from '../../core/composite-budget.js';
-import { batchCeiling, maxMode, modeSummary } from '../../core/mode.js';
+import { MAX_MODE_CEILING, SIMPLE_CEILING, maxMode, modeSummary } from '../../core/mode.js';
 
 /**
  * Maximum nesting depth for composite execution.
@@ -67,6 +67,15 @@ export default defineTool({
         },
       },
       stop_on_error: { type: 'boolean', description: 'Birinchi xatoda to‘xtatish (odatda false)' },
+      mode: {
+        type: 'string',
+        enum: ['simple', 'max'],
+        description:
+          'Bu batch uchun quvvat rejimi. "simple" (yoki qo‘yilmasa) — 5000 tagacha. "max" — ' +
+          '9999999999 tagacha, katta batch bo‘laklab navbat bilan bajariladi. Tanlanmasa server ' +
+          'davomatidagi PRO_FETCH_MODE qo‘llaniladi. Rejim faqat quvvatni o‘zgartiradi: SSRF, ' +
+          'sandbox va kalit himoyalari har ikki rejimda ham o‘lchov qoladi.',
+      },
       confirm_large_batch: {
         type: 'boolean',
         description:
@@ -90,7 +99,24 @@ export default defineTool({
     // A million would not be "more capacity" - it is a guaranteed failure, because the response is one
     // MCP message holding a million results. What is useful is that the ceiling is the caller's to
     // choose, so it is configurable rather than a constant someone picked once.
-    const batchLimit = Number(process.env.PRO_FETCH_MAX_BATCH ?? batchCeiling());
+    // Two ways in, deliberately different in what they can reach.
+    //
+    // `PRO_FETCH_MODE=max` in the environment is server-wide: it lifts the concurrency and timeout
+    // ceilings too, because `boundedEnv` reads it while the semaphores are being constructed.
+    //
+    // `mode: "max"` on the call lifts only *this* batch's ceiling. It cannot raise concurrency,
+    // because the semaphores already exist by the time a handler runs - and pretending otherwise
+    // would be a claim the code cannot keep. That split is the right one anyway: a sweep that needs
+    // room for its batch size is a per-call decision, while a server-wide concurrency change is an
+    // operator's decision.
+    //
+    // Simple remains the default, so an install that knows nothing about this stays conservative.
+    const requested = strOrEmpty(p, 'mode').trim().toLowerCase();
+    if (requested !== '' && requested !== 'simple' && requested !== 'max') {
+      return fail(`mode yaroqsiz: "${requested}". "simple" yoki "max" bo'lishi kerak.`);
+    }
+    const wantsMax = requested === 'max' || (requested === '' && maxMode());
+    const batchLimit = Number(process.env.PRO_FETCH_MAX_BATCH ?? (wantsMax ? MAX_MODE_CEILING : SIMPLE_CEILING));
 
     // Above the self-serve line the size stops being the caller's decision alone. This is not a
     // resource guard - the queue below would carry any size that is allowed. It is a prompt to involve

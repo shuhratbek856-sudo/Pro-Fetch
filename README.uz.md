@@ -7,7 +7,7 @@ Modelga kerak bo'lgan tool beriladi: standart `smart` profil **11 ta meta-tool**
 ![npm version](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm)
 ![node](https://img.shields.io/badge/node-%3E%3D22.13-blue)
 ![license](https://img.shields.io/npm/l/pro-fetch-mcp)
-![tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-333%20passing-brightgreen)
 
 ## Nima uchun
 
@@ -105,9 +105,17 @@ Keyin uchta javobni bittaga birlashtirasiz:
 | o'z-o'zidan bajariladigan chegara | — | `PRO_FETCH_MAX_SELF_SERVE` (99 999), keyin foydalanuvchiga so'raladi |
 
 ```bash
-PRO_FETCH_MODE=max          # MAX
+PRO_FETCH_MODE=max          # MAX, butun server uchun
 PRO_FETCH_MAX_BATCH=250     # MAX'ni ikkala rejimda ham toraytiradi
 ```
+
+Model uni har bir batch uchun ham tanlay oladi — bu odatda kerak bo'lgan holat, chunki yig'maning hajmi server haqidagi emas, **ish haqidagi** qaror:
+
+```json
+{ "tool": "pro_capability_call", "mode": "max", "calls": [ … ] }
+```
+
+Chaqiruvdagi `mode` faqat **o'sha batch** chegarasini ko'taradi. Parallelizmni kengaytira olmaydi, chunki semforlar server ishga tushganda quriladi va handler keyin ishlaydi — shuning uchun `PRO_FETCH_MODE=max` ularni ko'tarishning yagona yo'li, ikkalasi ataylab almashtirilmaydigan qilingan. `mode` yozilmasa, server sozlamasi qo'llaniladi.
 
 MAX bitta ish uchun kerak — bitta batch'ga sigmaydigan yig'ma: butun repozitoriyni o'qish yoki hujjatlar to'plamini crawl qilish. U faqat **quvvatni** ko'taradi. Bu yetish huquqi emas: bu to'rtta raqamni ko'tarish bir kichik chaqiruv bilan yetib bo'lmaydigan joyga olib chiqmaydi.
 
@@ -190,7 +198,7 @@ npm ci
 npm run check   # verify:static → verify:registry → build → test → verify:package → format:check
 ```
 
-- **328 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
+- **333 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
 - `verify:registry` haqiqiy registry'ni yuklab **572 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
 - `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 572 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
 - `verify:package` nashr paketida shebang, `files` allowlist va **nol credential/manba fayl** ekanligini isbotlaydi.

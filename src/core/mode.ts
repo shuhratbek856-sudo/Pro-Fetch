@@ -29,6 +29,9 @@
 /** Raised ceiling for MAX mode. Ten nines: far above any real workload, low enough to stay a number. */
 export const MAX_MODE_CEILING = 9_999_999_999;
 
+/** Ceiling for simple mode, and the default everywhere. */
+export const SIMPLE_CEILING = 5000;
+
 /**
  * The batch ceiling for the current mode.
  *
