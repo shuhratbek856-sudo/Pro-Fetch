@@ -112,3 +112,37 @@ describe('alternatives are stated as anyOf, not as required', () => {
     expect(result.isError).toBe(true);
   });
 });
+
+describe('a per-tool property list does not replace what the tool declared', () => {
+  it('keeps properties the handler reads that the list omitted', () => {
+    // `AUTH_TOOL_PROPERTIES.pro_fetch_bearer_fetch` lists six names. The handler also reads `body`
+    // and `max_chars`, which were dropped because a specific list suppressed the union with the
+    // tool's own declarations - so a POST body could not be sent to an authenticated endpoint
+    // without going around the schema.
+    const declared = properties('pro_fetch_bearer_fetch');
+    expect(declared).toContain('body');
+    expect(declared).toContain('max_chars');
+  });
+
+  it('honours every alternative the auth schema advertises', async () => {
+    // `AUTH_TOOL_REQUIREMENTS` states `token | bearer_token | key_name`, and `runIntegrationTool`
+    // reads `str(input, 'token', 'bearer_token')`. The handler read only `input.token`, so sending
+    // `bearer_token` - exactly what the schema invites - failed with "token ёки мавжуд key_name
+    // керак". Both spellings are exercised here so the advertised contract stays true.
+    const text = (result: { content?: { text: string }[] }) =>
+      (result.content ?? []).map((entry) => entry.text).join(' ');
+
+    const viaToken = await callTool('pro_fetch_bearer_fetch', {
+      url: 'https://example.com',
+      token: 'secret',
+    });
+    expect(viaToken.isError).toBeFalsy();
+
+    const viaBearerToken = await callTool('pro_fetch_bearer_fetch', {
+      url: 'https://example.com',
+      bearer_token: 'secret',
+    });
+    expect(viaBearerToken.isError).toBeFalsy();
+    expect(text(viaBearerToken)).toContain('"status"');
+  });
+});

@@ -548,8 +548,16 @@ function applyCategorySchema(def: ToolDefinition): void {
   const archiveSpecific = def.category === 'archive' ? ARCHIVE_TOOL_PROPERTIES[def.name] : undefined;
   const specificProperties = toolSpecific ?? authSpecific ?? archiveSpecific;
   const allowed = specificProperties ?? CATEGORY_SCHEMA_PROPERTIES[def.category] ?? [];
+  // A per-tool list restricts the *category vocabulary*; it does not replace what the tool declared.
+  //
+  // These were unioned only when no specific list applied, so `pro_fetch_bearer_fetch` - whose list
+  // is `url, token, bearer_token, key_name, method, headers` - lost `body` and `max_chars`, both of
+  // which its own handler reads (`typeof input.body === 'string'`, `Number(input.max_chars ?? 8000)`).
+  // The schema then told a caller neither was accepted, so a POST body could not be sent to an
+  // authenticated endpoint without going around the schema.
+  const vocabulary = new Set([...allowed, ...Object.keys(properties)]);
   def.inputSchema.properties = Object.fromEntries(
-    [...new Set([...allowed, ...(specificProperties ? [] : Object.keys(properties))])]
+    [...vocabulary]
       .filter((key) => key in properties || key in SHARED_SCHEMA_PROPERTIES)
       .map((key) => [key, properties[key] ?? SHARED_SCHEMA_PROPERTIES[key]]),
   );

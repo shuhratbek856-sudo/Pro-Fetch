@@ -93,7 +93,18 @@ describe('pro-fetch MAX - barcha 572 tool', () => {
       expect(tool.inputSchema.properties, tool.name).toBeDefined();
     }
     for (const tool of schemaTools.filter((item) => item.category === 'convert')) {
-      expect(tool.inputSchema.anyOf, tool.name).toHaveLength(5);
+      // Convert tools split across two source readers, so the alternatives differ per tool:
+      // `readTextSource` takes text/content/data/url and `readBinarySource` takes base64/url.
+      // This asserted a flat five-way set for all of them, which advertised `base64` to tools that
+      // cannot read it and `text` to tools that cannot either.
+      const alternatives = (tool.inputSchema.anyOf ?? []).map((entry) => (entry as { required: string[] }).required[0]);
+      const isBinary = alternatives.includes('base64');
+      expect(alternatives.length, tool.name).toBe(isBinary ? 2 : 4);
+      expect(alternatives, tool.name).toContain('url');
+      // Each alternative must name a property the tool actually declares, or the call is rejected.
+      for (const key of alternatives) {
+        expect(tool.inputSchema.properties, `${tool.name}:${key}`).toHaveProperty(key);
+      }
     }
   });
 

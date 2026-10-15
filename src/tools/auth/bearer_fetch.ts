@@ -31,12 +31,18 @@ export default defineTool({
     const rawUrl = typeof input.url === 'string' ? input.url.trim() : '';
     if (!rawUrl) throw new Error('url parametri kerak.');
     const keyName = typeof input.key_name === 'string' ? input.key_name.trim() : '';
-    const token =
-      typeof input.token === 'string' && input.token
-        ? input.token
-        : keyName
-          ? (cache.get('auth:apikey:' + keyName)?.value ?? '')
+    // `bearer_token` is the alias `AUTH_TOOL_REQUIREMENTS` advertises as an alternative to `token`
+    // for this tool, and `runIntegrationTool` already reads it that way (`str(input, 'token',
+    // 'bearer_token')`). The handler here read only `input.token`, so a caller who followed the
+    // schema and sent `bearer_token` got "token ёки мавжуд key_name керак" from a call the schema
+    // said was valid. Verified by calling both spellings before this change.
+    const directToken =
+      typeof input.token === 'string' && input.token.trim()
+        ? input.token.trim()
+        : typeof input.bearer_token === 'string' && input.bearer_token.trim()
+          ? input.bearer_token.trim()
           : '';
+    const token = directToken ? directToken : keyName ? (cache.get('auth:apikey:' + keyName)?.value ?? '') : '';
     if (!token) throw new Error('token ёки мавжуд key_name керак.');
     const url = await assertSafeUrl(rawUrl);
     const method = typeof input.method === 'string' ? input.method.toUpperCase() : 'GET';

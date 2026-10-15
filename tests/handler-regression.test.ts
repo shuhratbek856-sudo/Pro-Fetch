@@ -224,15 +224,24 @@ describe('implemented tool behavior', () => {
   });
 
   it('publishes narrow schemas with valid source alternatives', () => {
+    // `pro_fetch_csv_to_json` goes through `readTextSource`, which accepts text, content, data or a
+    // URL. It previously advertised `base64` as a fifth alternative it cannot read: a caller who
+    // followed the schema and sent base64 was rejected by `additionalProperties: false`.
     const csvTool = allTools().find((tool) => tool.name === 'pro_fetch_csv_to_json');
     expect(csvTool?.inputSchema.required).toBeUndefined();
-    expect(csvTool?.inputSchema.anyOf).toEqual(
-      ['url', 'text', 'content', 'data', 'base64'].map((key) => ({ required: [key] })),
-    );
+    // Compared as a set: which alternatives exist is the contract, the order they are listed in is not.
+    const alternatives = (schema: { anyOf?: Array<{ required: string[] }> } | undefined): string[] =>
+      (schema?.anyOf ?? []).map((entry) => entry.required[0]).sort();
+    expect(alternatives(csvTool?.inputSchema)).toEqual(['content', 'data', 'text', 'url']);
     expect(csvTool?.inputSchema.properties).toHaveProperty('text');
     expect(csvTool?.inputSchema.properties).not.toHaveProperty('selector');
     expect(csvTool?.inputSchema.properties).not.toHaveProperty('password');
     expect(csvTool?.inputSchema.additionalProperties).toBe(false);
+
+    // The binary half of the category is the mirror image: no text, but base64.
+    const pdfTool = allTools().find((tool) => tool.name === 'pro_fetch_pdf_to_text');
+    expect(alternatives(pdfTool?.inputSchema)).toEqual(['base64', 'url']);
+    expect(pdfTool?.inputSchema.properties).not.toHaveProperty('text');
   });
 
   it('assesses a claim against supplied sources with explicit limitations', async () => {

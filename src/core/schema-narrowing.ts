@@ -101,6 +101,65 @@ function readsProperty(source: string, property: string): boolean {
   return false;
 }
 
+/**
+ * Whether the source reads a property the way real code does: by naming it as an argument.
+ *
+ * `readsProperty` is deliberately loose - it matches the bare word anywhere - because for the general
+ * narrowing pass, keeping too much is the safe direction. Restating convert alternatives is not that
+ * direction: `pro_fetch_pdf_to_text` declares `text`, and its description reads "Extract text from a
+ * PDF", so the loose match kept a property the tool cannot use and the schema contradicted its own
+ * `anyOf`.
+ */
+function readsPropertyExplicitly(source: string, property: string): boolean {
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const patterns = [
+    // `string(input, 'x')`, `num(input, 'x', ...)`, `bool(p, 'x')`
+    new RegExp(`\\b(?:string|num|bool|objectInput)\\s*\\(\\s*(?:input|p)\\s*,\\s*'${escaped}'`),
+    // `input.x`, `p.x`, `input['x']`
+    new RegExp(`\\b(?:input|p)\\s*(?:\\.${escaped}|\\[['"]${escaped}['"]\\])`),
+    // A whole-object read that hands the property to a helper, as `sourceFrom(input)` does.
+    new RegExp(`\\[['"]${escaped}['"]\\]`),
+  ];
+  return patterns.some((pattern) => pattern.test(source));
+}
+
+/**
+ * Restate each convert tool's alternatives to the ones it actually accepts.
+ *
+ * `applyCategorySchema` gives all 32 convert tools the same five-way `anyOf`: url, text, content,
+ * data, base64. But the category holds two different source readers, and their unions differ:
+ *
+ * - `readTextSource(input)` takes `text`, `content` or `data`, falling back to `url`. 21 tools use it.
+ * - `readBinarySource(input)` takes `base64` (or `data_base64`), falling back to `url`. 11 tools use it.
+ *
+ * So every text tool was advertising `base64`, which it cannot read, and every binary tool was
+ * advertising `text`/`content`/`data`, which it cannot read. With `additionalProperties: false` those
+ * are not harmless: a caller who followed the schema and sent `base64` to `pro_fetch_json_to_yaml` was
+ * rejected, having been told the schema accepted it.
+ *
+ * Which reader a tool uses is read from its own resolved source rather than from a hand-kept list, so
+ * moving a tool between the two does not silently leave it advertising the wrong set.
+ */
+function restateConvertAlternatives(tool: ToolDefinition, source: string): void {
+  const schema = tool.inputSchema as { properties?: Record<string, unknown>; anyOf?: unknown };
+  if (!schema.properties) return;
+
+  const binary = /\breadBinarySource\s*\(/.test(source);
+  const text = /\breadTextSource\s*\(/.test(source);
+  // Neither reader visible: leave whatever the category declared rather than guessing.
+  if (binary === text) return;
+
+  const alternatives = binary ? ['base64', 'url'] : ['data', 'content', 'text', 'url'];
+  schema.anyOf = alternatives.map((required) => ({ required: [required] }));
+
+  const keep = new Set(alternatives);
+  for (const property of Object.keys(schema.properties)) {
+    if (keep.has(property)) continue;
+    if (readsPropertyExplicitly(source, property)) continue;
+    delete schema.properties[property];
+  }
+}
+
 /** Narrow every eligible tool in place. Returns how many were changed and why the rest were not. */
 export function narrowCategorySchemas(): { narrowed: number; skipped: number } {
   if (!resolveSource) {
@@ -133,6 +192,12 @@ export function narrowCategorySchemas(): { narrowed: number; skipped: number } {
     if (!source) {
       // Unresolved: leave the full vocabulary rather than guess.
       skipped++;
+      continue;
+    }
+
+    if (tool.category === 'convert') {
+      restateConvertAlternatives(tool, source);
+      narrowed++;
       continue;
     }
 
