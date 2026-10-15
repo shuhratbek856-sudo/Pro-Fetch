@@ -451,3 +451,54 @@ The resolver is now production code and is tested as such. Its own gaps became v
 findings - grouped branches, gap declarations, braces in return types, module-local readers - and every
 one of them was a false positive that would have driven a wrong "fix". Fixing them took dead properties
 from 39 to 0 while `unread_required` stayed 0 throughout.
+
+---
+
+## D-007: A sharper measurement that returns the wrong text is worse than a blunt one
+
+**Date:** 2026-10-15
+**Status:** accepted
+
+### Context
+
+The 200 SPECS tools resolve to their whole runner, so every string literal inside it -
+`'npm'`, `'audit'`, `'confirm'` - is counted as an input key. Per-tool resolution was attempted to
+fix that. It worked for the git pack, where two genuine resolver bugs were found and fixed, and the
+pack went from 15 dead properties and 14 unread required to zero.
+
+It then produced a source that was not the tool's source. Asked for
+`pro_fetch_collab_slack_post_message`, it returned the preamble, a fragment of an unrelated type
+annotation, `getCredential`'s body and `resolveSecretPath`'s body - and not the
+`ensureMutationAllowed(i, 'Slack postMessage')` line that is the second statement of the case. The audit
+then reported `confirm` as unread for tools whose source contains the line that requires it.
+
+### Decision
+
+Revert the whole attempt. `src/core/source-resolver.ts` and `src/core/max-platform-tools.ts`
+returned to ef9a801, and the 234 findings stay labelled as unexamined rather than being cleared or
+treated as defects.
+
+### Rationale
+
+The blunt measurement is honest about its own limits: one dispatcher means every tool in the pack
+reads everything the runner mentions, which is imprecise but never wrong. The sharper one was wrong
+while looking better, and the whole point of the audit is to justify edits. A metric that can
+manufacture a finding is not evidence, and one that has been demonstrated to manufacture one has
+stopped being a gate.
+
+### Rejected alternatives
+
+- **Keep it and ignore the SPECS findings.** The pack that broke was collaboration, and there is no
+  reason to trust the others selectively.
+- **Ship the git half only.** Tempting, since it was measured and it reached zero. But the change is one
+  function; splitting it leaves the same code path with a special case, and the passing pack would
+  vouch for the failing one.
+
+### Consequences
+
+Costs: the SPECS packs stay unverified, and that is now written down rather than implied.
+Enables: every schema change still rests on a measurement that has been shown to agree with what
+the code does. Finishing the job needs statement-boundary tracking inside a switch -
+`runCollaboration`, `runProductivity` and `runCodehost` all nest `switch (action)` inside
+`if (provider === ...)`, and their case bodies are brace-less multi-statement blocks - which is a
+separate piece of work rather than another attempt at the same slicing.

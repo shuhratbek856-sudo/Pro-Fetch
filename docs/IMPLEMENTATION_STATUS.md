@@ -476,3 +476,64 @@ files changed since 482a8e8. 572 tools, 2 933 properties, 5.1 per tool, all 572 
 | `npm run check` | exit 0 - static, registry, build, 19 files / 306 tests, package, format |
 | `npm run audit:schema` | audited 552 - dead 0, unread_required 0, open_schemas 0, undeclared 234 |
 | `git` | ef9a801 |
+
+
+### Session 33 - SPECS per-tool resolution attempted, and reverted
+
+The user asked for the remaining work to be finished, which is the 200 SPECS and composite tools:
+nine packs registered without a file each, one dispatcher per pack. Every session so far recorded
+them as "not per-tool verified", and this session was the attempt.
+
+What was built, and it partly worked:
+
+- `specCoordinates()` in `max-platform-tools.ts` exposing each tool's category, provider and action
+  from the registration, rather than parsing the name. That was the right call on its own merits -
+  `collaboration` registers `pro_fetch_collab_*`, so splitting a name on underscores guesses wrong
+  for every such pack.
+- `resolveSpecBranch` splitting a runner by provider (`if (provider === 'gitlab')`) then by action
+  (`switch (action)`), carrying the preamble, because `runGit` reads `cwd`, `path`, `limit`,
+  `revision` and `branch` before it branches.
+- Two real resolver bugs found on the way: a `switch` case pattern that let one brace match span
+  several brace-less cases, so `git_status`, `git_diff`, `git_log` and `git_blame` all resolved to
+  identical source; and a fallback that only recognised cases whose body starts with `return`, which
+  missed every case that opens with a guard - `case 'branch_create': ensureMutationAllowed(i, ...);
+  return await run([...])`. Fixing both took the git pack from 15 dead properties and 14 unread
+  required down to zero.
+
+Then it was reverted, because it produced a source that was not the tool's source. Asking it for
+`pro_fetch_collab_slack_post_message` returned a jumble: the preamble, a fragment of an unrelated
+type annotation, `getCredential`'s body, `resolveSecretPath`'s body - and **not** the
+`ensureMutationAllowed(i, 'Slack postMessage')` line that is the second statement of the case. The
+audit then reported `confirm` as unread for four collaboration tools and three productivity tools it
+had just read a moment earlier.
+
+That is the failure mode this project forbids: a measurement that looks sharper while quietly being
+wrong, used to justify edits. Reverted `src/core/source-resolver.ts` and
+`src/core/max-platform-tools.ts` to `ef9a801`.
+
+Restored state, re-measured:
+
+| Measure | Value |
+|---|---:|
+| `with_dead_properties` | 0 |
+| `with_unread_required` | 0 |
+| `open_schemas` | 0 |
+| `with_undeclared_reads` | 234 |
+
+What the 234 are, stated plainly: for the nine SPECS packs the resolver returns the whole runner, so
+every string literal in it - `'npm'`, `'audit'`, `'confirm'`, `'redis_arg'` - is counted as an input
+key. They are not 234 proven defects and they are not 234 proven absences. They are 234 places where
+this project has not yet looked properly.
+
+What finishing it needs, which is why it is not a matter of trying again: `runCollaboration`,
+`runProductivity` and `runCodehost` nest a `switch (action)` inside each `if (provider === ...)`
+branch, and their case bodies are brace-less multi-statement blocks. Slicing those correctly means
+tracking statement boundaries inside a switch, not brace matching - the same distinction that made
+`functionsIn` need a scan for the body's opening brace. That is a separate piece of work, and until
+it is done the honest statement is that the SPECS packs are declared but unverified.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 19 files / 306 tests |
+| `npm run audit:schema` | audited 552 - dead 0, unread_required 0, open_schemas 0, undeclared 234 |
+| `git` | reverted to ef9a801, working tree clean |
