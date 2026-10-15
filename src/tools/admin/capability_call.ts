@@ -3,6 +3,7 @@ import { result, fail, jsonBlock } from '../../core/format.js';
 import { asRecord, arr, obj, strOrEmpty, view } from '../../core/input.js';
 import { SMART_TOOL_NAMES } from '../../core/profile.js';
 import { detailMode } from '../../core/composite-budget.js';
+import { batchCeiling, maxMode, modeSummary } from '../../core/mode.js';
 
 /**
  * Maximum nesting depth for composite execution.
@@ -41,7 +42,8 @@ export default defineTool({
     'Execute a batch of Pro-Fetch tools in a single call. Send a list of { tool, arguments } and ' +
     'receive every result together, instead of one round trip per tool. Failures are reported ' +
     'per entry and do not stop the rest of the batch. This is the way to use the full tool set ' +
-    'when your client limits how many tools you can see.',
+    'when your client limits how many tools you can see. ' +
+    modeSummary(),
   category: 'admin',
   inputSchema: {
     type: 'object',
@@ -65,6 +67,13 @@ export default defineTool({
         },
       },
       stop_on_error: { type: 'boolean', description: 'Birinchi xatoda to‘xtatish (odatda false)' },
+      confirm_large_batch: {
+        type: 'boolean',
+        description:
+          'O‘z-o‘zidan bajariladigan chegaradan (PRO_FETCH_MAX_SELF_SERVE, standart 99999) katta ' +
+          'batch uchun foydalanuvchi tasdig‘i. Bu qiymatni faqat foydalanuvchiga aytib, javob ' +
+          'olinganidan keyin qo‘yish kerak.',
+      },
     },
     required: ['calls'],
   },
@@ -81,7 +90,23 @@ export default defineTool({
     // A million would not be "more capacity" - it is a guaranteed failure, because the response is one
     // MCP message holding a million results. What is useful is that the ceiling is the caller's to
     // choose, so it is configurable rather than a constant someone picked once.
-    const batchLimit = Number(process.env.PRO_FETCH_MAX_BATCH ?? 5000);
+    const batchLimit = Number(process.env.PRO_FETCH_MAX_BATCH ?? batchCeiling());
+
+    // Above the self-serve line the size stops being the caller's decision alone. This is not a
+    // resource guard - the queue below would carry any size that is allowed. It is a prompt to involve
+    // the user: "read everything in this project" can mean four hundred requests or four hundred
+    // thousand, and only the person asking knows which they meant.
+    //
+    // `confirm_large_batch` is set by the caller *after* the user has said yes. The refusal says so, so
+    // the path is discoverable rather than a dead end.
+    const selfServe = Number(process.env.PRO_FETCH_MAX_SELF_SERVE ?? 99_999);
+    if (calls.length > selfServe && p.confirm_large_batch !== true) {
+      return fail(
+        `Bu so'rov ${calls.length} ta - o'z-o'zidan bajariladigan chegaradan (${selfServe}) katta. ` +
+          `Foydalanuvchiga ayting; tasdiqlash olinsa, arguments'ga "confirm_large_batch": true ` +
+          `qo'shib qayta yuboring.`,
+      );
+    }
     if (!Number.isFinite(batchLimit) || batchLimit < 1) {
       return fail(`PRO_FETCH_MAX_BATCH yaroqsiz: ${process.env.PRO_FETCH_MAX_BATCH}.`);
     }
@@ -138,12 +163,31 @@ export default defineTool({
     }
 
     if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth++;
-    let outcomes;
-    try {
-      outcomes = await runParallel(runnable, batchFanout(runnable.length));
-    } finally {
-      if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth--;
+
+    // Queue, do not fan out.
+    //
+    // A large batch must not open thousands of sockets at once: that is a self-inflicted denial of
+    // service against the user's own machine, and the process is killed before any result comes back.
+    // So a batch larger than the chunk size is cut up, and each chunk is awaited before the next
+    // starts. Concurrency inside a chunk is still the engine's own fan-out, so a small batch behaves
+    // exactly as it always did.
+    const chunkSize = Number(process.env.PRO_FETCH_BATCH_CHUNK ?? 1000);
+    let outcomes: Awaited<ReturnType<typeof runParallel>>;
+    if (runnable.length > chunkSize) {
+      const merged: typeof outcomes = [];
+      for (let at = 0; at < runnable.length; at += chunkSize) {
+        const part = await runParallel(runnable.slice(at, at + chunkSize), undefined);
+        merged.push(...part);
+      }
+      outcomes = merged;
+    } else {
+      try {
+        outcomes = await runParallel(runnable);
+      } catch (error) {
+        return fail(`Batch bajarilmadi: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+    if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth--;
     let aborted = false;
 
     // Rebuild in request order. Indexing `slots` by the outcome index was wrong: an invalid entry
@@ -210,5 +254,6 @@ export default defineTool({
 function batchFanout(size: number): number {
   if (size <= 4) return Math.max(1, size);
   if (size <= 12) return 6;
+  if (maxMode()) return Number(process.env.PRO_FETCH_MAX_MODE_FANOUT ?? 64);
   return 10;
 }

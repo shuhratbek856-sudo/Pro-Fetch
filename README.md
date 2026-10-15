@@ -10,7 +10,7 @@ catalog in a single round trip.
 [![npm](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm&logo=npm)](https://www.npmjs.com/package/pro-fetch-mcp)
 [![node](https://img.shields.io/badge/node-%3E%3D22.13-5FA04E?logo=node.js)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/pro-fetch-mcp?color=blue)](./LICENSE)
-[![tests](https://img.shields.io/badge/tests-308%20passing-success?logo=vitest)](./)
+[![tests](https://img.shields.io/badge/tests-328%20passing-success?logo=vitest)](./)
 
 </div>
 
@@ -143,6 +143,51 @@ If `pro_capability_call` itself is not on the allowlist, it does not run.
 
 ---
 
+## 🚦 Simple and MAX mode
+
+`PRO_FETCH_MODE` selects how much capacity one batch may use. **Simple is the default**, and it behaves
+exactly as the versions before this option existed.
+
+| | simple *(default)* | MAX |
+|---|---|---|
+| calls per `pro_capability_call` | 5 000 | 9 999 999 999 |
+| concurrency, network, category | 64 / 64 / 16 | 512 each |
+| how a large batch runs | one batch | chunked, `PRO_FETCH_BATCH_CHUNK` (1000) at a time |
+| self-serve ceiling | — | `PRO_FETCH_MAX_SELF_SERVE` (99 999), then the user is asked |
+
+```bash
+PRO_FETCH_MODE=max          # MAX
+PRO_FETCH_MAX_BATCH=250     # holds MAX back down, in either mode
+```
+
+MAX exists for one job the default cannot do: a sweep whose size is counted in the thousands rather than
+the dozens — reading a whole repository, or crawling a documentation set. It raises *capacity* only.
+It is not a reach grant: lifting these four numbers cannot reach anything a single small call could not
+already reach.
+
+Above the self-serve line the tool **refuses and says so**, because "read everything in this project"
+can mean four hundred requests or four hundred thousand, and only the person asking knows which was
+meant. The caller re-sends with `confirm_large_batch: true` after the user agrees.
+
+**What MAX mode does not change.** Network containment is not capacity, and none of it moves:
+
+- private, loopback, link-local and `.internal` addresses stay blocked
+- the protocol allowlist stays — no `file:`, no `gopher:`
+- credentials in a URL stay rejected
+- DNS pinning stays — the connection remains on the address that was checked
+- `PRO_FETCH_OUTPUT_ROOT` containment, symlink-escape detection, and credential layering are untouched
+
+`tests/mode.test.ts` asserts the security probes **with MAX mode switched on**, so a future change that
+routes a containment limit through the mode fails the suite instead of shipping quietly.
+
+One capacity ceiling is also held in MAX mode: `PRO_FETCH_MAX_PER_HOST_CONCURRENCY`. Every other bound
+limits what this process can do; that one limits how many requests reach a *single remote host*, so
+raised without limit a batch becomes a denial of service aimed at somebody else's server. It stays at
+8 by default and at 512 at most. It is listed by name in `src/core/bounded-env.ts` so the decision is a
+visible edit rather than something buried in a comment.
+
+---
+
 ## 🔑 Credentials
 
 Put credentials in a `.env` next to the server, or use `*_FILE` env vars pointing at a file —
@@ -233,7 +278,7 @@ Each step answers a different question:
 |---|---|
 | `verify:static` | Structural invariants must not regress: the tool count in `package.json` and in the READMEs, the smart profile's required meta-tools, the intent-search synonym vocabulary, no template dispatcher in the MAX packs, OSV batch bounds, knowledge content size, Windows `npm-cli.js` resolution, image-byte validation before OCR |
 | `verify:registry` | Boots the real registry: **572 tools / 26 categories / all four profile counts**, every tool has a schema and a handler, and the published counts in both READMEs still match |
-| `test` | **308 tests** across 20 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
+| `test` | **328 tests** across 21 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
 | `verify:package` | The published tarball has its shebang and `files` allowlist, and **zero credentials or source files** |
 | `audit:schema` *(on demand)* | Schemas against their code — 0 dead properties, 0 unread required |
 

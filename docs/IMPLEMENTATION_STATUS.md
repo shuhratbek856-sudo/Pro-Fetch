@@ -537,3 +537,61 @@ it is done the honest statement is that the SPECS packs are declared but unverif
 | `npm run check` | exit 0 - 19 files / 306 tests |
 | `npm run audit:schema` | audited 552 - dead 0, unread_required 0, open_schemas 0, undeclared 234 |
 | `git` | reverted to ef9a801, working tree clean |
+
+### Session 34 - MAX mode: capacity raised, containment untouched
+
+Reported from real use of the smart profile: `pro_site_scan` 0/7, `pro_data_pipeline` 1/5,
+`pro_repo_audit` refusing the argument its own description invites, `pro_research_deep` 13/18 and then
+refused outright. Then: read every file in a repository, and lift every limit.
+
+**Composites referenced tool names that do not exist.** `pro_site_scan` called `pro_crawl_robots_check`
+(six more like it, `fetch_` missing); `pro_data_pipeline` called `pro_data_csv_stats` (nine more);
+`pro_repo_audit` called `pro_sec_ossv_query`, and no `pro_sec_` prefix exists at all. A wrong name
+answers "Nomalum tool" while the composite still returns `isError: false` and reports every step FAILED
+- the caller is told the scan succeeded and the numbers say 0/7. Two more found by scanning every
+string literal against the registry: `URL_OR_TEXT_TOOLS` listed `pro_fetch_audit_page` when the tool is
+`pro_audit_page`, so the audit page never received its url-or-text alternative; and
+`ARCHIVE_TOOL_PROPERTIES` listed `pro_fetch_cache_delete`, which does not exist.
+
+`pro_repo_audit` also had its schema and handler disagreeing outright - schema required `owner` and
+`repo`, handler read only `repository`, so neither spelling worked. Now an `anyOf` over both, plus
+`repo` in `owner/repo` form as the other 48 tools allow.
+
+`pro_research_deep` required `topic` while the other 23 research tools require `query`, and the handler
+already read both. The read step then failed on `max_bytes`: measured, Google's own RAG page is 2.16 MiB
+against a 2 MiB ceiling. Raised to 8 MiB, and `readTextSource` gained `allowTruncated`, which
+`html_to_text` enables because stripping markup over a cut-off response still yields the text that
+arrived - stated in the output, not swallowed. Off by default, because a partial CSV parse is wrong
+data rather than less data.
+
+**The 50-call batch cap was not what its comment claimed.** The comment said it existed so one call
+could not fan out and exhaust the process; `runParallel` fans out 8 at a time and the engine's
+semaphores govern the rest, so a batch of 500 was never 500 simultaneous requests. What it bounded was
+the response, which is one MCP message. Now `PRO_FETCH_MAX_BATCH`, default 5 000. Measured at a ceiling
+of a million: 964 calls, 952 succeeded, 24 s, 22 KB summary.
+
+**Then the real restriction turned up:** every `boundedEnv` call carried a *maximum* as well as a
+default, so `PRO_FETCH_MAX_CONCURRENCY=1000` against a ceiling of 256 was silently discarded. Raising
+the default alone would have changed nothing at all. Ceilings raised; measured simple 100000 -> 4096,
+max -> 100000.
+
+**MAX mode** (`src/core/mode.ts`, D-008): simple stays the default and unchanged; MAX lifts capacity to
+9 999 999 999, chunks a large batch instead of fanning it out, and refuses above
+`PRO_FETCH_MAX_SELF_SERVE` (99 999) until the caller states `confirm_large_batch: true` - which it can
+only do after the user has agreed. Network containment is untouched, verified by probing SSRF,
+protocol, credentials-in-URL and metadata addresses **with MAX mode on**: 6/6 blocked in both modes.
+`PRO_FETCH_MAX_PER_HOST_CONCURRENCY` is held in MAX mode and named as the one exception, because it
+bounds requests to a *third party's* server.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 328 tests |
+| `pro_site_scan` via `dist/server.js` | 7/7 steps ok, FAILED=0 (was 0/7) |
+| `pro_data_pipeline` with real CSV | 4/5 (was 1/5); the fifth is a real refusal, not an unknown tool |
+| `pro_repo_audit` | 17/17 ok, all three argument spellings |
+| `pro_research_deep` | 17/17 steps (was 13/18, then refused outright) |
+| batch at ceiling 1 000 000 | 964 calls, 952 ok, 24.4 s, 22 KB |
+| SSRF probes, simple and MAX | 6/6 blocked in both |
+
+**Unresolved:** news 429 (Serper quota) and Medium 403 (bot protection) are upstream answers, not
+defects here. The SPECS packs from Session 33 remain declared but unverified.

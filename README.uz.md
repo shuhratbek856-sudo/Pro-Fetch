@@ -7,7 +7,7 @@ Modelga kerak bo'lgan tool beriladi: standart `smart` profil **11 ta meta-tool**
 ![npm version](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm)
 ![node](https://img.shields.io/badge/node-%3E%3D22.13-blue)
 ![license](https://img.shields.io/npm/l/pro-fetch-mcp)
-![tests](https://img.shields.io/badge/tests-308%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)
 
 ## Nima uchun
 
@@ -93,6 +93,38 @@ Keyin uchta javobni bittaga birlashtirasiz:
 
 **Tarkibiyat xavfsizlikni zaiflashtirmaydi.** Har bir ichki chaqiruv markaziy `dispatch()` orqali o'tadi, shuning uchun `PRO_FETCH_ALLOWED_TOOLS`, `PRO_FETCH_READ_ONLY`, SSRF tekshiruvi, output sandboxi va timeout o'zgarmagan holda qo'llaniladi. `pro_capability_call` ozi allowlistda bo'lmasa, u umuman ishga tushmaydi.
 
+## 🚦 Simple va MAX rejim
+
+`PRO_FETCH_MODE` bir batch'ning quvvatini belgilaydi. **Simple — standart**, va bu variant bu parametr paydo bo'lishidan oldingi versiyalar bilan bir xil ishlaydi.
+
+| | simple *(standart)* | MAX |
+|---|---|---|
+| `pro_capability_call` da chaqiruv soni | 5 000 | 9 999 999 999 |
+| parallelizm / tarmoq / kategoriya | 64 / 64 / 16 | har biri 512 |
+| katta batch qanday bajariladi | bitta batch | `PRO_FETCH_BATCH_CHUNK` (1000) bo'laklab, navbat bilan |
+| o'z-o'zidan bajariladigan chegara | — | `PRO_FETCH_MAX_SELF_SERVE` (99 999), keyin foydalanuvchiga so'raladi |
+
+```bash
+PRO_FETCH_MODE=max          # MAX
+PRO_FETCH_MAX_BATCH=250     # MAX'ni ikkala rejimda ham toraytiradi
+```
+
+MAX bitta ish uchun kerak — bitta batch'ga sigmaydigan yig'ma: butun repozitoriyni o'qish yoki hujjatlar to'plamini crawl qilish. U faqat **quvvatni** ko'taradi. Bu yetish huquqi emas: bu to'rtta raqamni ko'tarish bir kichik chaqiruv bilan yetib bo'lmaydigan joyga olib chiqmaydi.
+
+O'z-o'zidan bajariladigan chegaradan yuqorida tool **rad etadi va sababini aytadi**, chunki "bu loyihadagi hamma narsani o'qi" — to'rt yuz so'rov ham, to'rt yuz ming so'rov ham bo'lishi mumkin, qaysi biri nazarda tutilganini faqat so'ragan odam biladi. Chaqiruvchi foydalanuvchi rozilik bergandan keyin `confirm_large_batch: true` bilan qayta yuboradi.
+
+**MAX rejim nimani o'zgartirmaydi.** Tarmoq himoyasi quvvat emas va uning hech bir qismi ko'chmaydi:
+
+- maxsus, loopback, link-local va `.internal` manzillar bloklanib qoladi
+- protokol ro'yxati saqlanadi — `file:` yo'q, `gopher:` yo'q
+- URL ichidagi hisob malumotlari rad etiladi
+- DNS pinning saqlanadi — ulanish tekshirilgan manzilda qoladi
+- `PRO_FETCH_OUTPUT_ROOT` chegarasi, symlink'dan qochishni aniqlash va kalit qatlami tegilmagan
+
+`tests/mode.test.ts` xavfsizlik sinovlarini **MAX rejim yoqilgan holatda** tekshiradi — ya'ni kelajakda biror chegara rejimga o'tkazilsa, test to'plami uni ushlaydi.
+
+MAX rejimda yana bitta quvvat chegarasi saqlanadi: `PRO_FETCH_MAX_PER_HOST_CONCURRENCY`. Boshqa barchasi shu jarayonni nima qila olishini cheklaydi; bu esa **bitta tashqi serverga** nechta so'rov borishini cheklaydi — chegarasiz qilsak, batch boshqaning serveriga DDoS bo'lib aylanadi. Standart 8, ko'pi bilan 512. Qaror `src/core/bounded-env.ts` da **nom bilan** ko'rsatilgan, ya'ni izohga yashirilmaydi.
+
 ## Tool katalogi
 
 <details>
@@ -158,7 +190,7 @@ npm ci
 npm run check   # verify:static → verify:registry → build → test → verify:package → format:check
 ```
 
-- **308 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
+- **328 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
 - `verify:registry` haqiqiy registry'ni yuklab **572 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
 - `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 572 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
 - `verify:package` nashr paketida shebang, `files` allowlist va **nol credential/manba fayl** ekanligini isbotlaydi.

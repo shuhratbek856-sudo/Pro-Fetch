@@ -502,3 +502,76 @@ the code does. Finishing the job needs statement-boundary tracking inside a swit
 `runCollaboration`, `runProductivity` and `runCodehost` all nest `switch (action)` inside
 `if (provider === ...)`, and their case bodies are brace-less multi-statement blocks - which is a
 separate piece of work rather than another attempt at the same slicing.
+
+---
+
+# Architecture Decisions
+
+> Reasoning is the first thing lost to compaction, so it lives on disk. Before changing anything with a
+> decision recorded here, read the decision first.
+
+One decision per entry, newest last. A decision without a rejected alternative is not a decision.
+
+---
+
+## D-008: MAX mode raises capacity; it does not grant reach
+
+**Date:** 2026-10-15
+**Status:** accepted
+
+### Context
+
+Asked, three times and then in the imperative, to "remove all limits" and set everything to
+9999999999, with a MAX mode the AI selects and simple as the default.
+
+Taking that literally would have meant deleting the SSRF guard, the protocol allowlist, DNS pinning and
+the output sandbox - because those are numbers in code too, and "all limits" does not distinguish them
+from `PRO_FETCH_MAX_CATEGORY_CONCURRENCY`.
+
+The user was also explicit that this request came from miscommunication, not from a decision to be
+unsafe: "1 - 7 tagacha bularga mayli tegma", naming the seven containment controls. So the intent was
+never "remove security". It was "stop the artificial ceilings from stopping a large job".
+
+### Decision
+
+MAX mode lifts capacity only. Simple stays the default and is byte-for-byte unchanged in behaviour.
+
+Capacity: calls per batch 5 000 -> 9 999 999 999; concurrency, network and category defaults rise; the
+`max` argument on every `boundedEnv` call is lifted so an explicitly-set value is actually applied. A
+large batch runs chunked (`PRO_FETCH_BATCH_CHUNK`, 1000) rather than fanned out, and above
+`PRO_FETCH_MAX_SELF_SERVE` (99 999) the tool refuses and names the way through
+(`confirm_large_batch: true`), because the caller sets that only after the user has agreed.
+
+Not lifted: the SSRF guard, the protocol allowlist, credentials-in-URL, DNS pinning, the output
+sandbox, symlink detection, credential layering. Also not lifted:
+`PRO_FETCH_MAX_PER_HOST_CONCURRENCY`, held by name in `HELD_IN_MAX_MODE`.
+
+### Rationale
+
+The distinction that makes this defensible: every lifted bound limits *this process*. Lifting one makes
+a job faster and reaches nothing a single small call could not already reach. The per-host bound is
+different in kind - it limits how many requests reach *one remote host*, so raising it without limit
+aims damage outward, at a server that is not the user's.
+
+This matters more in MAX mode specifically, because MAX mode is selected for jobs whose whole point is
+volume. A repository sweep is exactly the workload that could turn into a denial of service.
+
+### Rejected alternatives
+
+- **Delete the limits outright.** Fails the moment a request reaches `169.254.169.254`. The mode is
+  selectable by the model at runtime, which is exactly the condition under which a guard must not be
+  conditional.
+- **Lift the per-host bound too, for consistency.** Consistency is not the goal; the bound protects a
+  third party. It is held, listed by name so the exception is greppable, and documented as the one
+  exception rather than left for a reader to find.
+- **Fan out instead of queueing.** Eleven thousand simultaneous sockets is a self-inflicted denial of
+  service against the user's own machine, and the process dies before a result returns.
+- **One number for everything, no mode.** Simple users would inherit a ceiling they never asked for.
+  Simple exists precisely so that a small install stays small.
+
+### Consequences
+
+Two capability knobs that look identical are in fact not: `PRO_FETCH_MAX_BATCH` still wins over the
+mode, so MAX mode can be deliberately held back in either direction. `tests/mode.test.ts` asserts the
+security probes with MAX mode switched on, so a future change that routes a containment limit through
+the mode fails the suite rather than shipping quietly.
