@@ -23,7 +23,7 @@ export default defineTool({
     const query = typeof input.query === 'string' ? input.query.trim() : '';
     if (!query) throw new Error('query parametri kerak.');
     const apiKey = process.env.SERPAPI_API_KEY;
-    if (!apiKey) throw new Error('Shopping search учун SERPAPI_API_KEY sozlang.');
+    if (!apiKey) throw new Error('Shopping search uchun SERPAPI_API_KEY sozlang.');
     const limitValue = Number(input.limit ?? 10);
     const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(25, Math.floor(limitValue))) : 10;
     const url = new URL('https://serpapi.com/search.json');

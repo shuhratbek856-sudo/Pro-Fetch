@@ -30,7 +30,7 @@ export default defineTool({
     const normalized = repository.replace(/\.git$/i, '').replace(/^\/+|\/+$/g, '');
     const parts = normalized.split('/');
     if (parts.length !== 2 || !parts.every((part) => /^[A-Za-z0-9_.-]+$/.test(part)))
-      throw new Error('repository owner/repo ёки GitHub repository URL беринг.');
+      throw new Error('repository owner/repo yoki GitHub repository URL bering.');
     const [owner, repo] = parts;
     const headers: Record<string, string> = { accept: 'application/vnd.github+json' };
     if (getCredential('GITHUB_TOKEN')) headers.authorization = 'Bearer ' + getCredential('GITHUB_TOKEN');
@@ -38,7 +38,7 @@ export default defineTool({
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`,
       { cache: false, headers, timeoutMs: 15_000, maxBytes: 1_000_000 },
     );
-    if (response.status === 404) throw new Error(`GitHub repo ${normalized} учун published release топилмади.`);
+    if (response.status === 404) throw new Error(`GitHub repo ${normalized} uchun published release topilmadi.`);
     if (response.status < 200 || response.status >= 300) throw new Error('GitHub release API HTTP ' + response.status);
     const release = parseUpstreamJson(response, 'pro_fetch_release_watch') as {
       tag_name?: string;
@@ -49,7 +49,7 @@ export default defineTool({
       draft?: boolean;
       prerelease?: boolean;
     };
-    if (!release.tag_name) throw new Error('GitHub API release tag_name қайтармади.');
+    if (!release.tag_name) throw new Error('GitHub API release tag_name qaytarmadi.');
     const key =
       'monitor:release_watch:' + createHash('sha256').update(normalized.toLowerCase()).digest('hex').slice(0, 24);
     const previous = cache.get(key)?.value;

@@ -26,7 +26,7 @@ export default defineTool({
   async handler(input) {
     const rawUrl = typeof input.url === 'string' ? input.url.trim() : '';
     const expression = typeof input.xpath === 'string' ? input.xpath.trim() : '';
-    if (!rawUrl || !expression) throw new Error('url ва xpath параметрлари керак.');
+    if (!rawUrl || !expression) throw new Error('url va xpath parametrlari kerak.');
     const safeUrl = await assertSafeUrl(rawUrl);
     const response = await fetchWithOptions(safeUrl.toString(), {
       timeoutMs: Number(input.timeout_ms ?? 15_000),

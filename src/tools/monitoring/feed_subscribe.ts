@@ -37,7 +37,7 @@ export default defineTool({
     if (response.status < 200 || response.status >= 300) throw new Error('Feed HTTP ' + response.status);
     const $ = load(response.text, { xmlMode: true });
     const items = $('item,entry').toArray();
-    if (!items.length) throw new Error('RSS item ёки Atom entry топилмади.');
+    if (!items.length) throw new Error('RSS item yoki Atom entry topilmadi.');
     const limitValue = Number(input.limit ?? 50);
     const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(100, Math.floor(limitValue))) : 50;
     const current = items.slice(0, limit).map((node) => {

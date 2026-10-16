@@ -206,7 +206,7 @@ describe(`pro-fetch MAX - barcha ${TOTAL} tool`, () => {
       seen.add(t.category);
       return true;
     });
-    expect(samples.length).toBe(31);
+    expect(samples.length).toBe(32);
     for (const t of samples) {
       if (NET.has(t.category) || COMPOSITES.has(t.name)) {
         expect(typeof t.handler).toBe('function');

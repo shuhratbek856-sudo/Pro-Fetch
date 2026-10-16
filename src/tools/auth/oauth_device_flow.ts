@@ -13,11 +13,11 @@ export default defineTool({
   category: 'auth',
   inputSchema: {
     type: 'object',
-    properties: { scope: { type: 'string', description: 'GitHub OAuth учун сўраладиган scope’лар' } },
+    properties: { scope: { type: 'string', description: 'GitHub OAuth uchun сўраладиган scope’лар' } },
   },
   async handler(input) {
     const clientId = process.env.GITHUB_CLIENT_ID;
-    if (!clientId) throw new Error('GitHub device flow учун GITHUB_CLIENT_ID environment variable керак.');
+    if (!clientId) throw new Error('GitHub device flow uchun GITHUB_CLIENT_ID environment variable керак.');
     const scope = typeof input.scope === 'string' && input.scope.trim() ? input.scope.trim() : 'read:user repo';
     const response = await fetchWithOptions('https://github.com/login/device/code', {
       method: 'POST',
@@ -37,14 +37,14 @@ export default defineTool({
       interval?: number;
     };
     if (!payload.device_code || !payload.user_code || !payload.verification_uri)
-      throw new Error('GitHub device flow response required fields қайтармади.');
+      throw new Error('GitHub device flow response required fields qaytarmadi.');
     return result(
       JSON.stringify(
         {
           ...payload,
           client_secret_returned: false,
           instructions:
-            'verification_uri’ни очиб, user_code’ни киритинг; polling учун device_code’ни secure storage’да сақланг.',
+            'verification_uri’ni ochib, user_code’ni kiriting; polling uchun device_code’ni secure storage’da saqlang.',
         },
         null,
         2,

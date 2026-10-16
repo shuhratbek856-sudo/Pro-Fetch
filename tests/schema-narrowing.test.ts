@@ -197,8 +197,8 @@ describe('a per-tool property list does not replace what the tool declared', () 
   it('honours every alternative the auth schema advertises', async () => {
     // `AUTH_TOOL_REQUIREMENTS` states `token | bearer_token | key_name`, and `runIntegrationTool`
     // reads `str(input, 'token', 'bearer_token')`. The handler read only `input.token`, so sending
-    // `bearer_token` - exactly what the schema invites - failed with "token ёки мавжуд key_name
-    // керак". Both spellings are exercised here so the advertised contract stays true.
+    // `bearer_token` - exactly what the schema invites - failed with "token yoki mavjud key_name
+    // kerak". Both spellings are exercised here so the advertised contract stays true.
     const text = (result: { content?: { text: string }[] }) =>
       (result.content ?? []).map((entry) => entry.text).join(' ');
 

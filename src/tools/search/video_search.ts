@@ -23,7 +23,7 @@ export default defineTool({
     const query = typeof input.query === 'string' ? input.query.trim() : '';
     if (!query) throw new Error('query parametri kerak.');
     const apiKey = process.env.YOUTUBE_API_KEY;
-    if (!apiKey) throw new Error('Video search учун YOUTUBE_API_KEY sozlang.');
+    if (!apiKey) throw new Error('Video search uchun YOUTUBE_API_KEY sozlang.');
     const limitValue = Number(input.limit ?? 10);
     const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(50, Math.floor(limitValue))) : 10;
     const url = new URL('https://www.googleapis.com/youtube/v3/search');
