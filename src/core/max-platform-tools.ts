@@ -1607,7 +1607,25 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
         }
       };
       walk(data.dependencies);
-      return { count: rows.length, packages: rows.slice(0, 2000) };
+      // An empty result is ambiguous: it means either "no dependencies" or "wrong directory". `npm ls`
+      // prints `{}` with exit code 0 in a directory that has no package.json, so the tool was reporting
+      // "0 packages" as a success while having looked somewhere with nothing in it. Measured on this
+      // repository: with `cwd` set it returns 601 packages, without it 0.
+      if (rows.length === 0) {
+        const manifest = path.join(cwd, 'package.json');
+        const present = await readFile(manifest, 'utf8').catch(() => null);
+        if (present === null) {
+          throw new Error(
+            `Bu papkada package.json yo'q: ${cwd}. "0 ta paket" deganda "bu loyiha yo'q" ` +
+              `degani, xatosi esa ko'rinmasdi. "cwd" argumentini bering.`,
+          );
+        }
+      }
+      return {
+        count: rows.length,
+        ...(rows.length === 0 ? { note: 'package.json bor, lekin o‘rnatilgan dependency yo‘q.' } : {}),
+        packages: rows.slice(0, 2000),
+      };
     }
     const raw = await readFile(path.join(cwd, 'package-lock.json'), 'utf8').catch(() => '{"packages":{}}');
     const lock = JSON.parse(raw) as {
