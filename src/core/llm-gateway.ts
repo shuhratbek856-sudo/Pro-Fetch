@@ -113,17 +113,70 @@ export function checkProvider(name: string): {
   if (spec.requiresKey && !(process.env[spec.keyEnv] ?? '').trim()) {
     missing.push(spec.keyEnv);
   }
+  let base = spec.baseUrl;
   try {
-    effectiveBaseUrl(spec);
+    base = effectiveBaseUrl(spec);
   } catch (error) {
     missing.push(error instanceof Error ? error.message : String(error));
   }
+
+  // Ollama runs on loopback, and the SSRF guard blocks loopback on every fetch - which is correct, and
+  // is why it is checked here. Reporting it `ready: true` is the same lie as before in a different
+  // place: a caller reads the status, concludes a local model is available, and the first real call is
+  // refused by the guard with a message about internal addresses. A status that does not predict the
+  // next call is worse than no status.
+  if (spec.id === 'ollama') {
+    missing.push(`${base} — SSRF himoyasi loopback manzillarni bloklaydi; pro-fetch orqali chaqirib bo‘lmaydi.`);
+  }
+
   return {
     provider: spec.id,
     label: spec.label,
     ready: missing.length === 0,
     ...(missing.length ? { reason: missing.join('; ') } : {}),
   };
+}
+
+/**
+ * Split a `provider/model` string.
+ *
+ * Without this, `model: "ollama/llama3"` went to the default provider and came back as
+ * `OpenAI: HTTP 401`, while `pro_llm_providers` was meanwhile reporting ollama as `ready: true`. That
+ * combination is the worst kind of failure: the tool that reports readiness said yes, and the tool
+ * that does the work went somewhere else entirely. A caller reading only the first output would
+ * reasonably conclude a local model was available.
+ *
+ * An explicit `provider` argument always wins. The prefix is a convenience, not an override, so a
+ * caller who names both and disagrees is told rather than silently contradicted.
+ */
+export function splitModel(provider: string, model: string): { provider: string; model: string; conflict?: string } {
+  const trimmed = model.trim();
+  const named = provider.trim();
+
+  // A bare provider name is a provider: `model: "ollama"` with no slash used to fall through to
+  // OpenAI and return a 401 from a host the caller never named.
+  if (!named && Object.prototype.hasOwnProperty.call(PROVIDERS, trimmed.toLowerCase())) {
+    return { provider: trimmed.toLowerCase(), model: '' };
+  }
+  const slash = trimmed.indexOf('/');
+  if (slash <= 0) return { provider: named, model: trimmed };
+
+  const prefix = trimmed.slice(0, slash);
+  const rest = trimmed.slice(slash + 1);
+  // Only a known provider prefix is treated as one. Model names legitimately contain slashes -
+  // `meta-llama/Llama-3-8B` on Ollama, `mistralai/Mistral-7B` on OpenRouter - and rewriting those to
+  // a provider would break every OpenAI-compatible endpoint that serves them.
+  if (!Object.prototype.hasOwnProperty.call(PROVIDERS, prefix)) {
+    return { provider: named, model: trimmed };
+  }
+  if (named && named !== prefix) {
+    return {
+      provider: prefix,
+      model: rest,
+      conflict: `provider "${named}" va model prefiksi "${prefix}" mos emas — "${prefix}" ishlatildi.`,
+    };
+  }
+  return { provider: prefix, model: rest };
 }
 
 export interface ChatMessage {

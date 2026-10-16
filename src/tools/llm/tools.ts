@@ -10,7 +10,7 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail, jsonBlock } from '../../core/format.js';
 import { arr, num, str, strOrEmpty, view } from '../../core/input.js';
-import { PROVIDERS, chat, checkProvider, embed } from '../../core/llm-gateway.js';
+import { PROVIDERS, chat, checkProvider, embed, splitModel } from '../../core/llm-gateway.js';
 
 /** Turn a caller's `messages` input into the shape the gateway expects. */
 function readMessages(input: Record<string, unknown>): Array<{
@@ -84,10 +84,14 @@ export const llmChat = defineTool({
     if (prompt) messages.push({ role: 'user', content: prompt });
     if (messages.length === 0) return fail('prompt yoki messages bering.');
 
+    // `provider/model` in a single argument has to be honoured: without it, "ollama/llama3" went
+    // to OpenAI and came back 401 while pro_llm_providers reported ollama as ready.
+    const target = splitModel(strOrEmpty(p, 'provider'), strOrEmpty(p, 'model'));
+    if (target.conflict) return fail(target.conflict);
     try {
       const answer = await chat({
-        provider: strOrEmpty(p, 'provider') || 'openai',
-        model: strOrEmpty(p, 'model'),
+        provider: target.provider || 'openai',
+        model: target.model,
         messages,
         maxTokens: num(p, 'max_tokens', 1024, 1, 32_000),
         ...(typeof p.temperature === 'number' ? { temperature: Number(p.temperature) } : {}),
@@ -127,10 +131,12 @@ export const llmComplete = defineTool({
     // Deliberately routed through chat rather than a completions endpoint: a model that has chat will
     // almost always be the one the caller named, and a completion endpoint is not universally
     // available. The tool says what it actually does rather than implying otherwise.
+    const target = splitModel(strOrEmpty(p, 'provider'), strOrEmpty(p, 'model'));
+    if (target.conflict) return fail(target.conflict);
     try {
       const answer = await chat({
-        provider: strOrEmpty(p, 'provider') || 'openai',
-        model: strOrEmpty(p, 'model'),
+        provider: target.provider || 'openai',
+        model: target.model,
         messages: [{ role: 'user', content: prompt }],
         maxTokens: num(p, 'max_tokens', 1024, 1, 32_000),
         maxChars: num(p, 'max_chars', 0, 0, 200_000),
@@ -171,10 +177,12 @@ export const llmEmbed = defineTool({
     if (texts.length === 0) return fail('text yoki input bering.');
     if (texts.length > 256) return fail(`Bir chaqiruvda 256 tagacha matn. Yuborilgan: ${texts.length}.`);
 
+    const target = splitModel(strOrEmpty(p, 'provider'), strOrEmpty(p, 'model'));
+    if (target.conflict) return fail(target.conflict);
     try {
       const answer = await embed({
-        provider: strOrEmpty(p, 'provider') || 'openai',
-        model: strOrEmpty(p, 'model'),
+        provider: target.provider || 'openai',
+        model: target.model,
         input: texts,
         ...(typeof p.dimensions === 'number' ? { dimensions: Number(p.dimensions) } : {}),
         timeoutMs: num(p, 'timeout_ms', 120_000, 1_000, 900_000),
