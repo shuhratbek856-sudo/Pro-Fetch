@@ -968,3 +968,101 @@ grep matched the Todoist integration, and I read a service name as a code marker
 directly in the handler body. Then `geo_data` on OpenStreetMap/Nominatim/Overpass and `govdata` on
 CKAN/data.gov/SEC EDGAR. Still unbuildable without a further decision: none - all seven remaining
 credential-free categories now have what they need.
+
+### Session 41-42 - imageproc, binary formats, and four classes of silent wrong answer
+
+Standing order carried through both sessions: do not stop until every problem is fixed. Continuing.
+
+**Counts (measured, not carried forward):** 605 -> 618 tools, 30 -> 32 categories, 22 -> 24 test files,
+333 -> 373 tests. `npm run check` exit 0 at the end of each block.
+
+| Category | Tools | Verified against |
+|---|---:|---|
+| imageproc | 9 | real pixels: resize read back through sharp, sprite frames counted in output, opacity read off the JSON |
+| binary | 4 | a real `apache/parquet-testing` file, a hand-encoded Avro container, an apache-arrow IPC file, a hand-encoded FileDescriptorSet |
+
+#### Four defects, one shape
+
+Everything found in these sessions is the same failure: something went wrong and the interface reported
+success. What changed is that this is now a *checkable* property rather than a lesson.
+
+1. **`num()` floors.** `Math.floor(0.5) = 0`, and 0 is the "not supplied" fallback, so `brightness: 0.5`
+   became "nothing was changed" with `isError: false`. Six silent no-ops across three tools were found by
+   sweeping, not by fixing only the one that exposed it. `float()` now sits beside `num()` and the hazard
+   is written at `num`'s definition, because `num(p, 'brightness', 0, -1, 1)` reads as ordinary clamping at
+   the call site.
+2. **A dependency that reported wrong answers.** `parquet-wasm` 0.9.0 returns `{__wbg_ptr: ...}` from
+   `readMetadata` on Node 24; `num_rows` is `undefined` and the tool reported **0 rows for a file with 8**.
+   Removed rather than kept "for later" - a broken dependency in `package.json` is worse than an absent
+   one, because the next reader assumes the format is handled.
+3. **A stream read before it flushed.** avsc's `RawDecoder` emits only once the writable side finishes;
+   reading the count right after `write()` returns zero and looks like an empty block.
+4. **Cyrillic homoglyphs in user-facing text.** Nine typos (`ёки`/`yoki`, `учун`/`uchun`,
+   `kodеk`/`kodek` with U+0435). A sweep for `[\u0400-\u04FF]` separates the two legitimate Russian
+   word lists from the mistakes.
+
+#### Guard defects
+
+Four guards could not fail correctly, and each failure was the guard's own staleness rather than real
+drift:
+
+    if (!readme.includes('606 MCP tool')) failures.push('README does not report 577 tools');
+    if (countManifest.total !== 607)         failures.push('... expected 572');
+    if (!/toBe\(606\)/.test(allToolsTest))     failures.push('does not assert 577 tools');
+
+Three different numbers in three lines, each printed differently from the one it checked. All now read
+from `tool-counts.json` or check that the test derives its count. The suite literals were the reason 606
+survived in four assertions while the registry held 609: they were edited by hand, and a hand edit here
+was a string `replace`, which rewrites only the first occurrence.
+
+#### Tests that had to be rewritten, and why
+
+- Two GitHub regressions moved to **offline** assertions against exported pure functions
+  (`buildIssueQuery`, `renderDirectoryListing`). The live versions failed with `GitHub 403: API rate
+  limit exceeded` (measured 0 of 60), which says nothing about the behaviour. Skipping was tried first
+  and rejected: it converts a real failure into a green tick.
+- `indexOf(composite) === -1` was replaced by a **ranking** assertion. Measured: with 605 tools the query
+  returned one hit at 51.118; with 610, the same tool at 51.221 and the composite at 0.906 in second.
+  Ranking improved and the test failed, because the old assertion tested absence from a five-slot
+  window rather than the stated intent.
+- `anyOf` had to be taught to `all-tools.test.ts` for the second time; a tool with `required: []` and an
+  `anyOf` legitimately rejects `{}`.
+- `pro_image_watermark` widths are asserted through `renderDirectoryListing`-style region matching after
+  a `"width":` regex matched `source.width` instead - the assertion was testing the wrong field.
+
+#### Corrections to my own claims
+
+- "15 TODO markers in `max-platform-tools.ts" - there are none; the grep matched the Todoist integration.
+- "SPECS packs are the biggest remaining risk" - overstated. Measured with an empty-call probe: 198
+  tools unresolvable, 129 demand arguments on `{}`, **0** demand an argument outside their schema.
+  Unverified is not the same as wrong.
+- "All problems are fixed" - not true when said; six more were found afterwards, including three in the
+  code written in the same session.
+- `testFiles = 25` - fixtures were counted as tests. The real count is 24, now measured with
+  `readdirSync` rather than typed.
+
+#### Still open
+
+- Five credential-free categories not built: `geo_data` (OpenStreetMap/Nominatim/Overpass), `govdata`
+  (CKAN/data.gov/SEC EDGAR), `color`, `time`, `zip`.
+- `global` on the `pro_fetch_devops_npm_*` pair. Refused rather than ignored since `204b766`; still does
+  nothing. It lives in the SPECS packs, so its shape is among the 198 above.
+- `pro_research_deep` 429/403 from third parties (Serper quota, Medium bot protection) - upstream, not
+  a code defect.
+- Three thin descriptions named earlier (`pro_fetch_xml_to_json`, `pro_gh_gist_read`,
+  `pro_fetch_session_list`).
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 24 files / 373 tests, run five times across both sessions |
+| `npm run audit:schema` | `with_dead_properties=0`, `open_schemas=0`, `with_unread_required=0` |
+| `npm run verify:registry` | 618 registered, 32 categories, 11 smart, 618 unique names |
+| imageproc functional probes | 7/7, 5/5, 12/12, 9/9, 12/12, 9/9, 9/9, 3/3 |
+| binary functional probes | parquet 10/10, avro 11/11, arrow 11/11, protobuf 7/7 |
+| `tests/binary-formats.test.ts` | 13/13 |
+| `tests/float-hazard.test.ts` | 10/10 |
+| GitHub anonymous quota | 0 of 60 - the reason two assertions moved offline |
+
+**Next exact action:** `src/tools/geo_data/` on OpenStreetMap Nominatim and Overpass - both credential-free
+and both reachable without a key. One tool per file, `readBinarySource` or the fetch path called directly in
+the handler body, and every error path checked before the success path is written.
