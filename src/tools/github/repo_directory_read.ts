@@ -23,14 +23,23 @@ export default defineTool({
     const dir = String(p.path ?? '').replace(/^\/+|\/+$/g, '');
     const r = await ghApi('/repos/' + p.owner + '/' + p.repo + '/contents/' + dir);
     if (r.status >= 400) return ghErr(r.status, r.json);
-    const files = asRecordArray(r.json)
-      .filter((e) => pathStr(e, 'type') === 'file')
-      .slice(0, 20);
+    const entries = asRecordArray(r.json);
+    const files = entries.filter((e) => pathStr(e, 'type') === 'file').slice(0, 20);
+    const dirs = entries.filter((e) => pathStr(e, 'type') === 'dir').map((e) => pathStr(e, 'path'));
     const parts: string[] = [];
     for (const f of files) {
       const fr = await ghApi('/repos/' + p.owner + '/' + p.repo + '/contents/' + f.path, 'application/vnd.github.raw');
       parts.push('## ' + f.path + '\n\n' + (fr.status < 400 ? clipToTokens(fr.text, 2000) : "(o'qilmadi)"));
     }
-    return md('# ' + (dir || 'root') + ' — ' + files.length + ' fayl\n\n' + parts.join('\n\n---\n\n'));
+
+    // Directories used to be filtered out without a word, so a directory that contains only
+    // subdirectories - `src/tools`, which holds 13 of them - reported "0 fayl" and looked empty. It was
+    // not empty; it was unlisted. The count and the listing now say which of the two happened.
+    const dirNote =
+      dirs.length === 0
+        ? ''
+        : `\n\n**${dirs.length} ta subdirektoriya:** ${dirs.join(', ')}` +
+          (files.length === 0 ? '\n\n_(Bu papkada fayl yo‘q — yuqoridagi subdirektoriyalarga boring.)_' : '');
+    return md('# ' + (dir || 'root') + ' — ' + files.length + ' fayl' + dirNote + '\n\n' + parts.join('\n\n---\n\n'));
   },
 });
