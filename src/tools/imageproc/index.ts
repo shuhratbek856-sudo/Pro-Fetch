@@ -5,6 +5,7 @@ import rotate from './rotate.js';
 import info from './info.js';
 import sprite from './sprite.js';
 import adjust from './adjust.js';
+import stripMetadata from './strip_metadata.js';
 import watermark from './watermark.js';
 
-export default [resize, crop, convert, watermark, rotate, info, sprite, adjust];
+export default [resize, crop, convert, watermark, rotate, info, sprite, adjust, stripMetadata];

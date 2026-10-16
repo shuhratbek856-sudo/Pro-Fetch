@@ -2,7 +2,7 @@
 
 # pro-fetch-mcp
 
-### 613 MCP tools · 31 categories · one security engine
+### 614 MCP tools · 31 categories · one security engine
 
 Fetch, deep-research and GitHub as an MCP server — with a Smart System that composes the whole
 catalog in a single round trip.

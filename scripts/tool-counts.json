@@ -1,5 +1,5 @@
 {
-  "total": 613,
+  "total": 614,
   "categories": {
     "http": 19,
     "convert": 30,
@@ -22,7 +22,7 @@
     "encoding": 9,
     "schema": 6,
     "document": 13,
-    "imageproc": 8,
+    "imageproc": 9,
     "git": 23,
     "codehost": 25,
     "devops": 24,
@@ -37,7 +37,7 @@
     "smart": 11,
     "minimal": 73,
     "standard": 178,
-    "full": 613
+    "full": 614
   },
   "smartComposites": [
     "pro_capability_call",
@@ -74,5 +74,5 @@
       "purpose": "One call for hosted-provider operations across the four MAX packs that had no composite."
     }
   },
-  "full": 613
+  "full": 614
 }
