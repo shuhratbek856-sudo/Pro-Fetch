@@ -830,3 +830,39 @@ plus an `index.ts` that imports them by name. Then `npm run audit:schema` must r
 
 **Still red, still uncommitted:** `tests/schema-narrowing.test.ts` reports the dead properties above.
 Everything else passes - static verification, registry verification, `tsc`, and the functional PDF tests.
+### Session 39 - document split by hand, the helper rule, and the binary dependencies
+
+`document` is green and committed. The audit's false positive is resolved and the rule behind it is
+written into the code at each site.
+
+Root cause, measured: the schema audit resolves property reads from the handler body and does not follow
+a helper.
+
+    pro_pdf_rotate   source length 1863   readBinarySource present: false
+    pro_pdf_merge    source length 4059   readBinarySource present: true
+
+`pro_pdf_merge` escaped because its body was long enough to contain the call. Splitting into one tool
+per file fixed the truncation. Renaming `load` to `open` did not - it only moved the problem. Calling
+`readBinarySource` directly in the handler body cleared it. Third occurrence of this exact shape after
+`readInstance` in schema; the rule is now stated at each site instead of being rediscovered.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 333 tests |
+| `npm run audit:schema` | `with_dead_properties=0`, `open_schemas=0`, `with_unread_required=0` |
+| `npx tsx scripts/verify-registry.mts` | registered=605; categories=30; smart=11; unique_names=605 |
+| PDF functional tests | 14/14, each result reloaded with pdf-lib rather than trusted |
+
+Installed at the user's request: `apache-arrow`, `@bufbuild/protobuf`, `avsc`, `parquet-wasm`. These are
+dependencies only. No tool uses them yet, and the commit says so rather than implying otherwise.
+
+A first split attempt was scripted and reverted - it duplicated helpers into files that did not call them
+and omitted imports from files that did. A regex cannot decide imports. The second attempt worked
+because the per-file dependency map was measured before writing anything.
+
+**Next exact action:** `src/tools/imageproc/` on `sharp`, which is installed: resize, crop, convert,
+watermark, sprite, dominant colour, thumbnail grid. One tool per file, each with `readBinarySource` called
+directly in the handler body - not through a helper - from the first line rather than after a failure.
+
+Then `geo_data` on OpenStreetMap/Nominatim/Overpass and `govdata` on CKAN/data.gov/SEC EDGAR, both
+credential-free. Then `binary` on the four newly installed packages.
