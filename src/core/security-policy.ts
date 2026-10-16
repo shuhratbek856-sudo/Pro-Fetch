@@ -2,7 +2,7 @@ import type { ToolDefinition } from './types.js';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { assertGithubInput } from './github-input-guard.js';
-import { assertRequiredPresent } from './required-arguments.js';
+import { assertNoUnknownArguments, assertRequiredPresent } from './required-arguments.js';
 import { currentProfile, isToolVisibleInProfile, profileEnforced } from './profile.js';
 import { isMutationTool } from './tool-classification.js';
 import { boundedEnv } from './bounded-env.js';
@@ -115,6 +115,7 @@ export function assertToolAllowed(tool: ToolDefinition, input: Record<string, un
   // CREDENTIAL_MISSING while the argument they were missing went unmentioned.
   assertGithubInput(tool, input);
   assertRequiredPresent(tool, input);
+  assertNoUnknownArguments(tool, input);
 }
 
 export { boundedEnv } from './bounded-env.js';
