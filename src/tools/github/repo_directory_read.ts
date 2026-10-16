@@ -32,14 +32,27 @@ export default defineTool({
       parts.push('## ' + f.path + '\n\n' + (fr.status < 400 ? clipToTokens(fr.text, 2000) : "(o'qilmadi)"));
     }
 
-    // Directories used to be filtered out without a word, so a directory that contains only
-    // subdirectories - `src/tools`, which holds 13 of them - reported "0 fayl" and looked empty. It was
-    // not empty; it was unlisted. The count and the listing now say which of the two happened.
-    const dirNote =
-      dirs.length === 0
-        ? ''
-        : `\n\n**${dirs.length} ta subdirektoriya:** ${dirs.join(', ')}` +
-          (files.length === 0 ? '\n\n_(Bu papkada fayl yo‘q — yuqoridagi subdirektoriyalarga boring.)_' : '');
-    return md('# ' + (dir || 'root') + ' — ' + files.length + ' fayl' + dirNote + '\n\n' + parts.join('\n\n---\n\n'));
+    return md(renderDirectoryListing(dir, files.length, dirs) + '\n\n' + parts.join('\n\n---\n\n'));
   },
 });
+
+/**
+ * The heading that distinguishes an empty directory from an unlisted one.
+ *
+ * Directories used to be filtered out without a word, so a directory that contains only subdirectories
+ * - `src/tools`, which holds 23 of them - reported "0 fayl" and looked empty. It was not empty; it was
+ * unlisted, and the two are indistinguishable from the count alone.
+ *
+ * Exported so the behaviour can be asserted without a GitHub call. The live version of this assertion
+ * could only be checked against the API, and it stopped being checked the moment an unauthenticated
+ * rate limit ran out - which is when the suite most needed to be able to say something.
+ */
+export function renderDirectoryListing(dir: string, fileCount: number, dirs: string[]): string {
+  const heading = '# ' + (dir || 'root') + ' — ' + fileCount + ' fayl';
+  if (dirs.length === 0) return heading;
+  return (
+    heading +
+    `\n\n**${dirs.length} ta subdirektoriya:** ${dirs.join(', ')}` +
+    (fileCount === 0 ? '\n\n_(Bu papkada fayl yo‘q — yuqoridagi subdirektoriyalarga boring.)_' : '')
+  );
+}

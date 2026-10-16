@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCredential } from '../src/core/credentials.js';
 import { executeTool } from '../src/core/execution-engine.js';
@@ -29,7 +30,7 @@ afterEach(() => {
 
 describe('smart tool discovery', () => {
   it('exposes a small meta-tool surface while retaining all registered tools internally', () => {
-    expect(allTools()).toHaveLength(605);
+    expect(allTools()).toHaveLength(JSON.parse(readFileSync('scripts/tool-counts.json', 'utf8')).total);
     expect(listTools('smart')).toHaveLength(11);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
     // The Smart System contract: an eleven-tool surface that still reaches every registered tool.

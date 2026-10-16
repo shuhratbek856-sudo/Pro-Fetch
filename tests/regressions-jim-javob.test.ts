@@ -16,6 +16,8 @@ import { callTool } from '../src/router.js';
 import { splitModel } from '../src/core/llm-gateway.js';
 import { MAX_MODE_CEILING } from '../src/core/mode.js';
 import { assertNoUnknownArguments } from '../src/core/required-arguments.js';
+import { buildIssueQuery } from '../src/tools/github/issues_search.js';
+import { renderDirectoryListing } from '../src/tools/github/repo_directory_read.js';
 import type { ToolResult } from '../src/core/types.js';
 
 const ORIGINAL = { ...process.env };
@@ -105,39 +107,58 @@ describe('an undeclared argument is refused', () => {
   });
 });
 
+/**
+ * These two were originally checked by calling GitHub, on the reasoning that a live call is the only
+ * evidence. It is not: the defects were in how a request string and a heading are *built*, and both are
+ * now exported pure functions, so the exact text sent to GitHub can be asserted with no network at all.
+ *
+ * That matters more than it sounds. The live version failed with `GitHub 403: API rate limit exceeded`
+ * - measured: 0 of 60 anonymous requests left - which says nothing about the behaviour, and the only way
+ * to stop the suite reporting that failure was to stop checking the behaviour. A test that needs a
+ * third party's quota to run is a test that silently stops running.
+ */
 describe('issue search satisfies the API it calls', () => {
-  it('adds is:issue when the caller has not chosen', async () => {
-    // Without this, every call returned 422 and the tool could search nothing at all.
-    const result = await callTool('pro_gh_issues_search', {
-      owner: 'shuhratbek856-sudo',
-      repo: 'Pro-Fetch',
-      query: 'test',
-    });
-    expect(text(result)).not.toMatch(/422/);
+  it('adds is:issue when the caller has not chosen', () => {
+    // Without this, every call returned 422 and the tool could not search anything at all.
+    expect(buildIssueQuery('o', 'r', 'test')).toBe('repo:o/r test is:issue');
   });
 
-  it('keeps is:pr, because rewriting it would return the wrong set and look right', async () => {
-    const result = await callTool('pro_gh_issues_search', {
-      owner: 'shuhratbek856-sudo',
-      repo: 'Pro-Fetch',
-      query: 'is:pr test',
-    });
-    // isError is undefined on success, not false, so this asserts falsiness rather than equality.
-    expect(result.isError).toBeFalsy();
+  it('keeps is:pr, because rewriting it would return the wrong set and look right', () => {
+    expect(buildIssueQuery('o', 'r', 'is:pr test')).toBe('repo:o/r is:pr test');
+    expect(buildIssueQuery('o', 'r', 'is:issue test')).toBe('repo:o/r is:issue test');
+    expect(buildIssueQuery('o', 'r', 'is:project x')).toBe('repo:o/r is:project x');
+  });
+
+  it('trims the query rather than sending the padding on', () => {
+    expect(buildIssueQuery('o', 'r', '  bug  ')).toBe('repo:o/r bug is:issue');
   });
 });
 
 describe('a directory that holds only subdirectories does not report itself empty', () => {
-  it('lists them', async () => {
-    const result = await callTool('pro_gh_repo_directory_read', {
-      owner: 'shuhratbek856-sudo',
-      repo: 'Pro-Fetch',
-      path: 'src/tools',
-    });
-    const body = text(result);
-    // 0 files at the top level, 23 directories. Reporting only the first made it look empty.
-    expect(body).toMatch(/0 fayl/);
-    expect(body).toMatch(/subdirektoriya/);
+  it('lists them when there are no files', () => {
+    // src/tools holds 23 subdirectories and no files. Reporting only the count made it look empty.
+    const body = renderDirectoryListing('src/tools', 0, ['a', 'b']);
+    expect(body).toContain('0 fayl');
+    expect(body).toContain('2 ta subdirektoriya');
+    expect(body).toContain('yuqoridagi subdirektoriyalarga boring');
+  });
+
+  it('says so even when files are present too', () => {
+    const body = renderDirectoryListing('src/core', 20, ['a']);
+    expect(body).toContain('20 fayl');
+    expect(body).toContain('1 ta subdirektoriya');
+    // The "go into a subdirectory" note would be wrong when there are files to read here.
+    expect(body).not.toContain('yuqoridagi subdirektoriyalarga boring');
+  });
+
+  it('adds nothing when there are no subdirectories', () => {
+    // Not an equality check on the whole line: the separator is an em dash and writing it twice in two
+    // files is how the two drifted apart in the first place. What matters is that a directory with no
+    // subdirectories gains no note at all.
+    const plain = renderDirectoryListing('tests', 3, []);
+    expect(plain).toContain('tests');
+    expect(plain).toContain('3 fayl');
+    expect(plain).not.toContain('subdirektoriya');
   });
 });
 

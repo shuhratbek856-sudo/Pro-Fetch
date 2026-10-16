@@ -1,10 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import '../src/loader.js'; // barcha 605 toolni ro'yxatga qo'shadi
+import '../src/loader.js'; // barcha 609 toolni ro'yxatga qo'shadi
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
+
+// Read from the manifest rather than written here: a literal drifted in four places and the drift
+// was only caught because the suite ran, not because anything checked it.
+const TOTAL = JSON.parse(readFileSync('scripts/tool-counts.json', 'utf8')).total as number;
 
 const EXPECTED_COUNTS: Record<string, number> = {
   http: 19,
@@ -58,9 +63,9 @@ const SCHEMA_CATEGORIES = new Set([
   'productivity',
 ]);
 
-describe('pro-fetch MAX - barcha 605 tool', () => {
-  it("jami aynan 569 tool ro'yxatga olinadi", () => {
-    expect(allTools().length).toBe(605);
+describe(`pro-fetch MAX - barcha ${TOTAL} tool`, () => {
+  it(`jami aynan ${TOTAL} tool ro'yxatga olinadi`, () => {
+    expect(allTools().length).toBe(TOTAL);
   });
 
   it('har kategoriya kutilgan sonda', () => {
@@ -73,7 +78,7 @@ describe('pro-fetch MAX - barcha 605 tool', () => {
 
   it('nomlar unikal va MCP formatiga mos', () => {
     const names = allTools().map((t) => t.name);
-    expect(new Set(names).size).toBe(605);
+    expect(new Set(names).size).toBe(TOTAL);
     for (const n of names) expect(n).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
   });
 
@@ -201,7 +206,7 @@ describe('pro-fetch MAX - barcha 605 tool', () => {
       seen.add(t.category);
       return true;
     });
-    expect(samples.length).toBe(30);
+    expect(samples.length).toBe(31);
     for (const t of samples) {
       if (NET.has(t.category) || COMPOSITES.has(t.name)) {
         expect(typeof t.handler).toBe('function');
@@ -213,13 +218,22 @@ describe('pro-fetch MAX - barcha 605 tool', () => {
       // A tool that declares required arguments must reject an empty call, and say which ones.
       // This assertion used to be "never errors", which only held because nothing enforced
       // `required` - it now encodes the contract the schema already published.
+      //
+      // `anyOf` counts as declaring a requirement. `pro_image_resize` takes a source as either `url`
+      // or `base64`, so `required` is empty while an empty call is still meaningless - and treating
+      // that as "accepts anything" would have failed a tool for being honest.
       const required = t.inputSchema.required ?? [];
-      if (required.length === 0) {
+      const anyOf = t.inputSchema.anyOf ?? [];
+      if (required.length === 0 && anyOf.length === 0) {
         expect(res.isError, t.name).toBeFalsy();
-      } else {
+      } else if (required.length > 0) {
         expect(res.isError, `${t.name} should reject {}`).toBe(true);
         const body = res.content.map((entry) => entry.text).join(' ');
         expect(body, t.name).toContain('majburiy argumentlar');
+      } else {
+        // `anyOf` states the choice in prose, so the wording is the handler's rather than the
+        // central one. What matters is that the call is refused, not how it is phrased.
+        expect(res.isError, `${t.name} should reject {}`).toBe(true);
       }
     }
   });
@@ -229,10 +243,10 @@ describe('pro-fetch MAX - barcha 605 tool', () => {
     expect(res.isError).toBe(true);
   });
 
-  it('profillar: minimal=72, standard=177, full=569', () => {
+  it('profillar: minimal, standard, full', () => {
     expect(listTools('minimal').length).toBe(73);
     expect(listTools('standard').length).toBe(178);
-    expect(listTools('full').length).toBe(605);
+    expect(listTools('full').length).toBe(TOTAL);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
     expect(listTools('smart').length).toBe(11);
   });

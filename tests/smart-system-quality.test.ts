@@ -76,7 +76,14 @@ describe('intent search finds tools the way users ask for them', () => {
   it('does not rank a composite above a domain tool for a domain question', () => {
     // Composites describe broad tasks, so they must not hijack specific queries.
     const hits = top('arxiv paper');
-    expect(hits.indexOf('pro_capability_map')).toBe(-1);
+    // The stated intent is that a composite must not hijack a domain query, and that is a statement
+    // about order. `indexOf(...) === -1` tested absence from a five-slot window instead, so any tool
+    // added anywhere could fail it: with 605 tools the query returned one hit, and with 610 the
+    // composite crossed the inclusion floor at 0.906 and appeared second - behind the domain tool at
+    // 51.2, fifty-six times lower. Ranking got marginally better and the test went red.
+    expect(hits[0]).toBe('pro_fetch_arxiv_paper_read');
+    const composite = hits.indexOf('pro_capability_map');
+    expect(composite === -1 || composite > 0, hits.join(', ')).toBe(true);
   });
 
   it('never surfaces a tool whose name echoes an unrelated query', () => {

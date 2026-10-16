@@ -22,16 +22,7 @@ export default defineTool({
     const p = view(input);
     if (!p.owner || !p.repo) return fail('owner va repo parametrlari kerak.');
     if (!p.query) return fail('query kerak');
-    // GitHub's issue search rejects a query with no `is:` qualifier outright:
-    //   422 "Query must include 'is:issue' or 'is:project'".
-    // The qualifier was never added, so every call failed - the tool could not search anything.
-    //
-    // It is added only when the caller has not chosen, so `is:pr` in the query still searches pull
-    // requests. Rewriting a deliberate `is:issue` to `is:issue` is harmless; rewriting `is:pr` to
-    // `is:issue` would return the wrong set and look correct.
-    const raw = String(p.query);
-    const qualifier = /\bis:(issue|pr|pull_request|project)\b/.test(raw) ? '' : ' is:issue';
-    const q = encodeURIComponent(`repo:${p.owner}/${p.repo} ${raw}${qualifier}`);
+    const q = encodeURIComponent(buildIssueQuery(String(p.owner), String(p.repo), String(p.query)));
     const r = await ghApiPaginated(
       '/search/issues?q=' + q + '&per_page=' + Math.max(1, Math.min(100, Number(p.per_page ?? 15))),
       typeof p.max_pages === 'number' ? p.max_pages : undefined,
@@ -43,3 +34,21 @@ export default defineTool({
     return md('# Issue qidiruv\n\n' + items.join('\n') + paginationNotice(r));
   },
 });
+
+/**
+ * Build the search string GitHub will actually receive.
+ *
+ * Exported because the defect this fixes was invisible from the tool's output: every call returned
+ * `422 Query must include 'is:issue'`, and only the request itself proves the qualifier is present now.
+ * Asserting the returned string needs no network, so it does not stop being checked when an
+ * unauthenticated rate limit is exhausted - which is exactly when the live check could not run.
+ *
+ * The qualifier is added only when the caller has not chosen one. Rewriting a deliberate `is:issue` to
+ * `is:issue` is harmless; rewriting `is:pr` to `is:issue` would return pull requests where issues were
+ * asked for, and it would look correct.
+ */
+export function buildIssueQuery(owner: string, repo: string, query: string): string {
+  const raw = query.trim();
+  const chosen = /\bis:(issue|pr|pull_request|project)\b/.test(raw);
+  return `repo:${owner}/${repo} ${raw}${chosen ? '' : ' is:issue'}`;
+}

@@ -9,7 +9,7 @@ import type { ToolResult } from '../src/core/types.js';
  * Regression tests for faults that ended the process rather than failing a call.
  *
  * An MCP server is a single long-lived process that every tool shares, so the difference between
- * these bugs and ordinary bugs is the blast radius: one malformed input removed all 605 tools from
+ * these bugs and ordinary bugs is the blast radius: one malformed input removed all 609 tools from
  * service. Node terminates on an unhandled rejection, and neither a `try`/`catch` in the handler nor
  * a rejection handler on the returned promise helps when the rejection originates on a native
  * addon's worker thread or inside a `.then()` callback that nothing awaits.

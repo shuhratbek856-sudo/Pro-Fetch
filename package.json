@@ -1,7 +1,7 @@
 {
   "name": "pro-fetch-mcp",
   "version": "0.3.0",
-  "description": "Professional fetch, deep-research va GitHub MCP serveri — 605 MCP tool, shared domain handlers, tool-pack profillari",
+  "description": "Professional fetch, deep-research va GitHub MCP serveri — 611 MCP tool, shared domain handlers, tool-pack profillari",
   "type": "module",
   "license": "MIT",
   "author": "Shuhratbek",
@@ -64,6 +64,7 @@
     "avsc": "^5.7.9",
     "cheerio": "^1.0.0",
     "domhandler": "^5.0.3",
+    "exif-reader": "^2.0.3",
     "exifr": "^7.1.3",
     "ipaddr.js": "^2.5.0",
     "jsqr": "^1.4.0",
