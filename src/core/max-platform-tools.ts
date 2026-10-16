@@ -599,8 +599,8 @@ for (const provider of ['sqlite', 'postgres', 'mysql', 'redis'])
 const securityOps: Array<[string, string, string[]]> = [
   ['osv_query', 'Query OSV advisories', ['package', 'version', 'ecosystem']],
   ['osv_batch', 'Batch vulnerability query', ['body']],
-  ['npm_audit', 'Run npm dependency audit', ['cwd']],
-  ['npm_outdated', 'Find outdated packages', ['cwd']],
+  ['npm_audit', 'Run npm dependency audit', ['cwd', 'global']],
+  ['npm_outdated', 'Find outdated packages', ['cwd', 'global']],
   ['license_report', 'Generate dependency license inventory', ['cwd']],
   ['sbom', 'Generate package-lock SBOM', ['cwd']],
   ['secret_scan_files', 'Scan workspace files for likely secrets', ['path', 'recursive']],
@@ -1579,8 +1579,12 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
   }
   if (['npm_audit', 'npm_outdated', 'license_report', 'sbom'].includes(action)) {
     const cwd = safeLocalPath(inputString(i, 'cwd'));
-    if (action === 'npm_audit') return await command('npm', ['audit', '--json', '--ignore-scripts'], cwd);
-    if (action === 'npm_outdated') return await command('npm', ['outdated', '--json'], cwd);
+    // `--global` was never accepted or forwarded, so asking for a global audit and a project audit
+    // produced byte-identical output and a caller had no way to tell. It is declared below and read
+    // here; the flag is appended rather than substituted so the default is unchanged.
+    const scope = i.global === true || String(i.global ?? '').toLowerCase() === 'true' ? ['--global'] : [];
+    if (action === 'npm_audit') return await command('npm', ['audit', '--json', '--ignore-scripts', ...scope], cwd);
+    if (action === 'npm_outdated') return await command('npm', ['outdated', '--json', ...scope], cwd);
     if (action === 'license_report') {
       const r = await command('npm', ['ls', '--json', '--all'], cwd);
       // `npm ls` prints problems to stdout as text when the tree is broken, so a bare parse fails
