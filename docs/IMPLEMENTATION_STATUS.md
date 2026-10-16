@@ -866,3 +866,59 @@ directly in the handler body - not through a helper - from the first line rather
 
 Then `geo_data` on OpenStreetMap/Nominatim/Overpass and `govdata` on CKAN/data.gov/SEC EDGAR, both
 credential-free. Then `binary` on the four newly installed packages.
+### Session 40 - the user's 13-item audit; four real defects fixed, three reported items were not real
+
+A 13-item audit was supplied. Four items were real defects, three were not reproducible as reported, one
+was my own test being wrong, two were already fixed, and two are upstream answers rather than code
+problems. Every item was checked by calling the tool rather than by reading it.
+
+Fixed and committed:
+
+  - **#1 HIGH** `ollama` reported `ready: true` while `model: "ollama"` went to OpenAI and returned 401.
+    `splitModel` now routes `provider/model` and a bare provider name, while leaving slash-containing
+    model names (`meta-llama/Llama-3-8B`) on the default provider. Fixing the routing exposed a second
+    false signal: the SSRF guard blocks loopback, so `checkProvider` now reports ollama not ready and
+    names the guard. A status that does not predict the next call is worse than no status. `277b276`.
+  - **#2 MEDIUM** `additionalProperties: false` was declared by every schema and enforced by none.
+    240 of 605 tools accepted `totally_bogus_property` with `isError: false`, so a misspelled
+    `max_tokens` produced a successful-looking result and no hint it was never read.
+    `assertNoUnknownArguments` now runs beside `assertRequiredPresent`. Measured 365 rejected before,
+    588 after; the remaining 17 declare no properties at all. The error names the intended key:
+    `"max_tokns" -> "max_tokens"`. `204b766`.
+  - **#8** `pro_gh_issues_search` failed on every call with `422 Query must include 'is:issue'`. The
+    qualifier is now added unless the caller chose one, so `is:pr` still searches pull requests rather
+    than being silently rewritten. `4bc37cb`.
+  - **#7** `pro_gh_repo_directory_read` reported "0 fayl" for `src/tools`, which holds 23
+    subdirectories and no files. Directories were filtered out without a word; they are now listed and
+    the output distinguishes empty from unlisted.
+
+Separately, `pro_fetch_security_license_report` returned `{count: 0}` without `cwd` and 601 with it.
+`npm ls` prints `{}` and exits 0 in a directory with no package.json, so "no dependencies" and "wrong
+directory" were indistinguishable. It now refuses and names the directory. `c2a55cf`.
+
+Not real, and said so rather than credited:
+
+  - **#3** `alg: none` is already refused with `Algoritm qo'llab-quvvatlanmaydi: none. HS256/384/512,
+    RS*, ES*, EdDSA.`
+  - **#4** `pro_gh_repo_file_read` returns full content for `package.json`.
+  - **#5** `pro_gh_repo_full_clone` completes in 1.1 s. It downloads a tarball rather than cloning, so a
+    30 s expectation does not match what the tool does.
+  - **#6** `main`/`master` fallback works for three repositories including `torvalds/linux`.
+  - **#9** my own test was wrong - it sent three different arguments to each tool at once, which the new
+    enforcement correctly refused.
+
+Still open: `global` was never a declared property of `pro_fetch_devops_npm_list`, so it was ignored in
+silence. It is now refused, which is honest, but the flag still does nothing. Either implement it or
+document its absence; neither is done.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 333 tests |
+| unknown-argument enforcement | 365/605 rejected before, 588 after |
+| `pro_gh_issues_search` | 422 on every call before; plain, `is:pr` and `is:issue` all succeed now |
+| `pro_gh_repo_directory_read` | `src/tools` reports 23 subdirectories instead of 0 files |
+| `pro_fetch_security_license_report` | 601 packages with `cwd`; refuses with the directory named without it |
+
+**Next exact action:** either implement `global` on the npm tools or record that it is unsupported, then
+continue the credential-free categories - `imageproc` on sharp, `geo_data` on OpenStreetMap, `govdata`
+on CKAN.
