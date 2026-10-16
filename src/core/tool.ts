@@ -18,6 +18,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'document',
   'extract',
   'binary',
+  'geo_data',
   'i18n',
   'imageproc',
   'llm',
@@ -249,6 +250,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   // `max_chars` on it. A dead property is worse than a missing one: it advertises an argument that
   // silently does nothing.
   binary: [],
+  geo_data: [],
   document: [],
   imageproc: [],
   schema: [],

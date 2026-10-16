@@ -46,6 +46,7 @@ import './tools/encoding/index.js';
 import './tools/schema/index.js';
 import './tools/document/index.js';
 import './tools/binary/index.js';
+import './tools/geo_data/index.js';
 import './tools/imageproc/index.js';
 import './tools/i18n/index.js';
 import './tools/max-platform/index.js';

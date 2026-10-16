@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import '../src/loader.js'; // barcha 609 toolni ro'yxatga qo'shadi
+import '../src/loader.js'; // barcha toolni ro'yxatga qo'shadi
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -206,7 +206,10 @@ describe(`pro-fetch MAX - barcha ${TOTAL} tool`, () => {
       seen.add(t.category);
       return true;
     });
-    expect(samples.length).toBe(32);
+    // Derived, like the tool total: a literal here needed editing on every category added, and was
+    // the fourth time this session that a number had to be maintained in two places.
+    const manifest = JSON.parse(readFileSync('scripts/tool-counts.json', 'utf8'));
+    expect(samples.length).toBe(Object.keys(manifest.categories).length);
     for (const t of samples) {
       if (NET.has(t.category) || COMPOSITES.has(t.name)) {
         expect(typeof t.handler).toBe('function');

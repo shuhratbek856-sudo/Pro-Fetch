@@ -109,8 +109,30 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (result.nativeAbort) {
       console.warn('note: a native teardown abort occurred after every test had already passed.');
     }
-    console.log(`TEST_RUN_PASS files=${result.reportedFiles} tests=${result.reportedTests}`);
-    process.exit(code === 0 ? 0 : 1);
+    // The verdict must match the exit code. This used to print `TEST_RUN_PASS` and then exit 1
+    // whenever vitest reported a non-zero status, so a transcript read "every check passed" while the
+    // shell said failure - the same disagreement this project keeps fixing in the tools, and worse here
+    // because the person reading the log is the person who has to decide what to do next.
+    //
+    // A worker that dies during teardown after every test has passed is an environment fault, not a
+    // failing test, and vitest signals it with a non-zero code. It is retried rather than reported,
+    // because it reproduces intermittently and the retry is known to clear it.
+    if (code === 0) {
+      console.log(`TEST_RUN_PASS files=${result.reportedFiles} tests=${result.reportedTests}`);
+      process.exit(0);
+    }
+    if (attempt < MAX_ATTEMPTS) {
+      console.warn(
+        `note: attempt ${attempt}/${MAX_ATTEMPTS} passed every test but vitest exited ${code} ` +
+          '(worker teardown fault); retrying.',
+      );
+      continue;
+    }
+    console.error(
+      `TEST_RUN_INCONCLUSIVE files=${result.reportedFiles} tests=${result.reportedTests} — ` +
+        'barcha test o‘tdi, lekin vitest har urinishda noaniq kod berdi (worker teardown).',
+    );
+    process.exit(1);
   }
 
   // Retry only the environment fault: a crashed run with nothing asserted as failing.

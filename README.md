@@ -2,7 +2,7 @@
 
 # pro-fetch-mcp
 
-### 618 MCP tools · 31 categories · one security engine
+### 622 MCP tools · 31 categories · one security engine
 
 Fetch, deep-research and GitHub as an MCP server — with a Smart System that composes the whole
 catalog in a single round trip.
@@ -289,7 +289,7 @@ Each step answers a different question:
 |---|---|
 | `verify:static` | Structural invariants must not regress: the tool count in `package.json` and in the READMEs, the smart profile's required meta-tools, the intent-search synonym vocabulary, no template dispatcher in the MAX packs, OSV batch bounds, knowledge content size, Windows `npm-cli.js` resolution, image-byte validation before OCR |
 | `verify:registry` | Boots the real registry: **607 tools / 31 categories / all four profile counts**, every tool has a schema and a handler, and the published counts in both READMEs still match |
-| `test` | **373 tests** across 24 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
+| `test` | **384 tests** across 25 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
 | `verify:package` | The published tarball has its shebang and `files` allowlist, and **zero credentials or source files** |
 | `audit:schema` *(on demand)* | Schemas against their code — 0 dead properties, 0 unread required |
 
