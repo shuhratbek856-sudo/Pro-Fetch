@@ -696,3 +696,44 @@ and `src/tools/imageproc/` on `sharp`.
 
 **Not buildable without a new dependency**, named so it is a decision rather than an omission: Parquet,
 Arrow, Avro, Protobuf, MessagePack, CBOR.
+### Session 37 - schema category (586 -> 592)
+
+Asked, in effect, for every credential-free tool. `schema` is pure JS with no dependency, so it can be
+verified end to end the way `encoding` was - which is the reason both went first and the reason the
+remaining credential-free work should follow the same shape.
+
+  src/tools/schema/tools.ts   validate, coerce, infer, generate, openapi, ref
+
+Four defects, all found by measuring:
+
+  - `value` was returned raw instead of parsed, so every instance failed its `type` check and a schema
+    with no errors in it reported one.
+  - `properties.length` on an object is undefined, so every generated TypeScript interface was
+    `[key: string]: unknown` - which type-checks and then rejects every attribute the caller used.
+  - Arrays were unwrapped before validation, so `minItems`, `maxItems`, `uniqueItems`, `items` and
+    `contains` never ran. Those keywords were silently dead.
+  - The audit called `value` a dead property while `pro_schema_infer`, reading the same keys, was not
+    flagged. The difference: one read it through a module-local helper. The audit resolves property
+    reads from the handler body and does not follow a helper. Both are inline now.
+
+Also: `schema` was absent from `CATEGORY_SCHEMA_CATEGORIES`, so its six schemas were never closed.
+A PowerShell edit had reported success on an anchor that had not matched, and the value was never
+written - which is the argument for checking the file after a scripted edit rather than trusting its
+exit code.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 333 tests |
+| `npm run audit:schema` | `with_dead_properties=0`, `open_schemas=0`, `with_unread_required=0` |
+| `npx tsx scripts/verify-registry.mts` | registered=592; categories=29; smart=11; unique_names=592 |
+| schema keyword tests | required, type, pattern, minimum, minLength, minItems, uniqueItems, items all caught with paths |
+| coerce | "30" -> 30, "1,5" -> 1.5, "ha" -> true |
+| infer round-trip | inferred schema re-validates the sample |
+| $ref | inlined; cycle detected |
+
+**Next exact action:** `src/tools/document/` on `pdf-lib`, which is already installed: merge, split,
+rotate, watermark, form fill, page extraction, metadata read/write. Then `src/tools/imageproc/` on
+`sharp`. Both credential-free.
+
+**Still needs a new dependency** and is therefore not started: Parquet, Arrow, Avro, Protobuf,
+MessagePack, CBOR. That is a decision for the user, not an omission.
