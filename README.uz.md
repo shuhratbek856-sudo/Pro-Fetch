@@ -202,7 +202,7 @@ npm run check   # verify:static → verify:registry → build → test → verif
 - `verify:registry` haqiqiy registry'ni yuklab **577 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
 - `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 577 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
 - `verify:package` nashr paketida shebang, `files` allowlist va **nol credential/manba fayl** ekanligini isbotlaydi.
-- MCP protokoli o'zi jonli sinovdan o'tkazildi: `initialize`, `tools/list` (577/577 unique, valid schemalar), har bir smart tool uchun `tools/call`, yashirin tool'lar rad etildi, stdout toza JSON-RPC.
+- MCP protokoli o'zi jonli sinovdan o'tkazildi: `initialize`, `tools/list` (586/586 unique, valid schemalar), har bir smart tool uchun `tools/call`, yashirin tool'lar rad etildi, stdout toza JSON-RPC.
 
 ## Litsenziya
 

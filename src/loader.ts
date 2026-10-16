@@ -42,6 +42,7 @@ import './tools/docs/index.js';
 import './tools/browser/index.js';
 import './tools/monitoring/index.js';
 import './tools/llm/index.js';
+import './tools/encoding/index.js';
 import './tools/i18n/index.js';
 import './tools/max-platform/index.js';
 

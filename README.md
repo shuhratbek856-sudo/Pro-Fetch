@@ -2,7 +2,7 @@
 
 # pro-fetch-mcp
 
-### 577 MCP tools · 26 categories · one security engine
+### 586 MCP tools · 26 categories · one security engine
 
 Fetch, deep-research and GitHub as an MCP server — with a Smart System that composes the whole
 catalog in a single round trip.
@@ -293,7 +293,7 @@ Each step answers a different question:
 | `verify:package` | The published tarball has its shebang and `files` allowlist, and **zero credentials or source files** |
 | `audit:schema` *(on demand)* | Schemas against their code — 0 dead properties, 0 unread required |
 
-The MCP protocol itself was exercised live: `initialize`, `tools/list` (577/577 unique, valid schemas),
+The MCP protocol itself was exercised live: `initialize`, `tools/list` (586/586 unique, valid schemas),
 `tools/call` for every smart tool, hidden tools refused, clean JSON-RPC on stdout.
 
 ---

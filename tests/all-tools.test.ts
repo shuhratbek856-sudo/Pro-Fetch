@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import '../src/loader.js'; // barcha 577 toolni ro'yxatga qo'shadi
+import '../src/loader.js'; // barcha 586 toolni ro'yxatga qo'shadi
 import { allTools, dispatch } from '../src/core/tool.js';
 import { listTools } from '../src/router.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -58,9 +58,9 @@ const SCHEMA_CATEGORIES = new Set([
   'productivity',
 ]);
 
-describe('pro-fetch MAX - barcha 577 tool', () => {
+describe('pro-fetch MAX - barcha 586 tool', () => {
   it("jami aynan 569 tool ro'yxatga olinadi", () => {
-    expect(allTools().length).toBe(577);
+    expect(allTools().length).toBe(586);
   });
 
   it('har kategoriya kutilgan sonda', () => {
@@ -73,7 +73,7 @@ describe('pro-fetch MAX - barcha 577 tool', () => {
 
   it('nomlar unikal va MCP formatiga mos', () => {
     const names = allTools().map((t) => t.name);
-    expect(new Set(names).size).toBe(577);
+    expect(new Set(names).size).toBe(586);
     for (const n of names) expect(n).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
   });
 
@@ -201,7 +201,7 @@ describe('pro-fetch MAX - barcha 577 tool', () => {
       seen.add(t.category);
       return true;
     });
-    expect(samples.length).toBe(27);
+    expect(samples.length).toBe(28);
     for (const t of samples) {
       if (NET.has(t.category) || COMPOSITES.has(t.name)) {
         expect(typeof t.handler).toBe('function');
@@ -232,7 +232,7 @@ describe('pro-fetch MAX - barcha 577 tool', () => {
   it('profillar: minimal=72, standard=177, full=569', () => {
     expect(listTools('minimal').length).toBe(73);
     expect(listTools('standard').length).toBe(178);
-    expect(listTools('full').length).toBe(577);
+    expect(listTools('full').length).toBe(586);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
     expect(listTools('smart').length).toBe(11);
   });
