@@ -29,7 +29,7 @@ afterEach(() => {
 
 describe('smart tool discovery', () => {
   it('exposes a small meta-tool surface while retaining all registered tools internally', () => {
-    expect(allTools()).toHaveLength(586);
+    expect(allTools()).toHaveLength(592);
     expect(listTools('smart')).toHaveLength(11);
     expect(listTools('smart').map((tool) => tool.name)).toContain('pro_fetch_tool_execute');
     // The Smart System contract: an eleven-tool surface that still reaches every registered tool.
