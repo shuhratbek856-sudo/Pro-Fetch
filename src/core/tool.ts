@@ -45,6 +45,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   // `max_tokens` on `fetch_url`, `variables` on `fetch_graphql`, `action` on `fetch_soap` and `other`
   // on `diff_json`. The remaining four findings were the measurement's own noise - stopwords in
   // `language_detect`, algorithm names in `hash_string`, a response header in `http_status`.
+  'color',
   'data',
   'admin',
   'http',

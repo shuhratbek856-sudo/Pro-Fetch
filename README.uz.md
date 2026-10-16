@@ -198,7 +198,7 @@ npm ci
 npm run check   # verify:static → verify:registry → build → test → verify:package → format:check
 ```
 
-- **384 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
+- **431 ta test** (Vitest): SSRF, redirectlar, permission siyosati, output sandboxi, timeout'lar, har bir tool'ing kiritma shartnomasi va jonli provider-failure xatti-harakati.
 - `verify:registry` haqiqiy registry'ni yuklab **607 tool / 26 kategoriya / barcha 4 profil sonini** tekshiradi.
 - `npm run audit:schema` har bir sxemani uning orqasidagi kod bilan solishtiradi: handler'ining hech qachon o'qimaydigan property, hech nima o'qimaydigan `required` argument, yoki hamma narsani qabul qiladigan ochiq sxema. Hozir **552 tekshirilgan tool'da 0 o'lik property va 0 o'qilmagan required**, va 607 ta sxemaning barchasi e'lon qilmagan property'ni rad etadi.
 - `verify:package` nashr paketida shebang, `files` allowlist va **nol credential/manba fayl** ekanligini isbotlaydi.
