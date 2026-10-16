@@ -645,3 +645,54 @@ before implementation rather than after 80 tools sit on the wrong side of them.
 `src/tools/llm/index.ts` exporting the category, then providers under `src/tools/llm/providers/`.
 Run `npm run audit:schema` before declaring the wave done; a new category that ships schemas which do
 not match their handlers reproduces the exact defect class that cost three composites their steps.
+### Session 36 - llm (577) and encoding (586); credential-free first
+
+MAX mode on (`PRO_FETCH_MODE=max` in `.env` - gitignored, so it does not appear in commits). Measured
+through the live MCP path rather than in-process: 1 000 calls 0.1 s, 5 000 calls 0.4 s, 20 000 calls
+1.3 s in one invocation; 100 000 refused without `confirm_large_batch`, which is the designed
+behaviour. Also measured that a large batch is queued, not fanned out: 20 real HTTP requests at
+`PRO_FETCH_BATCH_CHUNK=1` took 11.38 s.
+
+Called out for writing a plan and calling it work. Correct, and the correction is the two categories
+below rather than another document.
+
+**`llm`, 572 -> 577.** `src/core/llm-gateway.ts` plus `src/tools/llm/`. Chat, completions, embeddings,
+provider status, model comparison. Anthropic and OpenAI differ more than in field names, so both shapes
+are handled in the gateway and a caller writes one message list; Ollama's `/api/embeddings` is a third
+shape and is folded into the same tool.
+
+**`encoding`, 577 -> 586.** `src/tools/encoding/tools.ts`. Base32/58/85, JWT decode and verify,
+punycode, HTML entities, URL, UUID v4/v7, ULID/nanoid/KSUID.
+
+The lesson worth keeping: credential-free categories can be *verified*, so they go first. A category
+behind an API key cannot be exercised until someone holds that key, and every claim about it would
+have been an assertion.
+
+Six defects found, four of them mine:
+
+  - `JSON.parse` on a network body; the project requires `parseUpstreamJson`
+  - nine dead properties from a shared `PROVIDER_PROPERTIES` block
+  - a `llm` category vocabulary that put `model`/`timeout_ms`/`max_chars` on `pro_llm_providers`,
+    which reads no input; the category is now listed with an empty vocabulary
+  - an error message naming `pro_llm_ollama_embed` before anything implemented it
+  - hand-written punycode encoded "münchen" as "mnchen-to0" instead of "mnchen-3ya"; replaced with
+    `domainToASCII`
+  - Ascii85 emitted the partial-group form instead of Adobe's padded form, so every input whose length
+    was not a multiple of four failed to round-trip
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 333 tests |
+| `npm run audit:schema` | `with_dead_properties=0`, `open_schemas=0`, `with_unread_required=0` |
+| `npx tsx scripts/verify-registry.mts` | registered=586; categories=28; smart=11; unique_names=586 |
+| encoding round-trips | 30/30 across 3 alphabets x 10 lengths |
+| punycode | 5/5 hosts, round-trip and the known value |
+| JWT verify | valid, invalid, and refused-without-key all correct |
+
+**Next exact action:** `src/tools/schema/` - JSON Schema validate, coerce, infer, generate, OpenAPI
+generate, `$ref` resolve. Six tools, pure JS, no dependency, and immediately testable the way `encoding`
+was. Then `src/tools/document/` on `pdf-lib` (merge, split, rotate, watermark, form fill, metadata)
+and `src/tools/imageproc/` on `sharp`.
+
+**Not buildable without a new dependency**, named so it is a decision rather than an omission: Parquet,
+Arrow, Avro, Protobuf, MessagePack, CBOR.
