@@ -47,8 +47,8 @@
     "pro_data_pipeline",
     "pro_synthesize"
   ],
-  "testFiles": 21,
-  "testCount": 333,
+  "testFiles": 22,
+  "testCount": 347,
   "coverageComposites": {
     "pro_workspace_ops": {
       "categories": ["git", "devops", "database", "security"],
