@@ -922,3 +922,49 @@ document its absence; neither is done.
 **Next exact action:** either implement `global` on the npm tools or record that it is unsupported, then
 continue the credential-free categories - `imageproc` on sharp, `geo_data` on OpenStreetMap, `govdata`
 on CKAN.
+
+### Session 41 - the 198 unresolved tools, measured rather than assumed
+
+Standing order: do not stop until every problem is fixed. Continuing.
+
+I had described the SPECS packs as "declared but unverified" and called them the biggest remaining risk.
+That was an overstatement, and this session measured it.
+
+Measured: the resolver finds source for 407 of 605 tools and returns an **empty string** for 198. Those 198
+are the SPECS pattern - one dispatcher per category where every tool calls `runX(input)` and the real
+work sits in a `switch (action)`. Per-tool resolution needs statement-boundary tracking inside a switch,
+which is the separate piece of work recorded in Session 33.
+
+But source resolution is not the only evidence available, and the one that matters most needs no resolver
+at all: call the tool. An empty call makes a tool name the arguments it demands, and an argument it
+demands is an argument it reads.
+
+    resolver topa olmagan: 198
+    bo'sh chaqiruvda talab qilgan, hammasi sxemada:  129
+    sxemada YO'Q kalit talab qilgan (defekt):         0
+
+**Zero of 198 demand an argument their schema does not declare.** The remaining 69 ask for nothing on an
+empty call, which is correct for the list and inspect tools they mostly are.
+
+So the risk I named is real in principle - those 198 cannot be checked for dead properties, because
+knowing which properties a `switch` branch reads requires resolving into the branch - and it is **not**
+supported by evidence of a present defect. The distinction matters: unverified is not the same as wrong,
+and I should not have written the first as though it were the second.
+
+`--global` on the npm tools: forwarded and declared on the table-backed pair
+(`pro_fetch_security_npm_audit`, `pro_fetch_security_npm_outdated`). The `devops` pair comes from the
+SPECS packs, so its shape is among the 198 and is left alone rather than guessed at.
+
+Correction carried forward: I reported 15 TODO markers in `max-platform-tools.ts`. There are none. The
+grep matched the Todoist integration, and I read a service name as a code marker.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 21 files / 333 tests |
+| resolver coverage | 407 of 605 sources resolved, 198 empty |
+| empty-call probe on the 198 | 129 demanded arguments, 0 outside their schema, 0 defects |
+
+**Next exact action:** `src/tools/imageproc/` on `sharp`, one tool per file, `readBinarySource` called
+directly in the handler body. Then `geo_data` on OpenStreetMap/Nominatim/Overpass and `govdata` on
+CKAN/data.gov/SEC EDGAR. Still unbuildable without a further decision: none - all seven remaining
+credential-free categories now have what they need.
