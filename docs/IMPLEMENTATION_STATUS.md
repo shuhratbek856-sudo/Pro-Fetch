@@ -737,3 +737,96 @@ rotate, watermark, form fill, page extraction, metadata read/write. Then `src/to
 
 **Still needs a new dependency** and is therefore not started: Parquet, Arrow, Avro, Protobuf,
 MessagePack, CBOR. That is a decision for the user, not an omission.
+### Session 38 - document category written but NOT passing; tree left red and uncommitted
+
+Asked again, third time, whether every credential-free tool has been created. Answer: no. Four
+categories now exist that did not (llm, encoding, schema, document); the rest are not built.
+
+**`document`, 592 -> 605.** 13 tools on pdf-lib, which is already installed: new, merge, split, rotate,
+watermark, info, metadata read/write, form read/fill, remove pages, reorder, flatten, blank.
+
+Functionally verified against real PDFs before anything else was checked - a PDF was created, then
+reloaded and inspected with pdf-lib rather than trusted because the handler returned a path:
+
+  pdf_new 3 pages -> reload shows 3
+  pdf_rotate "1-2" 90 -> 1=90, 2=90, 3=0
+  pdf_merge two 3-page PDFs -> 6
+  pdf_metadata write -> reload shows the title and author
+  pdf_remove_pages "2" -> 2 remain
+  pdf_split every / "1,3" -> 3 files / 2 pages
+  wrong page count, pages=9, and a corrupt PDF are all refused with a real error
+
+**Four defects found and fixed while writing it:**
+
+  - `required: ['url']` on seven tools while the handler also accepts `base64`. Passing only `base64`
+    was refused. Now an `anyOf`, including the two-argument forms `['url','text']` and `['url','order']`.
+  - `pdf.removePage` takes one index, not an array. Removing lowest-first shifts the indices above it;
+    it now removes highest-first.
+  - `output_name` on `pro_pdf_merge` was declared and never read. Removed - it was my own placeholder.
+  - Junk left in `pro_pdf_info`: `void` statements and a `PDF_STRING` export kept "so the linter does
+    not remove names the type map references". There was no such type map. Removed.
+
+**Still broken - this is why nothing was committed.**
+
+`npm run check` fails: `tests/schema-narrowing.test.ts` reports 34 dead properties, all of them
+`url`, `base64` and `max_bytes` on the new tools, plus `with_unread_required=1` on `pro_pdf_form_fill`.
+
+Cause: those properties are read inside `readBinarySource(input, label)`, a helper in another module.
+The audit resolves property reads from the handler body and does not follow the helper - the same
+limitation that made `value` look dead in `pro_schema_validate` during Session 37.
+
+Three attempts, none sufficient:
+  1. `restateConvertAlternatives` was gated on `tool.category === 'convert'`, so a new category built
+     on `readBinarySource` was skipped. Gate changed to test the source for a reader call. Correct, and
+     not sufficient.
+  2. Added the reader's argument list to `readsPropertyStrictly`. Correct, and not sufficient.
+  3. Added the same rule to `readsProperty`. Correct, and not sufficient.
+
+So `scripts/audit-schema.mts` and/or `tests/schema-narrowing.test.ts` keep their own copy of the read
+detection rather than importing the two functions in `src/core/schema-narrowing.ts`. Nothing here was
+found by guessing - each failure was located by reading what the harness actually calls.
+
+**Next exact action:** open `tests/schema-narrowing.test.ts` and `scripts/audit-schema.mts` and find the
+`readsProperty` they import or re-implement. The fix is to have them use
+`src/core/schema-narrowing.ts`'s version, which now knows what `readBinarySource` and `readTextSource`
+read. Then re-run `npm run audit:schema` and `npm run check`; both must be clean before commit.
+
+**Working tree state:** uncommitted, `npm run check` red. Manifest, both READMEs, package.json,
+verify-static.mjs and three test files are already moved to 605. Nothing is pushed.
+
+**Not built, credential-free, and available on what is installed:** `imageproc` on sharp (resize, crop,
+convert, watermark, sprite, dominant colour), `geo_data` on OpenStreetMap/Nominatim/Overpass,
+`govdata` on CKAN/data.gov/SEC EDGAR, plus `color`, `time`, `zip` and `science` in pure JS.
+
+**Needs a dependency and so needs a decision:** Parquet, Arrow, Avro, Protobuf, MessagePack, CBOR.
+
+### Session 38b - the split was attempted by script and reverted
+
+Tried to split `document/tools.ts` into thirteen single-tool files with a script. The script produced
+duplicated helper bodies in some files, missing `pdf-lib` imports in others, and a broken index. It
+produced worse code than what it replaced, so it was reverted: the verified single-file version is back,
+`tsc` clean, `npx tsx scripts/verify-registry.mts` PASS at 605 tools / 30 categories / smart 11.
+
+The script was the wrong tool. Splitting means each file needs its own imports decided by what it
+actually uses, and a regex cannot decide that - it duplicated `parsePages` into files that did not call
+it and omitted `PDFDocument` from a file that did. Doing it by hand, thirteen small files, is the
+correct approach and is not something to attempt in the last of the context.
+
+Root cause of the original problem, confirmed by measuring rather than guessing:
+
+    pro_pdf_split    length 2203   readBinarySource present: false   url present: false
+    pro_pdf_rotate   length 1863   readBinarySource present: false   url present: false
+    pro_pdf_merge    length 4059   readBinarySource present: true    url present: false
+
+The resolver returns a truncated handler body for a file holding several tools. `pro_pdf_merge` escapes
+it because its body is long enough to contain the call; the shorter ones do not. So `url`, `base64` and
+`max_bytes` read inside `readBinarySource` are invisible, and all thirteen tools report them as dead.
+
+**Next exact action:** split `src/tools/document/tools.ts` by hand into `merge.ts`, `split.ts`,
+`rotate.ts`, `watermark.ts`, `info.ts`, `metadata.ts`, `form_read.ts`, `form_fill.ts`,
+`remove_pages.ts`, `reorder.ts`, `flatten.ts`, `new.ts`, `blank.ts`, each with only the imports it uses,
+plus an `index.ts` that imports them by name. Then `npm run audit:schema` must report
+`with_dead_properties=0` and `npm run check` must exit 0 before anything is committed.
+
+**Still red, still uncommitted:** `tests/schema-narrowing.test.ts` reports the dead properties above.
+Everything else passes - static verification, registry verification, `tsc`, and the functional PDF tests.

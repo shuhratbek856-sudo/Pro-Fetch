@@ -1,5 +1,5 @@
 {
-  "total": 592,
+  "total": 605,
   "categories": {
     "http": 19,
     "convert": 30,
@@ -17,7 +17,7 @@
     "docs": 15,
     "browser": 41,
     "monitoring": 10,
-    "i18n": 12, "llm": 5, "encoding": 9, "schema": 6,
+    "i18n": 12, "llm": 5, "encoding": 9, "schema": 6, "document": 13,
     "git": 23,
     "codehost": 25,
     "devops": 24,
@@ -32,7 +32,7 @@
     "smart": 11,
     "minimal": 73,
     "standard": 178,
-    "full": 592
+    "full": 605
   },
   "smartComposites": [
     "pro_capability_call",

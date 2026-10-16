@@ -15,6 +15,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'crawl',
   'encoding',
   'schema',
+  'document',
   'extract',
   'i18n',
   'llm',
@@ -245,6 +246,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   // them - `pro_llm_providers` takes no input at all, and the list had put `model`, `timeout_ms` and
   // `max_chars` on it. A dead property is worse than a missing one: it advertises an argument that
   // silently does nothing.
+  document: [],
   schema: [],
   encoding: [],
   llm: [],

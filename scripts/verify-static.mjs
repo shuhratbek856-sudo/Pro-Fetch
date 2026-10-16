@@ -103,9 +103,9 @@ try {
   const exampleJson = JSON.parse(exampleText);
   const countManifest = JSON.parse(countManifestText);
 
-  if (!String(packageJson.description ?? '').includes('592 MCP tool'))
+  if (!String(packageJson.description ?? '').includes('605 MCP tool'))
     failures.push('package.json description does not report 577 tools');
-  if (!readme.includes('592 MCP tool')) failures.push('README does not report 577 tools');
+  if (!readme.includes('605 MCP tool')) failures.push('README does not report 577 tools');
   // The smart-profile tool list now lives in `src/core/profile.ts`; `loader.ts` re-exports it.
   // The Smart System contract: the profile must expose the batch executor, the intent mapper and
   // the single-tool escape hatch, so a client that caps its tool budget still reaches everything.
@@ -327,7 +327,7 @@ try {
   }
   if (!packageJson.engines?.node)
     failures.push('package.json is missing engines.node (pdfjs-dist 6 requires Node >=22.13)');
-  if (!/toBe\(592\)/.test(allToolsTest)) failures.push('tool registry test does not assert 577 tools');
+  if (!/toBe\(605\)/.test(allToolsTest)) failures.push('tool registry test does not assert 577 tools');
   const profile = exampleJson?.mcpServers?.['pro-fetch']?.env?.PRO_FETCH_PROFILE;
   if (profile !== 'smart') failures.push('mcp.example.json should use the smart profile');
   const exampleEnv = exampleJson?.mcpServers?.['pro-fetch']?.env ?? {};
@@ -399,7 +399,7 @@ try {
   const manifestTotal = Object.values(countManifest.categories ?? {}).reduce((sum, value) => sum + Number(value), 0);
   if (manifestTotal !== countManifest.total)
     failures.push(`independent tool-count manifest sums to ${manifestTotal}, expected ${countManifest.total}`);
-  if (countManifest.total !== 592) failures.push(`independent manifest total is ${countManifest.total}, expected 572`);
+  if (countManifest.total !== 605) failures.push(`independent manifest total is ${countManifest.total}, expected 572`);
   if (!allToolsTest.includes('allTools().length'))
     failures.push('registry tests do not inspect actual registered tools');
 

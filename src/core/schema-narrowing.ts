@@ -107,6 +107,14 @@ export function readsProperty(source: string, property: string): boolean {
     if (needle.includes('.') && !source.includes(needle)) continue;
     if (new RegExp(`(?<![\\w])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w])`).test(source)) return true;
   }
+  // Shared source readers, same rule as in `readsPropertyStrictly`. The audit uses this one, so the
+  // rule has to be here as well or the two disagree about the same tool.
+  if (/\breadBinarySource\s*\(/.test(source) && /^(?:url|base64|data_base64|max_bytes|timeout_ms)$/.test(property)) {
+    return true;
+  }
+  if (/\breadTextSource\s*\(/.test(source) && /^(?:url|text|content|data|max_bytes|timeout_ms)$/.test(property)) {
+    return true;
+  }
   return false;
 }
 
@@ -124,6 +132,21 @@ export function readsProperty(source: string, property: string): boolean {
  */
 export function readsPropertyStrictly(source: string, property: string): boolean {
   const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // The two shared source readers read their arguments inside their own module, so a handler that
+  // calls one never names those properties itself. `pro_pdf_rotate` declares `url`, `base64` and
+  // `max_bytes` and passes `input` to `readBinarySource`, and all three were reported as dead - the
+  // same false positive as the `readInstance` case, one level out.
+  //
+  // Encoding what those helpers read is a fact about the codebase, not a per-tool exception list, so it
+  // belongs here where both the audit and the narrowing pass use it.
+  const sourceReader = /\breadBinarySource\s*\(/.test(source)
+    ? /^(?:url|base64|data_base64|max_bytes|timeout_ms)$/
+    : /\breadTextSource\s*\(/.test(source)
+      ? /^(?:url|text|content|data|max_bytes|timeout_ms)$/
+      : null;
+  if (sourceReader && sourceReader.test(property)) return true;
+
   const patterns = [
     // `string(input, 'x')`, `num(input, 'x', ...)`, `bool(p, 'x')`
     new RegExp(`\\b(?:string|num|bool|objectInput)\\s*\\(\\s*(?:input|p)\\s*,\\s*'${escaped}'`),
@@ -213,7 +236,12 @@ export function narrowCategorySchemas(): { narrowed: number; skipped: number } {
       continue;
     }
 
-    if (tool.category === 'convert') {
+    // Restating the source alternatives is decided by which reader the tool calls, not by its category.
+    // Gating on `convert` meant a new category built on `readBinarySource` - `document` - kept its full
+    // declared vocabulary while the reader's own properties (`url`, `base64`) sat inside a helper the
+    // audit cannot follow, so all three were reported as dead. The function already derives binary vs
+    // text from the source, so the category check was deciding something it had already worked out.
+    if (tool.category === 'convert' || /\bread(Binary|Text)Source\s*\(/.test(source)) {
       restateConvertAlternatives(tool, source);
       narrowed++;
       continue;
