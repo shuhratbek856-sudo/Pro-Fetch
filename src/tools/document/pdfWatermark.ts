@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail, jsonBlock } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
+import { float, num, strOrEmpty, view } from '../../core/input.js';
 import { StandardFonts, degrees, rgb, PDFDocument } from 'pdf-lib';
 import { readBinarySource } from '../../core/binary-source.js';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -75,8 +75,8 @@ export const pdfWatermark = defineTool({
     const p = view(input);
     const text = strOrEmpty(p, 'text').trim();
     if (!text) return fail('text talab qilinadi.');
-    const opacity = Math.max(0.01, Math.min(1, num(p, 'opacity', 0.25, 0, 1)));
-    const angle = num(p, 'angle', 45, -180, 180);
+    const opacity = Math.max(0.01, Math.min(1, float(p, 'opacity', 0.25, 0, 1)));
+    const angle = float(p, 'angle', 45, -180, 180);
     const fontSize = Math.max(6, Math.min(200, num(p, 'font_size', 48, 6, 200)));
 
     try {

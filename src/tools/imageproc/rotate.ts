@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
 import { fail, jsonBlock } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
+import { float, num, strOrEmpty, view } from '../../core/input.js';
 import { readBinarySource } from '../../core/binary-source.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -42,7 +42,7 @@ export default defineTool({
   },
   async handler(input) {
     const p = view(input);
-    const angle = num(p, 'angle', 0, -360, 360);
+    const angle = float(p, 'angle', 0, -360, 360);
     const flipHorizontal = p.flip_horizontal === true || String(p.flip_horizontal ?? '') === 'true';
     const flipVertical = p.flip_vertical === true || String(p.flip_vertical ?? '') === 'true';
     const autoOrient = p.auto_orient === true || String(p.auto_orient ?? '') === 'true';
@@ -61,7 +61,7 @@ export default defineTool({
       // 90° turn on an EXIF-rotated photo ends up sideways again.
       if (autoOrient) pipeline = pipeline.rotate();
       if (angle !== 0)
-        pipeline = pipeline.rotate(angle, {
+        pipeline = pipeline.rotate(Math.round(angle), {
           background: strOrEmpty(p, 'background') || { r: 0, g: 0, b: 0, alpha: 0 },
         });
       if (flipHorizontal) pipeline = pipeline.flop();

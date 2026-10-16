@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
 import { fail, jsonBlock } from '../../core/format.js';
-import { num, str, strOrEmpty, view } from '../../core/input.js';
+import { float, num, str, strOrEmpty, view } from '../../core/input.js';
 import { readBinarySource } from '../../core/binary-source.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -88,10 +88,10 @@ export default defineTool({
       const srcHeight = meta.height ?? 0;
       if (srcWidth === 0 || srcHeight === 0) return fail('Manba o‘lchami aniqlanmadi.');
 
-      const opacity = num(p, 'opacity', 0.5, 0.01, 1);
+      const opacity = float(p, 'opacity', 0.5, 0.01, 1);
       const color = strOrEmpty(p, 'color') || '#ffffff';
       const margin = Math.round(num(p, 'margin', 12, 0, 5000));
-      const widthRatio = num(p, 'width_ratio', 0.3, 0.01, 1);
+      const widthRatio = float(p, 'width_ratio', 0.3, 0.01, 1);
       const position = strOrEmpty(p, 'position') || 'southeast';
 
       const bannerWidth = Math.max(1, Math.min(srcWidth, Math.round(srcWidth * widthRatio)));
