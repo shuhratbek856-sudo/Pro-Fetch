@@ -1,4 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -417,6 +418,27 @@ try {
   // the actual runtime registry rather than a file, and which runs as part of `npm run check`.
   if (!allToolsTest.includes('allTools().length'))
     failures.push('registry tests do not inspect actual registered tools');
+
+  // Markdown structure. Editing the READMEs by scripted replacement damaged one of them: a
+  // replacement string was written without its leading backtick, so `tools/list` (625/625 unique came
+  // out as tools/list` (625/625 unique - an unbalanced inline code span. `verify:registry` checks the
+  // numbers it knows about and said nothing about the punctuation, because punctuation is not a number.
+  // Both failure modes of a script that edits prose need a guard, not just the numeric one.
+  for (const readme of ['README.md', 'README.uz.md']) {
+    const text = readFileSync(path.join(root, readme), 'utf8');
+    const lines = text.split('\n');
+    const fences = lines.filter((line) => line.trim().startsWith('```')).length;
+    if (fences % 2 !== 0) failures.push(`${readme}: ${fences} ta kod chegarasi - juft bo'lishi kerak`);
+    const stray = lines.filter((line) => {
+      // A line inside a fence legitimately contains odd backticks; only check prose lines.
+      return !line.trim().startsWith('```') && (line.match(/(?<!`)`(?!`)/g) ?? []).length % 2 !== 0;
+    });
+    if (stray.length > 0) {
+      failures.push(
+        `${readme}: ${stray.length} qatorda juft bo'lmagan qorincha belgi` + ` (birinchi: "${stray[0].slice(0, 70)}")`,
+      );
+    }
+  }
 
   if (failures.length) {
     console.error('STATIC_VERIFICATION_FAIL');

@@ -1,4 +1,6 @@
 import { defineTool } from '../../core/tool.js';
+import { outputDir } from '../../core/output-dir.js';
+import type { OutputKind } from '../../core/output-dir.js';
 import { result, fail, jsonBlock } from '../../core/format.js';
 import { PDFDocument } from 'pdf-lib';
 import { readBinarySource } from '../../core/binary-source.js';
@@ -12,7 +14,7 @@ async function save(
   prefix: string,
 ): Promise<{ path: string; bytes: number; pages: number }> {
   const bytes = await pdf.save({ useObjectStreams: false });
-  const directory = path.join(process.env.PRO_FETCH_OUTPUT_ROOT ?? '.', 'pdf-out');
+  const directory = outputDir('pdf-out' as OutputKind);
   await mkdir(directory, { recursive: true });
   const target = path.join(directory, `${prefix}-${randomUUID()}.pdf`);
   await writeFile(target, bytes);

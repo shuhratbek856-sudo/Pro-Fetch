@@ -16,6 +16,8 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import '../src/loader.js';
 import { callTool } from '../src/router.js';
 import { float, num } from '../src/core/input.js';
@@ -25,7 +27,12 @@ const ORIGINAL = { ...process.env };
 beforeEach(() => {
   process.env = { ...ORIGINAL };
   process.env.PRO_FETCH_PROFILE = 'full';
-  process.env.PRO_FETCH_OUTPUT_ROOT = process.env.TMPDIR ?? '.';
+  // `process.env.TMPDIR ?? '.'` is what put 78 generated PNGs into `img-out/` in commits 20f59a9
+  // through 90bf3e0. TMPDIR is a Unix variable; on Windows it is undefined, so the fallback ran and
+  // pointed the output root at the repository. `tmpdir()` from `node:os` is the cross-platform one,
+  // and there is no `'.'` fallback: if the platform cannot tell us where temporary files go, failing
+  // loudly beats writing into whatever directory the suite happens to run from.
+  process.env.PRO_FETCH_OUTPUT_ROOT = path.join(tmpdir(), 'pro-fetch-float-hazard');
 });
 afterEach(() => {
   process.env = { ...ORIGINAL };

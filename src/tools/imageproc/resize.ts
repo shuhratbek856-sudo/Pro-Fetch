@@ -1,4 +1,6 @@
 import { defineTool } from '../../core/tool.js';
+import { outputDir } from '../../core/output-dir.js';
+import type { OutputKind } from '../../core/output-dir.js';
 import { fail, jsonBlock } from '../../core/format.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
 import { readBinarySource } from '../../core/binary-source.js';
@@ -13,7 +15,7 @@ import path from 'node:path';
  * waiting to happen and a collision waiting to overwrite something.
  */
 async function saveImage(data: Buffer, extension: string): Promise<{ path: string; bytes: number }> {
-  const directory = path.join(process.env.PRO_FETCH_OUTPUT_ROOT ?? '.', 'img-out');
+  const directory = outputDir('img-out' as OutputKind);
   await mkdir(directory, { recursive: true });
   const target = path.join(directory, `img-${randomUUID()}.${extension}`);
   await writeFile(target, data);

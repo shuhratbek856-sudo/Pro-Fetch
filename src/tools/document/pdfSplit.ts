@@ -1,4 +1,6 @@
 import { defineTool } from '../../core/tool.js';
+import { outputDir } from '../../core/output-dir.js';
+import type { OutputKind } from '../../core/output-dir.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -69,7 +71,7 @@ export const pdfSplit = defineTool({
         return fail('`every: true` yoki `pages` ko‘rsating — nimani ajratishni aytish kerak.');
       }
 
-      const directory = path.join(process.env.PRO_FETCH_OUTPUT_ROOT ?? '.', 'pdf-out');
+      const directory = outputDir('pdf-out' as OutputKind);
       await mkdir(directory, { recursive: true });
       const stem = randomUUID();
       const written: string[] = [];

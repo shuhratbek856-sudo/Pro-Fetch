@@ -46,6 +46,10 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   // on `diff_json`. The remaining four findings were the measurement's own noise - stopwords in
   // `language_detect`, algorithm names in `hash_string`, a response header in `http_status`.
   'color',
+  // `time` arrived without this and its five schemas stayed open, which the registry-wide assertion
+  // in `tests/schema-narrowing.test.ts` caught. The vocabulary below is empty on purpose: these tools
+  // read only the properties they declare, so there is nothing to add and nothing to strip.
+  'time',
   'data',
   'admin',
   'http',
@@ -326,6 +330,10 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
     'max_bytes',
     'language',
   ],
+  // Empty on purpose. `pro_time_*` reads only what it declares - `value`, `assume`, `date`, `duration`,
+  // `years`, `from`, `to`, `units`, `sum`, `show_units`, `dates_only` - and none of those come from the
+  // shared vocabulary. Listing a property here would advertise an argument that does nothing.
+  time: [],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],

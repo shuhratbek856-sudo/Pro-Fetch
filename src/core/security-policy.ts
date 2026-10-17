@@ -1,5 +1,6 @@
 import type { ToolDefinition } from './types.js';
 import path from 'node:path';
+import { outputRoot } from './output-dir.js';
 import { realpathSync } from 'node:fs';
 import { assertGithubInput } from './github-input-guard.js';
 import { assertNoUnknownArguments, assertRequiredPresent } from './required-arguments.js';
@@ -66,14 +67,19 @@ export function assertToolAllowed(tool: ToolDefinition, input: Record<string, un
     if (typeof rawPath !== 'string' || !rawPath.trim()) continue;
     if (process.env.PRO_FETCH_READ_ONLY === 'true')
       throw new PolicyError(`PRO_FETCH_READ_ONLY=true rejimida ${field} orqali faylga yozish bloklangan.`);
-    const configuredRoot = process.env.PRO_FETCH_OUTPUT_ROOT?.trim();
-    if (configuredRoot) {
-      const root = realResolve(configuredRoot);
-      const destination = realResolve(rawPath);
-      const relative = path.relative(root, destination);
-      if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
-        throw new PolicyError(`${field} PRO_FETCH_OUTPUT_ROOT sandboxidan tashqariga chiqmoqda.`);
-      }
+    // The sandbox used to run only when `PRO_FETCH_OUTPUT_ROOT` was set, so the default configuration
+    // had no containment at all and a tool could be pointed at any writable path. It now resolves the
+    // same root the writers use - which falls back to the cache directory, not the working directory -
+    // so the guard is on by default and cannot disagree with the tools it guards.
+    const root = realResolve(outputRoot());
+    const destination = realResolve(rawPath);
+    const relative = path.relative(root, destination);
+    if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+      throw new PolicyError(
+        `${field} chiqish sandboxidan tashqariga chiqmoqda: ${destination}\n` +
+          `Ruxsat etilgan papka: ${root}\n` +
+          'Boshqa joyga yozish uchun PRO_FETCH_OUTPUT_ROOT ni sozlang yoki output_path ni o‘zgartiring.',
+      );
     }
   }
   if (process.env.PRO_FETCH_READ_ONLY === 'true') {
