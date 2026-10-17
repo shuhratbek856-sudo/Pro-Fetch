@@ -107,7 +107,9 @@ export default defineTool({
       try {
         content = readEntry(data, entry, inflatedLimit);
       } catch (error) {
-        return fail(`${entry.name}: ${(error as Error).message}`);
+        // `readEntry` already prefixes its message with the entry name, so adding it here produced
+        // "hello.txt: hello.txt: CRC mos kelmadi" - measured, not assumed.
+        return fail((error as Error).message);
       }
       totalInflated += content.length;
       matched.push({ entry, safe: safe.path, content });
