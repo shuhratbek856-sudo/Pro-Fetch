@@ -1,5 +1,5 @@
 {
-  "total": 635,
+  "total": 640,
   "categories": {
     "http": 19,
     "convert": 30,
@@ -26,6 +26,7 @@
     "color": 3,
     "time": 5,
     "zip": 5,
+    "opendata": 5,
     "imageproc": 9,
     "i18n": 12,
     "git": 23,
@@ -42,7 +43,7 @@
     "smart": 11,
     "minimal": 73,
     "standard": 178,
-    "full": 635
+    "full": 640
   },
   "smartComposites": [
     "pro_capability_call",
@@ -57,8 +58,8 @@
     "pro_data_pipeline",
     "pro_synthesize"
   ],
-  "testFiles": 29,
-  "testCount": 507,
+  "testFiles": 30,
+  "testCount": 532,
   "coverageComposites": {
     "pro_workspace_ops": {
       "categories": [
@@ -79,6 +80,6 @@
       "purpose": "One call for hosted-provider operations across the four MAX packs that had no composite."
     }
   },
-  "full": 635,
-  "categoryCount": 36
+  "full": 640,
+  "categoryCount": 37
 }

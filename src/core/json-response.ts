@@ -31,3 +31,23 @@ export function parseUpstreamJson<T>(
     );
   }
 }
+
+/**
+ * Parse an upstream JSON body without throwing, for the error path.
+ *
+ * A provider that rejects a query usually explains why in the body - Socrata answers a bad column with
+ * `{"message":"... No such column: creatd"}`, which is worth far more to a caller than any message
+ * composed locally. Reading that body needs a parse, and the rule against a bare `JSON.parse` on a
+ * network body exists because a non-JSON body there produces `Unexpected token '<'` instead of
+ * anything actionable. This returns `{ ok: false }` in that case, so the caller keeps its text preview
+ * and the guard still holds.
+ */
+export function tryParseUpstreamJson<T>(
+  response: Pick<HttpResult, 'status' | 'contentType' | 'text'>,
+): { ok: true; value: T } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(response.text) as T };
+  } catch {
+    return { ok: false };
+  }
+}

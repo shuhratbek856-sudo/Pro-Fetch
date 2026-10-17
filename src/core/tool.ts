@@ -51,6 +51,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   // read only the properties they declare, so there is nothing to add and nothing to strip.
   'time',
   'zip',
+  'opendata',
   'data',
   'admin',
   'http',
@@ -338,6 +339,10 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   // The same reasoning for zip: `pro_zip_*` declares its own inputs (`url`, `base64`, `files`,
   // `query`, ...) and reads nothing from the shared vocabulary.
   zip: [],
+  // The open-data tools declare `dataset`, `query`, `domain` and read nothing from the shared
+  // vocabulary. `url` is shared, but none of these five fetches a caller-supplied URL directly - they
+  // build one from a dataset id and a domain the catalog resolved.
+  opendata: [],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],

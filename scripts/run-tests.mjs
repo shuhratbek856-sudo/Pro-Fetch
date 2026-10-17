@@ -19,6 +19,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const root = process.cwd();
@@ -81,10 +82,19 @@ function evaluate(output) {
   } else {
     if (failedTests > 0) failures.push(`${failedTests} test(s) failed`);
     if (failedFiles > 0) failures.push(`${failedFiles} test file(s) failed`);
-    if (reportedFiles !== expectedTestFiles) {
+
+    // Fewer than expected is the signal this check exists for: a worker that dies mid-run prints a
+    // summary covering only the files that finished.
+    //
+    // *More* than expected is not that. It means the manifest is stale, which happened three times
+    // while categories were being added - each time with every single test passing, and each time
+    // reported as "only 30 of 29 test files completed", a sentence that describes a crash and reads
+    // as one. The two directions are therefore separated, and the stale case rewrites the manifest
+    // from the number the runner just measured instead of failing a green suite.
+    if (reportedFiles < expectedTestFiles) {
       failures.push(`only ${reportedFiles} of ${expectedTestFiles} test files completed`);
     }
-    if (reportedTests !== expectedTests) {
+    if (reportedTests < expectedTests) {
       failures.push(`only ${reportedTests} of ${expectedTests} tests completed`);
     }
   }
@@ -99,6 +109,28 @@ function evaluate(output) {
   };
 }
 
+/**
+ * Record the counts the runner just measured.
+ *
+ * Writing them here is what makes the manifest stop being a hand-maintained number. The README still
+ * has to be updated by hand after this - `verify:registry` compares its prose against the manifest and
+ * will say so - but two exact-string edits is a different cost from a red build that looks like a
+ * crash, three times over.
+ */
+function syncManifestCounts(reportedFiles, reportedTests) {
+  const file = path.join(root, 'scripts', 'tool-counts.json');
+  const current = JSON.parse(readFileSync(file, 'utf8'));
+  if (current.testFiles === reportedFiles && current.testCount === reportedTests) return false;
+  current.testFiles = reportedFiles;
+  current.testCount = reportedTests;
+  writeFileSync(file, JSON.stringify(current, null, 2) + '\n', 'utf8');
+  console.warn(
+    `note: scripts/tool-counts.json testFiles ${expectedTestFiles} -> ${reportedFiles}, ` +
+      `testCount ${expectedTests} -> ${reportedTests}. README dagi test badge'larini yangilang.`,
+  );
+  return true;
+}
+
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   const { code, output } = await runVitest(attempt);
   process.stdout.write(output);
@@ -106,6 +138,11 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   const result = evaluate(output);
 
   if (!result.failures.length) {
+    // The suite is green and complete, so this is the one moment the manifest can be trusted to
+    // describe it. Doing it here rather than by hand means the number cannot lag the code.
+    if (result.reportedFiles !== null && result.reportedTests !== null) {
+      syncManifestCounts(result.reportedFiles, result.reportedTests);
+    }
     if (result.nativeAbort) {
       console.warn('note: a native teardown abort occurred after every test had already passed.');
     }
