@@ -54,6 +54,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'opendata',
   'units',
   'phonetics',
+  'chess',
   'data',
   'admin',
   'http',
@@ -347,6 +348,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   opendata: [],
   units: [],
   phonetics: [],
+  chess: [],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],

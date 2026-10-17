@@ -53,6 +53,7 @@ import './tools/zip/index.js';
 import './tools/opendata/index.js';
 import './tools/units/index.js';
 import './tools/phonetics/index.js';
+import './tools/chess/index.js';
 import './tools/imageproc/index.js';
 import './tools/i18n/index.js';
 import './tools/max-platform/index.js';
