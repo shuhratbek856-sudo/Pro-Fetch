@@ -1,3 +1,5 @@
+import { assertWritable } from './read-only-guard.js';
+
 interface CacheEntry {
   value: string;
   createdAt: number;
@@ -48,6 +50,9 @@ export const cache = {
   },
 
   put(key: string, value: string, ttlMs?: number, meta?: Record<string, unknown>): void {
+    // Every write is refused in read-only mode, whoever asked. 149 of 652 tools reach this method while
+    // being classified read-only by name, so a check at the tool boundary was never going to hold.
+    assertWritable('cache yozuvi');
     if (store.has(key)) store.delete(key);
     while (store.size >= maxEntries) {
       const oldest = store.keys().next().value;
@@ -75,6 +80,7 @@ export const cache = {
   },
 
   delete(pattern: string): number {
+    assertWritable('cache o chirish');
     let deleted = 0;
     for (const key of Array.from(store.keys())) {
       if (key.includes(pattern)) {
@@ -86,6 +92,7 @@ export const cache = {
   },
 
   clear(): void {
+    assertWritable('cache tozalanishi');
     store.clear();
   },
 
@@ -94,6 +101,8 @@ export const cache = {
   },
 
   tune(opts: { defaultTtlMs?: number; maxEntries?: number }): void {
+    // Tuning changes what every future write does, so it is a write even though it stores nothing.
+    assertWritable('cache sozlamalari');
     if (opts.defaultTtlMs !== undefined && Number.isFinite(opts.defaultTtlMs))
       defaultTtl = Math.max(1, Math.min(Math.floor(opts.defaultTtlMs), 7 * 24 * 60 * 60_000));
     if (opts.maxEntries !== undefined && Number.isFinite(opts.maxEntries))

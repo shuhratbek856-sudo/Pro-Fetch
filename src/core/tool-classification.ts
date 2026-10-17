@@ -15,6 +15,7 @@
  * must not create an import cycle between the registry and the policy engine.
  */
 
+import { SINK_REACHING_TOOLS } from './mutation-sinks.generated.js';
 /** Tool names that mutate state but do not match the generic verb pattern below. */
 const EXPLICIT_MUTATION_TOOLS: readonly RegExp[] = [
   /^cache_(?:put|delete|clear)$/,
@@ -67,10 +68,36 @@ const REMOTE_CATEGORIES: ReadonlySet<string> = new Set([
   'productivity',
 ]);
 
-/** Whether a tool may change local or remote state. */
-export function isMutationTool(name: string): boolean {
+/**
+ * The name-only rule, with the generated table deliberately excluded.
+ *
+ * Exported because `scripts/generate-mutation-sinks.mts` needs it: that script produces the table, so if
+ * it asked `isMutationTool` it would already see the table and would write an empty one, erasing the data
+ * on the next regeneration. It was measured doing exactly that - 13 tools became 0.
+ */
+export function isMutationToolByName(name: string): boolean {
   const normalized = name.replace(/^pro_(?:fetch|research)_/, '');
   return EXPLICIT_MUTATION_TOOLS.some((pattern) => pattern.test(normalized)) || MUTATION_VERBS.test(normalized);
+}
+
+/** Whether a tool may change local or remote state. */
+export function isMutationTool(name: string): boolean {
+  if (isMutationToolByName(name)) return true;
+  // A name is a guess about a body, and this one was wrong often enough to matter:
+  // `pro_fetch_import_bundle` writes every supplied key into the cache, was classified read-only, was
+  // advertised to models as `readOnlyHint: true`, and passed `PRO_FETCH_READ_ONLY` - the call completed
+  // without an error and the cache had a new entry. Thirteen tools reached a write sink with no verb in
+  // their name; they are listed in a table generated from the handlers themselves, and
+  // `tests/security-boundaries.test.ts` fails if that table no longer matches the code.
+  //
+  // The *enforcement* does not depend on this table. `read-only-guard.ts` asks at each sink, so a tool
+  // added tomorrow is covered by writing to a sink rather than by remembering to update a list.
+  return Object.hasOwn(SINK_REACHING_TOOLS, name);
+}
+
+/** The write sinks a tool is known to reach, for a diagnostics report. Empty for most tools. */
+export function mutationSinksOf(name: string): readonly string[] {
+  return SINK_REACHING_TOOLS[name] ?? [];
 }
 
 /** Whether the tool belongs to a category that reaches an external system. */

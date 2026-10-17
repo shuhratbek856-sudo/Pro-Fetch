@@ -84,6 +84,15 @@ export interface ExecutionMetadata {
   category: string;
   durationMs: number;
   status: 'success' | 'error' | 'timeout';
+  /**
+   * Whether the call succeeded, as opposed to having thrown.
+   *
+   * Distinct from `status === 'success'` in one case only: a handler that *returned* `isError: true`
+   * resolved normally, so there was no exception to catch, and it used to be counted as a success. The
+   * field exists so a log line, the stats counters and what the caller actually received cannot be read
+   * three different ways.
+   */
+  ok?: boolean;
   retryable?: boolean;
   errorCode?: string;
 }
@@ -183,16 +192,27 @@ export async function executeTool<T>(
         }),
       ]);
       const durationMs = Date.now() - started;
-      stats.success++;
+      // A handler that answered with `isError: true` did not succeed. It resolved, so there was no
+      // exception to catch, but the work failed - and `dispatch()` already reported `ok: false` for it.
+      // Counting it as a success here meant the monitoring counters and the caller's own result
+      // disagreed: a dashboard could report a 100% success rate over a run in which every call failed.
+      const reportedFailure =
+        value !== null && typeof value === 'object' && (value as { isError?: unknown }).isError === true;
+      if (reportedFailure) {
+        stats.errors++;
+      } else {
+        stats.success++;
+      }
       stats.totalDurationMs += durationMs;
       stats.maxDurationMs = Math.max(stats.maxDurationMs, durationMs);
-      stats.lastStatus = 'success';
+      stats.lastStatus = reportedFailure ? 'error' : 'success';
       const metadata: ExecutionMetadata = {
         requestId,
         tool: tool.name,
         category: tool.category,
         durationMs,
-        status: 'success',
+        status: reportedFailure ? 'error' : 'success',
+        ok: !reportedFailure,
       };
       log(JSON.stringify({ event: 'tool.complete', ...metadata }));
       return { value, metadata };

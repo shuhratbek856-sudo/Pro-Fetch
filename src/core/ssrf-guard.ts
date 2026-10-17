@@ -33,12 +33,45 @@ export interface SafeUrlResolution {
 
 /** Resolve and validate a URL once. The returned addresses can be pinned at connect time
  * so a second DNS lookup cannot turn a public host into an internal target (DNS rebinding). */
+/**
+ * Describe a URL without repeating anything secret from it.
+ *
+ * The invalid-URL branch used to echo the caller's whole string:
+ *
+ *     throw new UrlSecurityError('Yaroqsiz URL: ' + rawUrl, 'INVALID_URL');
+ *
+ * A URL is a common carrier of credentials - `?token=`, `?api_key=`, `&signature=` - and webhook URLs put
+ * the secret in the *path*, where no query-parameter filter can reach it. The message then carries the
+ * secret into the model's context and into any log that records it. So the message describes the shape
+ * and nothing else. A caller who mistyped a URL still sees that it failed and how long it was; nobody
+ * reading the log gets the token.
+ *
+ * A URL that parses is reported more usefully, because a parsed URL has already been shown to carry no
+ * credentials in its authority component - `url.username`/`url.password` are rejected separately - and a
+ * hostname is not itself secret. Query *names* are printed because the failure is often about the wrong
+ * parameter; query *values* never are.
+ */
+export function describeUrl(rawUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return `<yaroqsiz URL, uzunligi ${rawUrl.length}>`;
+  }
+  const scheme = url.protocol.replace(':', '');
+  const names = [...new Set([...url.searchParams.keys()])];
+  const query = names.length === 0 ? '' : `, query kalitlari: ${names.join(', ')}`;
+  const segments = url.pathname.split('/').filter(Boolean).length;
+  const path = segments === 0 ? '' : `, yo'l segmentlari: ${segments}`;
+  return `${scheme}://${url.host}${path}${query}`;
+}
+
 export async function resolveSafeUrl(rawUrl: string): Promise<SafeUrlResolution> {
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new UrlSecurityError('Yaroqsiz URL: ' + rawUrl, 'INVALID_URL');
+    throw new UrlSecurityError('Yaroqsiz URL: ' + describeUrl(rawUrl), 'INVALID_URL');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new UrlSecurityError('Ruxsat etilmagan protokol: ' + url.protocol, 'POLICY_BLOCKED');

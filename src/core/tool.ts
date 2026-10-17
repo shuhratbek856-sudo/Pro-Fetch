@@ -993,11 +993,74 @@ export function sanitizeToolError(error: unknown, input: Record<string, unknown>
   collect(input, 0);
   for (const secret of [...new Set(secrets)].sort((left, right) => right.length - left.length))
     message = message.split(secret).join('[REDACTED]');
-  message = message
+  message = redactUrlsInText(message)
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/_=.:-]+/gi, '$1 [REDACTED]')
-    .replace(/([?&](?:access_token|refresh_token|token|api[_-]?key|password|secret)=)[^&#\s]+/gi, '$1[REDACTED]')
-    .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[REDACTED]@');
-  return message.slice(0, 2000);
+    .slice(0, 2000);
+  return message;
+}
+
+/** Query parameter names whose *value* is treated as a secret wherever one appears in a message. */
+const SECRET_PARAM =
+  /(?:token|secret|password|passwd|pwd|key|sig|signature|auth|credential|apikey|api_key|session|code|jwt|hmac|nonce|salt|hash)/i;
+
+/**
+ * Names that look sensitive but are ordinary, so their values are kept.
+ *
+ * Without this, `?sort=name` and `?keys=1` would be redacted across every tool's output - a cost paid on
+ * every call to guard against a secret that is not there.
+ */
+const HARMLESS_PARAM =
+  /^(?:page|per_page|limit|offset|cursor|sort|order|format|type|q|query|search|lang|locale|width|height|depth|fields|include|filter|field)$/i;
+
+/**
+ * Redact credentials inside any URL that appears in a message.
+ *
+ * Three leaks, each measured rather than imagined:
+ *
+ *   - **Userinfo in the authority.** `https://user:secret@host/` had no rule at all, because the old
+ *     patterns were built around a query delimiter.
+ *   - **Secrets in the path.** A webhook URL puts the credential there: `https://host/h/LONG-OPAQUE-ID`.
+ *     A long segment with no dot and no word-like shape is far more likely to be a credential than a
+ *     slug, so it is redacted; `v1`, `users` and `report.pdf` survive.
+ *   - **Query parameters with an unusual name.** The list was `token|api_key|password|secret`, so
+ *     `?auth_ticket=`, `?session_key=` and `?sig2=` passed through with their values intact.
+ *
+ * Applied to the message text rather than at each throw site, because the sites cannot be audited in
+ * advance: a URL reaches these messages from the caller's input, from an upstream response, and from
+ * libraries with their own wording.
+ */
+function redactUrlsInText(message: string): string {
+  return message.replace(/\bhttps?:\/\/[^\s'"<>)\]]+/gi, (whole) => {
+    const authority = /^(https?:\/\/)([^/?#]*)/i.exec(whole);
+    let out = '';
+    let rest = whole;
+    if (authority) {
+      const host = authority[2] as string;
+      if (host.includes('@')) out += (authority[1] as string) + '[REDACTED]@' + host.slice(host.lastIndexOf('@') + 1);
+      else out += (authority[1] as string) + host;
+      rest = whole.slice((authority[0] as string).length);
+    }
+
+    const boundary = rest.search(/[?#]/);
+    const path = boundary === -1 ? rest : rest.slice(0, boundary);
+    const tail = boundary === -1 ? '' : rest.slice(boundary);
+    out += path
+      .split('/')
+      .map((segment) => {
+        if (segment.length < 16) return segment;
+        if (segment.includes('.') || /^[A-Za-z]{1,12}$/.test(segment)) return segment;
+        return '[REDACTED]';
+      })
+      .join('/');
+
+    const queryMatch = /^(\?[^#]*)/.exec(tail);
+    if (!queryMatch) return out + tail;
+    const query = queryMatch[1] as string;
+    const redacted = query.replace(/([?&])([^=&#]+)=([^&#]*)/g, (piece, marker: string, name: string, value: string) =>
+      value !== '' && SECRET_PARAM.test(name) && !HARMLESS_PARAM.test(name) ? marker + name + '=[REDACTED]' : piece,
+    );
+    return out + redacted + tail.slice(query.length);
+  });
 }
 
 /** outputSchema `error.message` ni string deb talab qiladi — shuning uchun doim matn qaytaramiz. */

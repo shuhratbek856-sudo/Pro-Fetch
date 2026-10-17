@@ -445,11 +445,21 @@ try {
     for (const failure of failures) console.error('- ' + failure);
     process.exitCode = 1;
   } else {
+    // Counted from the source the checker already reads, not from the manifest and not from a
+    // literal. It read `smart_tools=5` while the runtime profile had 11 tools - a wrong number printed by
+    // the very script that reports wrong numbers, which is worse than no number at all.
+    const profileSource = readFileSync(new URL('../src/core/profile.ts', import.meta.url), 'utf8');
+    const smartTools = new Set([...profileSource.matchAll(/'(pro_[a-z0-9_]+)'/g)].map((match) => match[1])).size;
     console.log('STATIC_VERIFICATION_PASS');
     console.log(`source_files=${sourceFiles.length}`);
     console.log(
-      `manifest_tools=${countManifest.total}; manifest_categories=${Object.keys(countManifest.categories ?? {}).length}; smart_tools=5; example_config=valid_json; embedded_credentials=none; template_dispatcher=absent`,
+      `manifest_tools=${countManifest.total}; manifest_categories=${Object.keys(countManifest.categories ?? {}).length}; smart_tools=${smartTools}; example_config=valid_json; embedded_credentials=none; template_dispatcher=absent`,
     );
+    if (typeof countManifest.profiles?.smart === 'number' && countManifest.profiles.smart !== smartTools) {
+      failures.push(
+        `manifest smart profili ${countManifest.profiles.smart}, manba ro'yxati ${smartTools} - ular farq qilmoqda`,
+      );
+    }
     console.log(
       'note: manifest checks are not a substitute for `npm run verify:registry`, which loads the actual runtime registry.',
     );

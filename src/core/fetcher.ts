@@ -2,6 +2,7 @@ import { fetchWithOptions } from './http-client.js';
 import { assertSafeUrl } from './ssrf-guard.js';
 import { take } from './ratelimit.js';
 import { cache } from './cache.js';
+import { canSkipSideEffect } from './read-only-guard.js';
 import { clipToTokens, estimateTokens } from './chunker.js';
 import { htmlToMarkdown } from './parser.js';
 
@@ -46,7 +47,11 @@ export async function fetchUrl(rawUrl: string, opts: FetchUrlOptions = {}): Prom
     cached: false,
     truncated: res.truncated,
   };
-  cache.put(key, JSON.stringify(result), 3_600_000);
+  // Keshlash - yon ta s ir, maqsad emas. `fetchUrl` har javobni keshlaydi, demak read-only
+  // rejimida ko pchtool yozuv qiladi. Keshlashni o tkazib yuborish to g ri: hujjat qaytadi,
+  // keyingi so rov kesh bo lmaydi, chaqiruvchi uchun farq yo q. Aks holda read-only rejimi
+  // butun fetch oilasini ishdan chiqarar edi.
+  if (!canSkipSideEffect()) cache.put(key, JSON.stringify(result), 3_600_000);
   return result;
 }
 

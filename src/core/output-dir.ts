@@ -44,6 +44,32 @@ export function outputRoot(): string {
   return path.resolve(configured && configured.length > 0 ? configured : path.join(cacheRoot(), 'out'));
 }
 
+/**
+ * The boundary a write must stay inside, which is not always `outputRoot()`.
+ *
+ * `outputRoot()` is where a *tool's produced artefact* belongs, and it is the right answer for the
+ * converters, screenshots and PDFs. It is the wrong answer for a server writing its own working files:
+ * `pro_gh_repo_full_clone` downloads into the cache directory, one level above `out/`, and always has.
+ *
+ * The first version of the sink-level check used `outputRoot()` unconditionally and broke that tool with
+ *
+ *     filePath chegaradan tashqariga chiqmoqda:
+ *     C:\Users\user\.pro-fetch\cache\octocat-Hello-World-main.tar.gz
+ *     Ruxsat etilgan papka: C:\Users\user\.pro-fetch\cache\out
+ *
+ * - a legitimate download refused because the boundary had been chosen too narrowly, not because the
+ * path was dangerous. The mistake was in the boundary, so that is what changed.
+ *
+ * So: when the operator sets `PRO_FETCH_OUTPUT_ROOT`, that is the boundary, because setting it is a
+ * decision. Otherwise it is the cache root, which contains both `out/` and the server's own working
+ * files - still this server's private area, and still nowhere near the user's documents.
+ */
+export function writeBoundaryRoot(): string {
+  const configured = process.env.PRO_FETCH_OUTPUT_ROOT?.trim();
+  if (configured && configured.length > 0) return path.resolve(configured);
+  return path.resolve(cacheRoot());
+}
+
 /** A per-kind subdirectory of the output root, created on demand. */
 export function outputDir(kind: OutputKind): string {
   const directory = path.join(outputRoot(), kind);

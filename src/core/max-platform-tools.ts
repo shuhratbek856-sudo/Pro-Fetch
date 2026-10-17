@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { childEnvOnly } from './child-env.js';
 import { promisify } from 'node:util';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
@@ -332,6 +333,8 @@ async function command(
   args: string[],
   cwd = safeLocalPath(undefined),
   env: Record<string, string | undefined> = {},
+  /** Variables of the server's own environment this command is allowed to inherit. */
+  allowEnv: readonly string[] = [],
 ): Promise<{ stdout: string; stderr: string }> {
   try {
     const resolved = resolveExecutable(file);
@@ -340,7 +343,12 @@ async function command(
       timeout: Number(process.env.PRO_FETCH_COMMAND_TIMEOUT_MS) || 30_000,
       maxBuffer: 2 * 1024 * 1024,
       windowsHide: true,
-      env: { ...process.env, ...env },
+      // Built by `childEnv`, not `{ ...process.env }`. Passing the whole environment handed every
+      // child the server's credentials: an approved `npm run script` could read and print
+      // `OPENAI_API_KEY`, which made the per-command approval meaningless for anything the approved
+      // command went on to run. `allowEnv` lets a call site name a variable it genuinely needs, so the
+      // dependency is visible in the source instead of implicit in the process launch.
+      env: childEnvOnly(env, allowEnv) as NodeJS.ProcessEnv,
     });
   } catch (e) {
     const x = e as Error & { code?: string; stdout?: string; stderr?: string };
@@ -1516,8 +1524,14 @@ async function listFiles(root: string, recursive = true, limit = 1000): Promise<
     }
     for (const ent of entries) {
       if (out.length >= limit) return;
-      const hiddenSecretFile = ent.isFile() && /^\.(?:env(?:\..+)?|npmrc|pypirc|netrc|dockerenv)$/i.test(ent.name);
-      if (ent.name.startsWith('.') && ent.name !== '.env.example' && !hiddenSecretFile) continue;
+      // Every entry whose name is in `ignored` is skipped, and nothing else. The blanket
+      // `startsWith('.')` rule that used to sit here skipped hidden *directories* outright, so
+      // `.secrets/`, `.github/`, `.aws/` and `.config/` were never scanned - which are exactly the places
+      // a committed credential tends to live. `.git` is already in `ignored`, so the rule was redundant
+      // where it was useful and harmful where it was not.
+      //
+      // `hiddenSecretFile` is kept because `.env`-shaped files were already included and must stay so:
+      // dropping the dot rule does not stop that, but the variable documents the intent explicitly.
       if (ignored.has(ent.name)) continue;
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
@@ -1665,14 +1679,49 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
         file: string;
         matches: Array<{ type: string; line: number; redacted: string }>;
       }> = [];
+      // The count has to mean "files whose contents were actually examined". It used to report
+      // every listed file, including ones skipped for size and ones whose read failed, so a report could
+      // claim 1000 files scanned while 900 were never opened - and a clean result then read as a pass.
+      let filesScanned = 0;
+      let skippedTooLarge = 0;
+      let unreadable = 0;
+      const skippedSamples: string[] = [];
+      const note = (file: string): void => {
+        if (skippedSamples.length < 10) skippedSamples.push(path.relative(workspaceRoot(), file));
+      };
+
       for (const file of files) {
-        if ((await stat(file)).size > 1_000_000) continue;
-        const content = await readFile(file, 'utf8').catch(() => '');
+        if ((await stat(file)).size > 1_000_000) {
+          skippedTooLarge++;
+          note(file);
+          continue;
+        }
+        const content = await readFile(file, 'utf8').catch(() => undefined);
+        if (content === undefined) {
+          unreadable++;
+          note(file);
+          continue;
+        }
+        filesScanned++;
         const matches = scanSecrets(content);
         if (matches.length) results.push({ file: path.relative(workspaceRoot(), file), matches });
         if (results.length >= 200) break;
       }
-      return { files_scanned: files.length, matches: results };
+
+      return {
+        files_listed: files.length,
+        files_scanned: filesScanned,
+        skipped_too_large: skippedTooLarge,
+        unreadable,
+        skipped_examples: skippedSamples.length > 0 ? skippedSamples : undefined,
+        matches: results,
+        // A clean scan over a fraction of the tree is a different claim from a clean scan over all of it,
+        // so the scope is stated rather than implied by a number.
+        scope_complete: skippedTooLarge === 0 && unreadable === 0 && results.length < 200,
+        note:
+          'Hejmonaviy skaner: ham haqiqiy, ham soxta topilma bo lishi mumkin. Maxfiy qiymatlar ' +
+          'chiqishda hech qachon ko rsatilmaydi - faqat turi va qatori.',
+      };
     }
     return {
       matches: scanSecrets(text),
@@ -1759,22 +1808,43 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
       finalUrl: safe.toString(),
       headers: h,
     };
-    if (action === 'headers_audit' || action === 'tls_audit')
+    if (action === 'headers_audit' || action === 'tls_audit') {
+      // The action is named `tls_audit` and this payload is HTTP response headers. Nothing here reads a
+      // certificate, a cipher, a protocol version or an expiry date, because `fetch` exposes none of
+      // them. The result states what was and was not examined, because presenting header presence as a
+      // TLS audit is how an expired certificate gets reported as a pass.
+      const headerChecks = {
+        hsts: Boolean(h['strict-transport-security']),
+        csp: Boolean(h['content-security-security']),
+        xContentTypeOptions: Boolean(h['x-content-type-options']),
+        frameProtection: Boolean(h['x-frame-options'] || h['content-security-policy']?.includes('frame-ancestors')),
+        referrerPolicy: Boolean(h['referrer-policy']),
+        permissionsPolicy: Boolean(h['permissions-policy']),
+      };
       return {
         ...security,
-        checks: {
-          hsts: Boolean(h['strict-transport-security']),
-          csp: Boolean(h['content-security-policy']),
-          xContentTypeOptions: Boolean(h['x-content-type-options']),
-          frameProtection: Boolean(h['x-frame-options'] || h['content-security-policy']?.includes('frame-ancestors')),
-          referrerPolicy: Boolean(h['referrer-policy']),
-          permissionsPolicy: Boolean(h['permissions-policy']),
-        },
+        scope: 'http_response_headers',
+        is_tls_audit: false,
+        checks: headerChecks,
+        headers_present: Object.entries(headerChecks)
+          .filter(([, value]) => value)
+          .map(([name]) => name),
+        headers_missing: Object.entries(headerChecks)
+          .filter(([, value]) => !value)
+          .map(([name]) => name),
+        not_checked: [
+          'sertifikat muddati (expiry)',
+          'sertifikat zanjiri va ishonch ildizi',
+          'TLS protokol versiyasi',
+          'shifrlash algoritmi (cipher suite)',
+          'serverning nomi sertifikatiga mosligi',
+        ],
         tls_note:
           safe.protocol === 'https:'
-            ? 'HTTPS request completed; certificate chain details are not exposed by fetch client.'
-            : 'Not HTTPS',
+            ? 'HTTPS so rovi bajarildi. Bu TIL audit emas - faqat HTTP javob sarlavhalari tekshirildi.'
+            : 'Not HTTPS - protokol tekshiruvi ham bajarilmadi.',
       };
+    }
     if (action === 'cors_audit')
       return {
         status: res.status,
@@ -1793,8 +1863,17 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
       return {
         status: res.status,
         location: h.location || null,
-        finalUrl: safe.toString(),
-        note: 'Redirect chain detail is only reported where provided by HTTP client metadata.',
+        // `safe.toString()` is the URL that was *requested*, not the one that answered. Asking "where
+        // does this redirect to" and receiving the input back is the worst shape of wrong answer: it
+        // looks like an answer. `res.url` is the real final URL, which the HTTP client already tracks.
+        finalUrl: res.url ?? safe.toString(),
+        finalUrl_is_final: true,
+        // Only the last hop is reported. The intermediate chain exists in the client but is not
+        // returned from `fetchWithOptions`, so naming it would be another claim this tool cannot back.
+        hops_reported: 1,
+        note:
+          'Oxirgi URL ko rsatilgan. Oraliq yurishlar ro yxati bu chiqishda yo q - u maxsus so rov bilan ' +
+          'pro_fetch_redirect_trace orqali olinadi.',
       };
     if (action === 'cookie_audit')
       return {
@@ -1815,11 +1894,41 @@ const knowledgeFile = () =>
   path.resolve(process.env.PRO_FETCH_KNOWLEDGE_DB || path.join(os.homedir(), '.pro-fetch', 'knowledge.json'));
 async function readKnowledge(): Promise<Array<Record<string, unknown>>> {
   const p = knowledgeFile();
+  let text: string;
   try {
-    const x = JSON.parse(await readFile(p, 'utf8'));
-    return Array.isArray(x) ? (x.filter((v) => v && typeof v === 'object') as Array<Record<string, unknown>>) : [];
-  } catch {
-    return [];
+    text = await readFile(p, 'utf8');
+  } catch (error) {
+    // Only "the file is not there" means an empty database. This used to catch every error and return
+    // `[]`, which turned a permissions problem, a truncated write or invalid JSON into "no documents" -
+    // and the next ingest, delete or tag call then wrote that empty array over the real file. Data
+    // loss with no error reported anywhere: the write succeeded, and the contents were gone.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw new Error(
+      `Knowledge bazasi o'qilmadi (${(error as NodeJS.ErrnoException).code ?? 'xato'}): ${p}. ` +
+        "Amal to'xtatildi - ma'lumot o'chirib ketmasligi uchun. Fayl ruxsatlarini tekshiring " +
+        "yoki uni boshqa joyga ko'chirib, keyin qayta urinib ko'ring.",
+    );
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('bazadagi qiymat massiv emas');
+    return parsed.filter((entry) => entry && typeof entry === 'object') as Array<Record<string, unknown>>;
+  } catch (error) {
+    // A copy is taken before anything else happens. Overwriting or removing a file this server cannot
+    // parse would destroy the only copy of whatever it held, which is the opposite of recovering.
+    const quarantine = `${p}.corrupt-${Date.now()}`;
+    // Failure to write the copy is not fatal: nothing has written to `p` yet, so the original is
+    // untouched. The message says so rather than pretending the backup exists.
+    const copied = await writeFile(quarantine, text, 'utf8').then(
+      () => true,
+      () => false,
+    );
+    throw new Error(
+      "Knowledge bazasi JSON buzilgan - shuning uchun hech narsa yozilmadi va ma'lumot o'chirmadi. " +
+        `${copied ? `Buzilgan nusxa saqlandi: ${quarantine}.` : `Nusxa saqlab bo'lmadi (${p} tegilmadi).`} ` +
+        `Sabab: ${(error as Error).message}`,
+    );
   }
 }
 async function writeKnowledge(docs: Array<Record<string, unknown>>): Promise<void> {

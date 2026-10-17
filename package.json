@@ -39,21 +39,22 @@
     ".env.example"
   ],
   "scripts": {
+    "audit:schema": "tsx scripts/audit-schema.mts",
     "build": "tsc",
+    "check": "npm run verify:static && npm run verify:registry && npm run build && npm test && npm run verify:package && npm run format:check",
     "dev": "tsx src/server.ts",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
+    "gen:mutation-sinks": "tsx scripts/generate-mutation-sinks.mts",
+    "lint": "tsc --noEmit",
+    "measure:coverage": "tsx scripts/measure-composite-coverage.mts",
+    "prepublishOnly": "npm run check",
     "start": "node dist/server.js",
     "test": "node scripts/run-tests.mjs",
     "test:coverage": "node scripts/run-tests.mjs --coverage",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
-    "lint": "tsc --noEmit",
-    "verify:static": "node scripts/verify-static.mjs",
-    "audit:schema": "tsx scripts/audit-schema.mts",
-    "verify:registry": "tsx scripts/verify-registry.mts",
-    "measure:coverage": "tsx scripts/measure-composite-coverage.mts",
     "verify:package": "npm run build && node scripts/verify-package.mjs",
-    "check": "npm run verify:static && npm run verify:registry && npm run build && npm test && npm run verify:package && npm run format:check",
-    "prepublishOnly": "npm run check"
+    "verify:registry": "tsx scripts/verify-registry.mts",
+    "verify:static": "node scripts/verify-static.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.16.0",

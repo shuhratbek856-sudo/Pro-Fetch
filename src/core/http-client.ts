@@ -1,9 +1,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { assertWritablePath } from './path-containment.js';
 import { createHash } from 'node:crypto';
 import { Agent, ProxyAgent } from 'undici';
 import path from 'node:path';
 import { assertSafeUrl, resolveSafeUrl } from './ssrf-guard.js';
 import { cache } from './cache.js';
+import { canSkipSideEffect } from './read-only-guard.js';
 import { withNetworkConcurrency } from './network-gate.js';
 import { USER_AGENT } from './version.js';
 
@@ -193,6 +195,14 @@ export interface HttpResult {
   headers: Record<string, string>;
   text: string;
   truncated: boolean;
+  /**
+   * The URL that actually answered, after redirects.
+   *
+   * Present because the client already knows it and `BinaryResult` already reported it. Without it,
+   * `redirect_audit` answered "where does this redirect to" with the URL it was given, which is the
+   * input repeated back in the shape of an answer.
+   */
+  url?: string;
 }
 
 export interface BinaryResult {
@@ -388,7 +398,7 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const { response: res } = await fetchFollowingSafeRedirects(safeUrl.toString(), {
+      const { response: res, url: finalUrl } = await fetchFollowingSafeRedirects(safeUrl.toString(), {
         method: normalizedMethod,
         headers: outgoingHeaders,
         body,
@@ -398,12 +408,26 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
         const refreshed: HttpResult = {
           ...stalePayload,
           headers: { ...stalePayload.headers, ...responseHeadersForTool(res) },
+          // The 304 may have followed its own redirects, so the final URL is taken fresh rather than
+          // inherited from the stale payload.
+          url: finalUrl,
         };
         const cacheControl304 = res.headers.get('cache-control') ?? '';
         const ttl = httpCacheTtl(res, opts.cacheTtlMs);
-        if (ttl > 0 && !/no-store|private|no-cache/i.test(cacheControl304))
-          cache.put(cacheKey, JSON.stringify(refreshed), ttl, { type: 'http', status: refreshed.status });
-        else cache.delete(cacheKey);
+        if (ttl > 0 && !/no-store|private|no-cache/i.test(cacheControl304)) {
+          // Caching is a side effect, not the purpose of the call, so read-only mode skips it.
+          //
+          // This block was once written as a bare `if (ttl > 0 && ...) if (!canSkipSideEffect()) ...; else
+          // cache.delete(...)`, which bound the `else` to the *inner* if. In read-only mode that deleted
+          // the stale entry instead of skipping the write, and `cache.delete` refuses in read-only mode,
+          // so every 304 revalidation failed. The stale copy is deliberately left in place: it is the
+          // entry that made the revalidation cheap.
+          if (!canSkipSideEffect()) {
+            cache.put(cacheKey, JSON.stringify(refreshed), ttl, { type: 'http', status: refreshed.status });
+          }
+        } else if (!canSkipSideEffect()) {
+          cache.delete(cacheKey);
+        }
         await res.body?.cancel().catch(() => {});
         clearTimeout(timer);
         return refreshed;
@@ -446,6 +470,8 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
         headers: responseHeadersForTool(res),
         text,
         truncated,
+        // Where the answer actually came from, after redirects.
+        url: finalUrl,
       };
       const cacheControl = res.headers.get('cache-control') ?? '';
       const ttl = httpCacheTtl(res, opts.cacheTtlMs);
@@ -458,7 +484,11 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
         !/no-store|private|no-cache/i.test(cacheControl) &&
         !res.headers.has('set-cookie')
       ) {
-        cache.put(cacheKey, JSON.stringify(result), ttl, { type: 'http', status: result.status });
+        // Braces, not a bare `if`: the same if/else binding mistake as the 304 path above is not worth
+        // repeating at the second call site.
+        if (!canSkipSideEffect()) {
+          cache.put(cacheKey, JSON.stringify(result), ttl, { type: 'http', status: result.status });
+        }
       }
       clearTimeout(timer);
       return result;
@@ -490,6 +520,11 @@ export async function downloadToFile(
   filePath: string,
   maxBytes = 512 * 1024 * 1024,
 ): Promise<{ status: number; bytes: number }> {
+  // Enforced here rather than only in the policy engine. Every writer here goes through this function
+  // or through `assertWritablePath`, so a tool that names its destination something other than
+  // `output_path` - `save_path`, `target`, `file` - is contained too. Measured before the change:
+  // `browser_download.save_path` reached `download.saveAs` with no boundary at all.
+  assertWritablePath(filePath, 'filePath', 'faylga yuklab olish');
   const downloaded = await downloadToBuffer(url, maxBytes);
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, downloaded.bytes);

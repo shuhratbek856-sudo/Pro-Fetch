@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { assertSafeUrl } from './ssrf-guard.js';
+import { assertWritable } from './read-only-guard.js';
+import { assertReadablePath, assertWritablePath } from './path-containment.js';
+import { outputFileName } from './output-dir.js';
 import { result } from './format.js';
 import type { ToolResult } from './types.js';
 
@@ -145,10 +148,17 @@ function getSession(id: string): Session {
 }
 
 async function saveScreenshot(session: Session, input: Input, fullPage = false): Promise<string> {
-  const directory = path.join(os.tmpdir(), 'pro-fetch-mcp');
-  await mkdir(directory, { recursive: true });
   const requested = string(input, 'output_path');
-  const outputPath = requested || path.join(directory, `screenshot-${randomUUID()}.png`);
+  // A screenshot is a file on disk, so it is a write. Checked here rather than only in the policy engine
+  // because the destination may be a default the caller never named, and a write the caller did not ask
+  // for is exactly the kind that slips past an argument check.
+  assertWritable('skrinshot yozuvi');
+  // The default used to be `os.tmpdir()/pro-fetch-mcp`, which sits outside the output root entirely -
+  // so the boundary this server enforces did not describe where its output actually went, and a
+  // screenshot landed somewhere nothing else could clean up or find. The default is now inside
+  // `img-out/`, like every other generated file, and a caller-supplied path still has to pass the
+  // containment check.
+  const outputPath = requested || outputFileName('img-out', '.png', 'screenshot');
   const selector = string(input, 'selector');
   const target = selector ? session.page.locator(selector).first() : session.page;
   await target.screenshot({ path: outputPath, fullPage: fullPage || Boolean(input.full_page) });
@@ -275,9 +285,14 @@ export async function runBrowserTool(toolName: string, input: Input): Promise<To
   }
   if (name === 'browser_screenshot' || name === 'browser_print_pdf') {
     if (name === 'browser_screenshot') return result('Screenshot saqlandi: ' + (await saveScreenshot(session, input)));
-    const directory = path.join(os.tmpdir(), 'pro-fetch-mcp');
-    await mkdir(directory, { recursive: true });
-    const outputPath = string(input, 'output_path') || path.join(directory, `page-${randomUUID()}.pdf`);
+    const requested = string(input, 'output_path');
+    // Same reasoning as the screenshot: the default belongs inside the output root, not in the system
+    // temporary directory where nothing else this server writes goes.
+    const outputPath = requested || outputFileName('pdf-out', '.pdf', 'page');
+    // Same reasoning as the screenshot above: the PDF is a file, the destination may be a default the
+    // caller never passed, and `browser_print_pdf` was one of the tools that passed read-only mode.
+    assertWritable('PDF yozuvi');
+    if (requested) assertWritablePath(requested, 'output_path', 'PDF yozuvi');
     await page.pdf({ path: outputPath, printBackground: true, format: string(input, 'format', 'A4') });
     return result('PDF saqlandi: ' + outputPath);
   }
@@ -446,6 +461,11 @@ export async function runBrowserAction(input: Input): Promise<ToolResult> {
     case 'upload_file': {
       const filePath = string(input, 'file_path');
       if (!selector || !filePath) throw new Error('upload_file uchun selector va file_path kerak.');
+      // Uploading hands a local file to a remote site, so the file is a *read* of caller-chosen
+      // material. `assertReadablePath` confines it to the workspace. Before this, any file the process
+      // could open was uploadable: with read-only mode off, a page could be handed a private key or a
+      // `.env` and asked to post it.
+      assertReadablePath(filePath, 'file_path', 'fayl yuklash');
       await session.page.locator(selector).setInputFiles(filePath);
       return result(JSON.stringify({ uploaded: filePath, selector }, null, 2));
     }
@@ -455,7 +475,13 @@ export async function runBrowserAction(input: Input): Promise<ToolResult> {
       if (selector) await session.page.locator(selector).click({ timeout: Number(input.timeout_ms ?? 10000) });
       const download = await downloadPromise;
       const target = savePath || (await download.path()).toString();
-      if (savePath) await download.saveAs(savePath);
+      // `save_path` was not in the policy engine's list of output fields, so this wrote anywhere the
+      // process could write. The check is here, at the call that writes, so the field's name no longer
+      // decides whether it is contained.
+      if (savePath) {
+        assertWritablePath(savePath, 'save_path', 'yuklab olingan faylni saqlash');
+        await download.saveAs(savePath);
+      }
       return result(JSON.stringify({ suggested: download.suggestedFilename(), saved_to: target }, null, 2));
     }
     case 'clear_cookies':
