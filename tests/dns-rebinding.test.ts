@@ -102,10 +102,15 @@ describe('two lookups that disagree', () => {
     expect(resolved.addresses.map((entry) => entry.address)).toEqual([PUBLIC]);
   });
 
-  it('consults exactly two lookups, which is the limit of what this guards', async () => {
-    // The window is not closed and this asserts the reason rather than restating it: the guard performs
-    // two lookups and no more. A resolver answering public, public, private passes it, because the third
-    // answer - the one Chromium would use - is never requested.
+  it('consults exactly two lookups', async () => {
+    // `assertStableSafeUrl` on its own does not close anything: it performs two lookups, and a resolver
+    // answering public, public, private passes. What closes it is `pinned-proxy.ts`, which serves the
+    // request from a connection made to the address this process validated, so the browser never
+    // resolves at all.
+    //
+    // This assertion covers the types that still go to Chromium directly - image, media, font - plus any
+    // top-level navigation, where this check is still the defence. It is a real limit on those paths, and
+    // counting the calls is what makes it visible rather than assumed.
     //
     // An earlier version of this test tried to demonstrate that by resolving a third time itself, which
     // asserted nothing about the guard and failed, because the third lookup is the guard's absence made
@@ -115,8 +120,8 @@ describe('two lookups that disagree', () => {
       calls += 1;
       return [{ address: calls < 3 ? PUBLIC : METADATA, family: 4 }];
     };
-    // The first two agree, so the guard accepts - even though a third lookup would return a link-local
-    // address that the guard never asks for.
+    // The first two agree, so the guard accepts - even though a third lookup would return a
+    // link-local address that the guard never asks for.
     await expect(assertStableSafeUrl('https://late.example/', { lookup: resolver, gapMs: 0 })).resolves.toBeDefined();
     expect(calls).toBe(2);
   });

@@ -44,7 +44,14 @@ function noProxyMatch(url: URL): boolean {
   });
 }
 
-function dispatcherFor(url: URL, addresses: Array<{ address: string; family: number }>): Agent | ProxyAgent {
+/**
+ * A dispatcher bound to the addresses that were validated for this request.
+ *
+ * Exported so the browser proxy can make the same pinned connection the HTTP client makes. Pinning is
+ * the only reason there is a DNS rebinding defence at all, so anything that connects on this server's
+ * behalf needs it rather than a private copy.
+ */
+export function dispatcherFor(url: URL, addresses: Array<{ address: string; family: number }>): Agent | ProxyAgent {
   if (!noProxyMatch(url)) {
     const proxy =
       url.protocol === 'https:'

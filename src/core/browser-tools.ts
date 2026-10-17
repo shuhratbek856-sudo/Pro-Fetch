@@ -8,6 +8,7 @@ import { assertSafeUrl, assertStableSafeUrl } from './ssrf-guard.js';
 import { assertWritable } from './read-only-guard.js';
 import { assertReadablePath, assertWritablePath } from './path-containment.js';
 import { outputFileName } from './output-dir.js';
+import { createProxyRouteHandler } from './pinned-proxy.js';
 import { result } from './format.js';
 import type { ToolResult } from './types.js';
 
@@ -100,21 +101,21 @@ async function createSession(id: string, url?: string, input: Input = {}, persis
     // Declared before the route handler so the handler can tell a top-level navigation from a sub-resource.
     let page: Page | undefined;
     // SSRF protection must apply to every browser request, not only the first navigation URL.
-    await context.route('**/*', async (route) => {
-      try {
-        const request = route.request();
-        // A top-level navigation gets the two-lookup stability check; sub-resources keep the single one.
-        // The reasoning, and what this does not close, is on `assertStableSafeUrl`.
-        if (request.isNavigationRequest() && request.frame() === page?.mainFrame()) {
-          await assertStableSafeUrl(request.url());
-        } else {
-          await validateBrowserRequest(request.url());
-        }
-        await route.continue();
-      } catch {
-        await route.abort('blockedbyclient').catch(() => {});
-      }
-    });
+    // Served from this process over a connection pinned to the address that was just validated, so
+    // Chromium never resolves the name and there is no second DNS answer left to disagree with. The
+    // two-lookup check on `assertStableSafeUrl` only narrowed the window; a resolver answering public,
+    // public, private still won. Pinning is what closes it.
+    await context.route(
+      '**/*',
+      createProxyRouteHandler(context as unknown as Parameters<typeof createProxyRouteHandler>[0], {
+        validate: async (url: string) => {
+          await validateBrowserRequest(url);
+        },
+        validateNavigation: async (url: string) => {
+          await assertStableSafeUrl(url);
+        },
+      }),
+    );
     page = await context.newPage();
     const session: Session = { browser, page, console: [], network: [], persist };
     page.on('console', (message) => session.console.push(`[${message.type()}] ${message.text()}`));
