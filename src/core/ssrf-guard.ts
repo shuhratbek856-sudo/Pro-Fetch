@@ -66,7 +66,20 @@ export function describeUrl(rawUrl: string): string {
   return `${scheme}://${url.host}${path}${query}`;
 }
 
-export async function resolveSafeUrl(rawUrl: string): Promise<SafeUrlResolution> {
+/**
+ * Injectable resolver, so the DNS-dependent decisions here can be tested without a network.
+ *
+ * `node:dns/promises.lookup` was called directly, which made every rule in this file untestable
+ * offline - including the rebinding rule below, whose entire subject is an answer that changes between
+ * two lookups. A test that needs a live DNS server to observe a DNS behaviour is a test that will not
+ * run where it matters.
+ */
+export type DnsLookup = (host: string) => Promise<Array<{ address: string; family: number }>>;
+
+const systemLookup: DnsLookup = async (host) =>
+  (await lookup(host, { all: true })) as Array<{ address: string; family: number }>;
+
+export async function resolveSafeUrl(rawUrl: string, options: { lookup?: DnsLookup } = {}): Promise<SafeUrlResolution> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -97,7 +110,7 @@ export async function resolveSafeUrl(rawUrl: string): Promise<SafeUrlResolution>
   }
   let resolved: Array<{ address: string; family: number }>;
   try {
-    resolved = (await lookup(host, { all: true })) as Array<{ address: string; family: number }>;
+    resolved = await (options.lookup ?? systemLookup)(host);
   } catch {
     throw new UrlSecurityError('DNS host manziliga resolve bo‘lmadi: ' + host, 'DNS_ERROR', true);
   }
@@ -110,4 +123,67 @@ export async function resolveSafeUrl(rawUrl: string): Promise<SafeUrlResolution>
 
 export async function assertSafeUrl(rawUrl: string): Promise<URL> {
   return (await resolveSafeUrl(rawUrl)).url;
+}
+
+/**
+ * Resolve twice and require the same answer both times.
+ *
+ * ## The window this narrows
+ *
+ * `resolveSafeUrl` resolves a host and checks the answers. Between that check and the connection, the
+ * consumer performs its *own* resolution - and for the browser that consumer is Chromium, not this
+ * process. `fetchWithOptions` does not have the problem, because `fetchFollowingSafeRedirects` returns
+ * the addresses and the client connects to the pinned ones. The browser path has always had the gap.
+ *
+ * An attacker who controls a resolver can answer "public" for the check and "169.254.169.254" for
+ * Chromium. Requiring two lookups to agree catches a resolver that alternates, which is what a rebinding
+ * resolver must do to be useful - it needs the check and the connection to differ, so it has to keep
+ * changing its mind.
+ *
+ * ## What this does not close
+ *
+ * A resolver that answers "public, public" to the two checks and "private" to the third is not caught,
+ * and nothing at this layer can catch it: the only way to be sure is for the browser to connect to an
+ * address this process chose, which means fulfilling every request through `route.fulfill` and giving up
+ * streaming, request bodies and websockets. That trade is not made here, so this is a narrowing of the
+ * window and not a fix for it, and the browser path should still be treated as weaker than the HTTP
+ * client on a hostile network.
+ *
+ * Applied to top-level navigations only. Sub-resource requests are numerous and latency matters there;
+ * the payoff is concentrated in the navigation, which is the request an attacker names.
+ */
+export async function assertStableSafeUrl(
+  rawUrl: string,
+  options: { lookup?: DnsLookup; gapMs?: number } = {},
+): Promise<SafeUrlResolution> {
+  const first = await resolveSafeUrl(rawUrl, options);
+  const gapMs = options.gapMs ?? 50;
+  if (gapMs > 0) await new Promise((resolve) => setTimeout(resolve, gapMs));
+
+  let second: SafeUrlResolution;
+  try {
+    second = await resolveSafeUrl(rawUrl, options);
+  } catch (error) {
+    // The second answer refused the host. That is itself a disagreement, and it is the dangerous
+    // direction: the first answer said the host was reachable.
+    throw new UrlSecurityError(
+      `DNS javobi barqaror emas: dastlabki tekshiruv o'tdi, keyingisi blokladi (` +
+        `${(error as UrlSecurityError).message}). DNS rebinding ehtimoli.`,
+      'DNS_UNSTABLE',
+    );
+  }
+
+  const firstAddresses = first.addresses.map((entry) => entry.address).sort();
+  const secondAddresses = second.addresses.map((entry) => entry.address).sort();
+  if (firstAddresses.join(',') !== secondAddresses.join(',')) {
+    throw new UrlSecurityError(
+      'DNS javobi ikki tekshiruv orasida o‘zgardi (' +
+        firstAddresses.join(',') +
+        ' -> ' +
+        secondAddresses.join(',') +
+        '). DNS rebinding ehtimoli - so‘rov bloklandi.',
+      'DNS_UNSTABLE',
+    );
+  }
+  return second;
 }

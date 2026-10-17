@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright';
-import { assertSafeUrl } from './ssrf-guard.js';
+import { assertSafeUrl, assertStableSafeUrl } from './ssrf-guard.js';
 import { assertWritable } from './read-only-guard.js';
 import { assertReadablePath, assertWritablePath } from './path-containment.js';
 import { outputFileName } from './output-dir.js';
@@ -97,16 +97,25 @@ async function createSession(id: string, url?: string, input: Input = {}, persis
       ...(storageState ? { storageState } : {}),
     });
     await context.addInitScript({ content: STEALTH_INIT });
+    // Declared before the route handler so the handler can tell a top-level navigation from a sub-resource.
+    let page: Page | undefined;
     // SSRF protection must apply to every browser request, not only the first navigation URL.
     await context.route('**/*', async (route) => {
       try {
-        await validateBrowserRequest(route.request().url());
+        const request = route.request();
+        // A top-level navigation gets the two-lookup stability check; sub-resources keep the single one.
+        // The reasoning, and what this does not close, is on `assertStableSafeUrl`.
+        if (request.isNavigationRequest() && request.frame() === page?.mainFrame()) {
+          await assertStableSafeUrl(request.url());
+        } else {
+          await validateBrowserRequest(request.url());
+        }
         await route.continue();
       } catch {
         await route.abort('blockedbyclient').catch(() => {});
       }
     });
-    const page = await context.newPage();
+    page = await context.newPage();
     const session: Session = { browser, page, console: [], network: [], persist };
     page.on('console', (message) => session.console.push(`[${message.type()}] ${message.text()}`));
     page.on('pageerror', (error) => session.console.push('[pageerror] ' + error.message));
