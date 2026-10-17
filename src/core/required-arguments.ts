@@ -111,10 +111,36 @@ export function assertRequiredPresent(
 ): void {
   const schema = tool.inputSchema as { required?: unknown; anyOf?: unknown } | undefined;
   const required = Array.isArray(schema?.required) ? (schema.required as string[]) : null;
-  if (!required || required.length === 0) return;
+  const alternatives = Array.isArray(schema?.anyOf) ? (schema.anyOf as Array<{ required?: unknown }>) : null;
+
   // "url *or* content" is expressed as anyOf; asserting every branch would reject a call that
-  // satisfied one of them.
-  if (Array.isArray(schema?.anyOf) && (schema.anyOf as unknown[]).length > 0) return;
+  // satisfied one of them. But an input that satisfies *none* of the branches satisfies no
+  // requirement at all, and this function used to return immediately in that case - leaving the whole
+  // contract to the handler. Measured: 111 tools declare `anyOf` with no `required`, and 14 of them
+  // answered an empty call with `isError: false`, which reads as "it worked".
+  //
+  // So the check is "did anything satisfy a declared requirement", not "is `required` non-empty".
+  if (!required || required.length === 0) {
+    if (!alternatives || alternatives.length === 0) return;
+    const satisfied = alternatives.some((branch) =>
+      (Array.isArray(branch?.required) ? (branch.required as string[]) : []).some(
+        (key) => input[key] !== undefined && input[key] !== null && String(input[key]).trim() !== '',
+      ),
+    );
+    if (satisfied) return;
+    if (isNestedCallTool(tool)) return;
+    const named = alternatives
+      .map((branch) => (Array.isArray(branch?.required) ? (branch.required as string[]) : []))
+      .filter((names) => names.length > 0);
+    const options = [...new Set(named.flat())];
+    throw new RequiredArgumentError(
+      options.length > 0
+        ? `majburiy argumentlardan kamida bittasi kerak: ${options.join(' yoki ')}.`
+        : 'majburiy argumentlar berilmadi.',
+    );
+  }
+
+  if (alternatives && alternatives.length > 0) return;
   if (isNestedCallTool(tool)) return;
 
   const missing: string[] = [];

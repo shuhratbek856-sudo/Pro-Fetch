@@ -1,6 +1,7 @@
 import { defineTool } from '../../core/tool.js';
 import { jsonBlock } from '../../core/format.js';
 import { strOrEmpty, view } from '../../core/input.js';
+import { fail } from '../../core/format.js';
 import { formatNumber, findUnit, parseQuantity, unitsInFamily, type Family } from './_units.js';
 
 const USAGE: Record<string, string> = {
@@ -51,7 +52,8 @@ export default defineTool({
     const text = strOrEmpty(p, 'text');
     const raw = strOrEmpty(p, 'quantity') || text;
 
-    if (!raw) return jsonBlock('Miqdor', { error: 'quantity yoki text kerak.' });
+    // `anyOf` is declared, so an empty call is a refusal and must say so through `isError`.
+    if (!raw) return fail('quantity yoki text kerak.');
 
     // A comma-separated list is the common case for a shopping list or a recipe, and it is cheaper to
     // parse than to make the caller loop.

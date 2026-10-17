@@ -53,6 +53,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'zip',
   'opendata',
   'units',
+  'phonetics',
   'data',
   'admin',
   'http',
@@ -345,6 +346,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   // build one from a dataset id and a domain the catalog resolved.
   opendata: [],
   units: [],
+  phonetics: [],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],

@@ -112,8 +112,13 @@ describe('live: catalog search', () => {
   });
 
   it('explains that a search with neither query nor domain is incomplete', async () => {
-    const data = payload(await callTool('pro_opendata_search', {}));
-    expect(data.hint).toEqual(expect.stringContaining('query'));
+    // The schema now declares `anyOf: [query, domain]`, so the central guard refuses the call before the
+    // handler runs. That is the better place for it: a refusal that comes from the published contract
+    // rather than from a handler that happens to check.
+    const result = await callTool('pro_opendata_search', {});
+    expect(result.isError).toBeTruthy();
+    const body = (result.content ?? []).map((item) => (item.type === 'text' ? item.text : '')).join(' ');
+    expect(body).toMatch(/query/);
   });
 });
 

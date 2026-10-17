@@ -1,5 +1,5 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
+import { fail, jsonBlock } from '../../core/format.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
 import { searchCatalog } from './_opendata.js';
 
@@ -23,6 +23,11 @@ export default defineTool({
       offset: { type: 'number', description: 'Qayerdan boshlash' },
       columns: { type: 'boolean', description: 'Ustunlar ro‘yxatini ham kiritish' },
     },
+    // Declared rather than left to the handler. The catalogue cannot be listed whole - one domain has
+    // 920 datasets and the network has thousands - so a search with neither a query nor a domain has no
+    // answer, and the schema should say so instead of the handler discovering it. With this declared,
+    // the central required-argument guard refuses the empty call.
+    anyOf: [{ required: ['query'] }, { required: ['domain'] }],
   },
   async handler(input) {
     const p = view(input);
@@ -34,11 +39,10 @@ export default defineTool({
     const offset = Math.max(0, num(p, 'offset', 0));
 
     if (!query && !domain) {
-      return jsonBlock('Socrata katalog', {
-        total: 0,
-        results: [],
-        hint: 'Kamida query yoki domain bering - ikkalasi ham bo‘sh bo‘lsa, butun katalogni o‘qib bo‘lmaydi.',
-      });
+      // A refusal, not a hint: the schema declares no required property, so a caller passing `{}` has
+      // asked for nothing, and answering with an empty result set under `isError: false` reads as
+      // "the catalogue has nothing".
+      return fail('query yoki domain kerak - ikkalasi ham bo‘sh bo‘lsa, butun katalogni o‘qib bo‘lmaydi.');
     }
 
     const found = await searchCatalog({ query, domains: domain || undefined, limit, offset, type });
