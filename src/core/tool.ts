@@ -52,6 +52,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'time',
   'zip',
   'opendata',
+  'units',
   'data',
   'admin',
   'http',
@@ -343,6 +344,7 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   // vocabulary. `url` is shared, but none of these five fetches a caller-supplied URL directly - they
   // build one from a dataset id and a domain the catalog resolved.
   opendata: [],
+  units: [],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],

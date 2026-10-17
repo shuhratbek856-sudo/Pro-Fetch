@@ -374,6 +374,76 @@ for (const [name, source] of fileByToolName) {
   if (injected) actionByTool.set(name, injected[1]);
 }
 
+/** The index of the `)` that closes the `(` at `openParen`, or the end of the text if unbalanced. */
+function matchingParen(text: string, openParen: number): number {
+  let depth = 1;
+  let quote: string | undefined;
+  for (let index = openParen + 1; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '(' || character === '[' || character === '{') depth += 1;
+    else if (character === ')' || character === ']' || character === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return text.length;
+}
+
+/**
+ * Whether `input` appears as an argument of the call whose `(` sits at `openParen`.
+ *
+ * Walks the argument list tracking bracket depth, ignoring brackets inside string and template
+ * literals, and reports whether the bare word `input` was found at depth 1 - that is, directly inside
+ * the call rather than inside an object literal or an array passed to it.
+ */
+function hasTopLevelInputArgument(text: string, openParen: number): boolean {
+  let depth = 1;
+  let quote: string | undefined;
+  for (let index = openParen + 1; index < text.length && depth > 0; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '(' || character === '[' || character === '{') {
+      depth += 1;
+      continue;
+    }
+    if (character === ')' || character === ']' || character === '}') {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 1 && /[A-Za-z0-9_]/.test(character ?? '')) {
+      // Read the whole identifier so `inputRef` or `inputUrl` cannot be mistaken for `input`.
+      let end = index;
+      while (end < text.length && /[A-Za-z0-9_$]/.test(text[end] ?? '')) end += 1;
+      if (text.slice(index, end) === 'input') return true;
+      index = end - 1;
+    }
+  }
+  return false;
+}
+
 /**
  * The source for a tool, or undefined when it cannot be resolved.
  *
@@ -406,15 +476,33 @@ export function resolveToolSource(toolName: string, category = ''): string | und
     const body = own.slice(start, i - 1);
     const local = functionsIn(own);
 
-    // A one-line delegation whose arguments include `input`.
-    const delegate = /^\s*return\s+(?:await\s+)?([A-Za-z0-9_]+)\s*\([^)]*\binput\b[^)]*\)\s*;/m.exec(body);
-    if (!delegate) return withHelpers(body, local, 2, uniqueCoreFunctions);
+    // A handler that is nothing but a delegation: `return helper(input, ...)` and nothing else.
+    //
+    // Three conditions, and each one was added because its absence was measured:
+    //
+    //   1. `input` must be an *argument*, not a key. Matching the bare word inside the parentheses read
+    //      `return jsonBlock('X', { input: q })` as a delegation to `jsonBlock` and handed the audit the
+    //      shared formatter's body instead of the tool's code. Bracket depth separates `f(input, x)` from
+    //      `f(title, { input: x })`.
+    //   2. The `return` must be the *only* statement. A handler that does work and then returns a block
+    //      is not a delegation, and replacing its source with the helper's hides its own reads. Without
+    //      this, 60 tools that legitimately compute something before formatting lost their source.
+    //   3. The call may span lines, because a real delegation with object arguments does. The original
+    //      pattern could not match those at all, because `[^)]*` cannot cross a closing parenthesis.
+    const call = /^\s*return\s+(?:await\s+)?([A-Za-z0-9_]+)\s*\(/m.exec(body);
+    if (!call) return withHelpers(body, local, 2, uniqueCoreFunctions);
 
-    for (const [file, functions] of coreIndex) {
-      const target = functions.get(delegate[1]);
-      if (target) return withHelpers(target, functions, 2, uniqueCoreFunctions);
+    const openParen = call.index + call[0].length - 1;
+    const closeParen = matchingParen(body, openParen);
+    const onlyStatement = body.slice(0, call.index).trim() === '' && body.slice(closeParen + 1).trim() === '';
+
+    if (onlyStatement && hasTopLevelInputArgument(body, openParen)) {
+      for (const [file, functions] of coreIndex) {
+        const target = functions.get(call[1]);
+        if (target) return withHelpers(target, functions, 2, uniqueCoreFunctions);
+      }
     }
-    return own;
+    return withHelpers(body, local, 2, uniqueCoreFunctions);
   }
 
   const runner = SPEC_RUNNERS[category];

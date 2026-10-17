@@ -2,7 +2,7 @@
 
 # pro-fetch-mcp
 
-### 640 MCP tools · 37 categories · one security engine
+### 645 MCP tools · 38 categories · one security engine
 
 Fetch, deep-research and GitHub as an MCP server — with a Smart System that composes the whole
 catalog in a single round trip.
@@ -10,7 +10,7 @@ catalog in a single round trip.
 [![npm](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm&logo=npm)](https://www.npmjs.com/package/pro-fetch-mcp)
 [![node](https://img.shields.io/badge/node-%3E%3D22.13-5FA04E?logo=node.js)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/pro-fetch-mcp?color=blue)](./LICENSE)
-[![tests](https://img.shields.io/badge/tests-532%20passing-success?logo=vitest)](./)
+[![tests](https://img.shields.io/badge/tests-575%20passing-success?logo=vitest)](./)
 
 </div>
 
@@ -20,7 +20,7 @@ Most MCP clients choke on hundreds of tool schemas, so this server has two faces
 
 | | What you get | Use it when |
 |---|---|---|
-| **`smart`** *(default)* | 11 meta-tools that reach all 640 | You want small context and full capability |
+| **`smart`** *(default)* | 11 meta-tools that reach all 645 | You want small context and full capability |
 | **`full`** | every tool listed individually | Your client can afford the schemas |
 
 Either way every call goes through the same central `dispatch()` gate. **Composition never weakens
@@ -34,12 +34,12 @@ the security boundary.**
 symlink tracking, per-call permission policy, credential stripping on cross-origin redirects, HTTPS→HTTP
 downgrade blocking. Composite calls pass the same gate as direct ones.
 
-**🧩 640 working tools.** Fetch, crawl, extract, convert, OCR, web and academic search, deep research,
+**🧩 645 working tools.** Fetch, crawl, extract, convert, OCR, web and academic search, deep research,
 git, GitHub, GitLab/Gitea/Forgejo/Bitbucket, SQLite/Postgres/MySQL/Redis, OSV and SBOM,
 Slack/Jira/Linear/Notion, S3/Drive/Dropbox. Every one is a real implementation.
 
 **📐 Schemas that match the code.** `npm run audit:schema` compares every schema against the code
-behind it — currently **0 dead properties, 0 unread required arguments**, and all 640 schemas reject
+behind it — currently **0 dead properties, 0 unread required arguments**, and all 645 schemas reject
 properties they do not declare.
 
 **♻️ Degrades, never dies.** Native binaries are lazy-loaded. A missing `git`, `docker` or `kubectl`
@@ -127,7 +127,7 @@ Ready-to-copy config: [`mcp.example.json`](./mcp.example.json)
 | `minimal` | 73 | http, convert, admin |
 | `standard` *(default)* | 178 | + github, search, extract, auth |
 | `smart` | 11 | the Smart System above |
-| `full` | 640 | everything |
+| `full` | 645 | everything |
 
 Real access control lives in the environment and is enforced on **every** call, including calls made
 through the meta-executor:
@@ -217,7 +217,7 @@ Put credentials in a `.env` next to the server, or use `*_FILE` env vars pointin
 ## 📦 Tool catalog
 
 <details>
-<summary><b>All 37 categories — 640 tools</b></summary>
+<summary><b>All 38 categories — 645 tools</b></summary>
 
 | | | |
 |---|---|---|
@@ -288,12 +288,12 @@ Each step answers a different question:
 | Step | What it proves |
 |---|---|
 | `verify:static` | Structural invariants must not regress: the tool count in `package.json` and in the READMEs, the smart profile's required meta-tools, the intent-search synonym vocabulary, no template dispatcher in the MAX packs, OSV batch bounds, knowledge content size, Windows `npm-cli.js` resolution, image-byte validation before OCR |
-| `verify:registry` | Boots the real registry: **640 tools / 37 categories / all four profile counts**, every tool has a schema and a handler, and the published counts in both READMEs still match |
-| `test` | **532 tests** across 30 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
+| `verify:registry` | Boots the real registry: **645 tools / 38 categories / all four profile counts**, every tool has a schema and a handler, and the published counts in both READMEs still match |
+| `test` | **575 tests** across 31 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
 | `verify:package` | The published tarball has its shebang and `files` allowlist, and **zero credentials or source files** |
 | `audit:schema` *(on demand)* | Schemas against their code — 0 dead properties, 0 unread required |
 
-The MCP protocol itself was exercised live: `initialize`, `tools/list` (640/640 unique, valid schemas),
+The MCP protocol itself was exercised live: `initialize`, `tools/list` (645/645 unique, valid schemas),
 `tools/call` for every smart tool, hidden tools refused, clean JSON-RPC on stdout.
 
 ---
