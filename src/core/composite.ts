@@ -25,6 +25,7 @@
  */
 
 import { dispatch } from './tool.js';
+import { isMutationTool } from './tool-classification.js';
 import { fetchWithOptions } from './http-client.js';
 import { asRecordArray, pathStr } from './input.js';
 import type { ToolResult } from './types.js';
@@ -151,9 +152,14 @@ function stepKey(tool: string, args: Record<string, unknown>): string {
  * Run steps concurrently, collapsing exact duplicates and preserving input order.
  *
  * Deduplication matters because composites naturally ask several tools the same question — two
- * headings extractions for the same page, three converters for the same bytes. Without this, a
- * single fan-out multiplies one expensive call into several. Duplicates reuse the first result under
- * their own step name, so the transcript still shows what every step asked and found.
+ * headings extractions for the same page, three converters for the same bytes. Without this, a single
+ * fan-out multiplies one expensive call into several. Duplicates reuse the first result under their
+ * own step name, so the transcript still shows what every step asked and found.
+ *
+ * Only read-only tools are deduplicated. A mutation called twice must run twice: the second call may
+ * depend on the first having happened, and collapsing them would report two successes for one
+ * operation. Measured before this: two identical `task_create` entries in a batch produced one
+ * dispatch and two identical results, so the caller believed two tasks existed.
  *
  * Independence is still the caller's claim: only group steps that do not consume each other's output.
  * Concurrency stays bounded by the execution engine, so this cannot exceed the configured limits.
@@ -171,7 +177,9 @@ export async function runParallel(
   const unique = new Map<string, { index: number; step: string; tool: string; args: Record<string, unknown> }>();
   const plan: Array<{ source: number; label: string }> = [];
   for (const [step, tool, args] of steps) {
-    const key = stepKey(tool, args);
+    // Mutations are never deduplicated. A write called twice is two writes, and reporting one
+    // dispatch as two results would tell the caller both happened when only one did.
+    const key = isMutationTool(tool) ? `${step}::${Date.now()}` : stepKey(tool, args);
     let item = unique.get(key);
     if (!item) {
       item = { index: unique.size, step, tool, args };

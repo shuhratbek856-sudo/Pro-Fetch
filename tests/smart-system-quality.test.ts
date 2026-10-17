@@ -585,9 +585,11 @@ describe('composite contract is preserved', () => {
     const stopped = results.find((entry) => entry.label === '(stopped)');
     expect(stopped).toBeDefined();
     expect(stopped!.error).toMatch(/stop_on_error/);
-    // The second entry ran concurrently and must not be reported as cancelled.
+    // `stop_on_error` now runs sequentially and breaks at the first failure, so `good` never ran.
+    // It gets a "(stopped)" entry rather than being reported as a success that never happened.
     const good = results.find((entry) => entry.label === 'good');
-    expect(good!.ok).toBe(true);
+    expect(good).toBeUndefined();
+    expect(results.filter((entry) => entry.label === '(stopped)')).toHaveLength(1);
   });
 
   it('every composite exposes the detail budget knob', () => {

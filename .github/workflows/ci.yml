@@ -45,6 +45,24 @@ jobs:
       - name: Type check
         run: npm run lint
 
+      # Chromium for the browser tests, installed explicitly.
+      #
+      # `tests/pinned-proxy.test.ts` launches a real Chromium, and a runner with no browser binary for
+      # this Playwright version fails there - a red CI job whose cause is the environment rather than
+      # the commit. The `playwright` package downloads a browser in its own install script, which is
+      # why this was ever missed: it works on a developer machine and on the ubuntu image's shared
+      # cache, and fails on a fresh runner or after a version bump.
+      #
+      # `install-deps` is Linux-only and errors on Windows and macOS, so it is a separate guarded step
+      # rather than `--with-deps`. Chromium alone is enough here: the test needs a browser to run, not
+      # the whole cross-browser matrix, and the proxy code it covers is browser-agnostic.
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Install OS packages Chromium needs
+        if: runner.os == 'Linux'
+        run: npx playwright install-deps chromium
+
       - name: Static verification
         run: npm run verify:static
 

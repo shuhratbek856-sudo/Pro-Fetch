@@ -188,7 +188,15 @@ export default defineTool({
       );
     }
 
-    if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth++;
+    // `compositeDepth` is module-level because the dispatch chain crosses module boundaries. But it must
+    // be reset even when `runParallel` throws — otherwise one failed batch leaves it elevated forever
+    // and every subsequent composite call is refused with "nesting limit exceeded".
+    //
+    // Measured before this: a single `runParallel` throw (e.g. a batch entry naming a tool that does
+    // not exist) incremented the counter and never decremented it. The next composite call saw
+    // depth 1, the one after saw depth 2, and the third was refused. The server had to be restarted.
+    const enteredComposite = runnable.some(([, tool]) => isComposite(tool));
+    if (enteredComposite) compositeDepth++;
 
     // Queue, do not fan out.
     //
@@ -199,7 +207,23 @@ export default defineTool({
     // exactly as it always did.
     const chunkSize = Number(process.env.PRO_FETCH_BATCH_CHUNK ?? 1000);
     let outcomes: Awaited<ReturnType<typeof runParallel>>;
-    if (runnable.length > chunkSize) {
+
+    // `stop_on_error` requires sequential execution. `runParallel` runs everything concurrently, so a
+    // failure in entry 3 cannot stop entries 4-50 — they are already in flight. The only honest way to
+    // honour "stop on error" is to run one at a time and break at the first failure.
+    //
+    // Measured before this: `stop_on_error: true` on a batch where entry 2 failed still ran all 50
+    // entries and appended a "(stopped)" marker at the end. The flag changed the report, not the
+    // behaviour.
+    if (stopOnError) {
+      const sequential: typeof outcomes = [];
+      for (const [label, tool, args] of runnable) {
+        const outcome = await runParallel([[label, tool, args]], 1);
+        sequential.push(...outcome);
+        if (!outcome[0]!.ok) break;
+      }
+      outcomes = sequential;
+    } else if (runnable.length > chunkSize) {
       const merged: typeof outcomes = [];
       for (let at = 0; at < runnable.length; at += chunkSize) {
         const part = await runParallel(runnable.slice(at, at + chunkSize), undefined);
@@ -210,22 +234,29 @@ export default defineTool({
       try {
         outcomes = await runParallel(runnable);
       } catch (error) {
+        if (enteredComposite) compositeDepth--;
         return fail(`Batch bajarilmadi: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    if (runnable.some(([, tool]) => isComposite(tool))) compositeDepth--;
-    let aborted = false;
+    if (enteredComposite) compositeDepth--;
 
     // Rebuild in request order. Indexing `slots` by the outcome index was wrong: an invalid entry
     // occupies a slot but produces no outcome, so later results shifted onto the wrong entry and the
     // tail disappeared entirely. A cursor advances only for entries that actually ran.
+    //
+    // When `stop_on_error` breaks early, `outcomes` is shorter than the number of runnable slots. The
+    // remaining slots get a "(stopped)" entry rather than reading past the end of the array.
     let cursor = 0;
     for (const slot of slots) {
       if (!slot.entry) {
         results.push(slot.value);
         continue;
       }
-      const outcome = outcomes[cursor++]!;
+      const outcome = outcomes[cursor++];
+      if (!outcome) {
+        results.push({ label: '(stopped)', tool: '-', ok: false, ms: 0, error: 'stop_on_error=true' });
+        continue;
+      }
       results.push({
         label: outcome.step,
         tool: outcome.tool,
@@ -234,13 +265,6 @@ export default defineTool({
         output: outcome.output,
         ...(outcome.ok ? {} : { error: outcome.error ?? 'unknown' }),
       });
-      if (!outcome.ok && stopOnError) aborted = true;
-    }
-
-    // `stop_on_error` aborts further dispatch, but entries already in flight still report:
-    // calling a cancelled call a failure would misreport what the server actually did.
-    if (aborted) {
-      results.push({ label: '(stopped)', tool: '-', ok: false, ms: 0, error: 'stop_on_error=true' });
     }
 
     const failed = results.filter((entry) => !entry.ok);

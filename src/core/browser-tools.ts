@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { Browser, Page } from 'playwright';
 import { assertSafeUrl, assertStableSafeUrl } from './ssrf-guard.js';
 import { assertWritable } from './read-only-guard.js';
+import { assertActionAllowed } from './security-policy.js';
 import { assertReadablePath, assertWritablePath } from './path-containment.js';
 import { outputFileName } from './output-dir.js';
 import { createProxyRouteHandler } from './pinned-proxy.js';
@@ -312,6 +313,12 @@ export async function runBrowserTool(toolName: string, input: Input): Promise<To
 export async function runBrowserAction(input: Input): Promise<ToolResult> {
   const action = string(input, 'action');
   if (!action) throw new Error('action parametri kerak.');
+  // Enforced here, at the funnel, because 24 wrapper tools fill in their own `action` before calling
+  // this function. The central gate reads `input.action` from the caller's input, which those
+  // wrappers never supply - so `browser_download` dispatching `download` was invisible to it.
+  // Measured: `pro_browser_browser_download` was classified read-only and its file write went
+  // through a sink the policy engine never inspected.
+  assertActionAllowed(action, 'pro_browser_browser_action');
   const id = sessionId(input);
   const maxChars = Number(input.max_chars ?? 20000);
   const clip = (text: string) => (text.length > maxChars ? text.slice(0, maxChars) + '…[qisqartirildi]' : text);
@@ -481,17 +488,23 @@ export async function runBrowserAction(input: Input): Promise<ToolResult> {
     }
     case 'download': {
       const savePath = string(input, 'save_path') || string(input, 'output_path');
+      // The path is checked *before* the click, not after.
+      //
+      // Measured before this: the click happened first and `assertWritablePath` ran afterwards, so a
+      // refused `save_path` still triggered the remote action. The click is what causes the browser to
+      // navigate, submit a form, or start a file transfer - none of which can be taken back. A
+      // validation that runs after the thing it refuses has already happened is not a validation, it
+      // is a report.
+      //
+      // The check is here at the call that writes, so the field's name no longer decides whether it is
+      // contained - `save_path` was missing from the policy engine's output-field list entirely.
+      if (savePath) assertWritablePath(savePath, 'save_path', 'yuklab olingan faylni saqlash');
+
       const downloadPromise = session.page.waitForEvent('download', { timeout: Number(input.timeout_ms ?? 30000) });
       if (selector) await session.page.locator(selector).click({ timeout: Number(input.timeout_ms ?? 10000) });
       const download = await downloadPromise;
       const target = savePath || (await download.path()).toString();
-      // `save_path` was not in the policy engine's list of output fields, so this wrote anywhere the
-      // process could write. The check is here, at the call that writes, so the field's name no longer
-      // decides whether it is contained.
-      if (savePath) {
-        assertWritablePath(savePath, 'save_path', 'yuklab olingan faylni saqlash');
-        await download.saveAs(savePath);
-      }
+      if (savePath) await download.saveAs(savePath);
       return result(JSON.stringify({ suggested: download.suggestedFilename(), saved_to: target }, null, 2));
     }
     case 'clear_cookies':

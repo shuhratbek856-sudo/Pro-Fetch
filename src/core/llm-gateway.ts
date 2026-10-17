@@ -23,8 +23,24 @@ export type LlmProvider = 'openai' | 'anthropic' | 'openai_compatible' | 'ollama
 export interface LlmProviderSpec {
   id: LlmProvider;
   label: string;
-  /** Base URL. `openai_compatible` and `ollama` take theirs from the environment. */
+  /** Static base URL. Empty when `baseUrlEnv` names the variable that supplies it. */
   baseUrl: string;
+  /**
+   * Environment variable holding the base URL, for an endpoint the operator names.
+   *
+   * A separate field from `keyEnv` on purpose. One field for both is what let the address end up in
+   * `Authorization: Bearer`: every code path asked `keyEnv` for "the secret", the address was stored
+   * there, and the address was sent. Two variables mean two things and each is read where it belongs.
+   */
+  baseUrlEnv?: string;
+  /**
+   * Whether the base URL must come from the environment rather than the built-in default.
+   *
+   * `openai_compatible` sets it: there is no sensible default address for "some OpenAI-shaped
+   * endpoint", and guessing one is how a prompt ends up somewhere unintended. `openai` leaves it unset
+   * so its variable stays what it is - an override for a gateway standing in for the real host.
+   */
+  requiresBaseUrl?: boolean;
   /** Environment variable holding the key. Empty for a provider that needs none. */
   keyEnv: string;
   /** Anthropic sends `x-api-key`; the OpenAI shape sends `Authorization: Bearer`. */
@@ -38,6 +54,9 @@ export const PROVIDERS: Record<LlmProvider, LlmProviderSpec> = {
     id: 'openai',
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
+    // Lets a gateway or proxy stand in for OpenAI without a second provider name. An override, so no
+    // error when it is absent.
+    baseUrlEnv: 'PRO_FETCH_LLM_BASE_URL',
     keyEnv: 'OPENAI_API_KEY',
     authStyle: 'bearer',
     requiresKey: true,
@@ -56,7 +75,16 @@ export const PROVIDERS: Record<LlmProvider, LlmProviderSpec> = {
     // A blank base is a *reason to be refused*, not a reason to guess. A wrong host here would send a
     // prompt somewhere unintended, so the value has to be supplied rather than defaulted.
     baseUrl: '',
-    keyEnv: 'PRO_FETCH_LLM_BASE_URL',
+    baseUrlEnv: 'PRO_FETCH_LLM_BASE_URL',
+    requiresBaseUrl: true,
+    // The key, read from `PRO_FETCH_LLM_API_KEY`. This used to name `PRO_FETCH_LLM_BASE_URL` - the
+    // address, in a field every code path treats as "where the secret is" - so `chat()` sent
+    // `Authorization: Bearer https://api.mistral.ai/v1` to that same host. A base URL is not a
+    // credential: the one thing the server is guaranteed to log, cache in a proxy, and print in an
+    // error page, and it cannot authenticate anything. It also made a real key impossible to supply,
+    // since there was no variable for one. An endpoint that needs no key is still fine - the auth
+    // headers below are conditional on the value being non-empty.
+    keyEnv: 'PRO_FETCH_LLM_API_KEY',
     authStyle: 'bearer',
     requiresKey: false,
   },
@@ -84,19 +112,13 @@ export function resolveProvider(name: string): LlmProviderSpec {
 
 /** The base URL actually in force, which for two providers comes from the environment. */
 function effectiveBaseUrl(spec: LlmProviderSpec): string {
-  if (spec.id === 'openai_compatible') {
-    const fromEnv = (process.env[spec.keyEnv] ?? '').trim();
-    if (!fromEnv) {
-      throw new Error(
-        `PRO_FETCH_LLM_BASE_URL belgilanmagan. OpenAI-shaklli endpoint uchun manzil shart: ` +
-          `masalan https://api.mistral.ai/v1 yoki https://openrouter.ai/api/v1.`,
-      );
-    }
-    return fromEnv.replace(/\/+$/, '');
-  }
-  if (spec.id === 'openai' && (process.env.PRO_FETCH_LLM_BASE_URL ?? '').trim()) {
-    // Lets a gateway or proxy stand in for OpenAI without a second provider name.
-    return (process.env.PRO_FETCH_LLM_BASE_URL as string).trim().replace(/\/+$/, '');
+  const fromEnv = spec.baseUrlEnv ? (process.env[spec.baseUrlEnv] ?? '').trim() : '';
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+  if (spec.requiresBaseUrl) {
+    throw new Error(
+      `${spec.baseUrlEnv} belgilanmagan. OpenAI-shaklli endpoint uchun manzil shart: ` +
+        `masalan https://api.mistral.ai/v1 yoki https://openrouter.ai/api/v1.`,
+    );
   }
   return spec.baseUrl.replace(/\/+$/, '');
 }
@@ -107,6 +129,8 @@ export function checkProvider(name: string): {
   label: string;
   ready: boolean;
   reason?: string;
+  /** Something worth knowing that does not make the provider unusable. */
+  note?: string;
 } {
   const spec = resolveProvider(name);
   const missing: string[] = [];
@@ -129,11 +153,24 @@ export function checkProvider(name: string): {
     missing.push(`${base} — SSRF himoyasi loopback manzillarni bloklaydi; pro-fetch orqali chaqirib bo‘lmaydi.`);
   }
 
+  // Reported, but not as a blocker: an OpenAI-shaped endpoint behind a gateway or a corporate proxy
+  // often needs no key, and requiring one would refuse a working setup. What matters is that saying
+  // "ready" here means the same thing it means for a keyed provider - no auth header will be sent -
+  // so a caller who finds out from a 401 later at least knew.
+  const notes: string[] = [];
+  if (spec.keyEnv && !spec.requiresKey && spec.authStyle !== 'none' && !(process.env[spec.keyEnv] ?? '').trim()) {
+    notes.push(
+      `${spec.keyEnv} o‘rnatilmagan — so‘rov autentifikatsiyasiz yuboriladi ` +
+        `(kalit talab qilmaydigan endpoint uchun normal; kalit talab qilsa 401 qaytadi).`,
+    );
+  }
+
   return {
     provider: spec.id,
     label: spec.label,
     ready: missing.length === 0,
     ...(missing.length ? { reason: missing.join('; ') } : {}),
+    ...(notes.length ? { note: notes.join('; ') } : {}),
   };
 }
 

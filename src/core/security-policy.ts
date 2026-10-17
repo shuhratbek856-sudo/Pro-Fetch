@@ -51,6 +51,35 @@ export function realResolve(target: string): string {
 import { isMutatingAction, READ_ONLY_ACTIONS } from './tool-classification.js';
 export { isMutationTool } from './tool-classification.js';
 
+function actionOf(input: Record<string, unknown>): string {
+  return typeof input.action === 'string' ? input.action.trim() : '';
+}
+
+/**
+ * Refuse a state-changing action under read-only mode.
+ *
+ * Exported because `runBrowserAction` needs it. That function is the funnel for every browser
+ * behaviour, and 24 wrapper tools fill in their own `action` before calling it - `browser_download`
+ * sets `download`, `browser_press_key` sets `press`. The central gate reads `input.action` from the
+ * *caller's* input, which those wrappers never supply, so a state-changing action dispatched through
+  a wrapper was invisible to it. Measured: `pro_browser_browser_download` was classified read-only and
+ * its write went through a sink the policy engine never inspected.
+ *
+ * The check lives here rather than in `runBrowserAction` so there is one definition of what
+ * read-only means, and the wrappers cannot drift from it.
+ */
+export function assertActionAllowed(action: string, toolName: string): void {
+  if (process.env.PRO_FETCH_READ_ONLY !== 'true') return;
+  const exceptions = csv('PRO_FETCH_MUTATION_ALLOWLIST');
+  if (exceptions.has(toolName)) return;
+  if (action && isMutatingAction(action)) {
+    throw new PolicyError(
+      `'${action}' amali holatni o'zgartiradi, PRO_FETCH_READ_ONLY=true rejimida bloklangan. ` +
+        `O'qishga ruxsat etilgan amallar: ${[...READ_ONLY_ACTIONS].sort().join(', ')}.`,
+    );
+  }
+}
+
 export function assertToolAllowed(tool: ToolDefinition, input: Record<string, unknown>): void {
   const deniedTools = csv('PRO_FETCH_DENIED_TOOLS');
   const allowedTools = csv('PRO_FETCH_ALLOWED_TOOLS');
@@ -97,16 +126,7 @@ export function assertToolAllowed(tool: ToolDefinition, input: Record<string, un
     if (!exceptions.has(tool.name) && method && !new Set(['GET', 'HEAD', 'OPTIONS']).has(method)) {
       throw new PolicyError(`HTTP ${method} usuli PRO_FETCH_READ_ONLY=true rejimida bloklangan.`);
     }
-    // The same question for a tool that dispatches several behaviours from one name. Measured before
-    // this: all eleven state-changing `browser_action` behaviours passed read-only mode, including
-    // `cookies_set`, which writes a cookie and reaches no filesystem sink.
-    const action = typeof input.action === 'string' ? input.action.trim() : '';
-    if (!exceptions.has(tool.name) && action && isMutatingAction(action)) {
-      throw new PolicyError(
-        `'${action}' amali holatni o'zgartiradi, PRO_FETCH_READ_ONLY=true rejimida bloklangan. ` +
-          `O'qishga ruxsat etilgan amallar: ${[...READ_ONLY_ACTIONS].sort().join(', ')}.`,
-      );
-    }
+    assertActionAllowed(actionOf(input), tool.name);
   }
   if (
     tool.category === 'browser' &&

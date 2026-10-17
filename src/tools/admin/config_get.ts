@@ -13,6 +13,41 @@ import { tail } from '../../core/log.js';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+
+/**
+ * Proxy variables, which are the only settings on that list that can contain a password.
+ *
+ * `http://proxy.corp:8080` is harmless; `http://alice:s3cr3t@proxy.corp:8080` is the same variable with a
+ * credential in it, and a proxy URL is exactly where credentials belong. So these four are described
+ * rather than printed.
+ */
+const PROXY_ENV_KEYS = new Set(['HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'NO_PROXY']);
+
+/**
+ * A proxy address with the parts that authenticate removed.
+ *
+ * Scheme, host and port are the parts an operator needs to see in order to tell whether the proxy is
+ * configured and where it points. Username, password and query string are the parts that make it a
+ * secret. Measured: this tool's own result went straight into a model's context, and unlike every
+ * other credential in the list - which pass through `credentialStatus` and come back as
+ * `(o'rnatilgan)` - these four were copied verbatim, so `pro_fetch_config_get` printed the proxy
+ * password in full. Reporting the host is the useful part and costs nothing.
+ */
+function describeProxyEnv(raw: string | undefined): string {
+  if (raw === undefined) return "(o'rnatilmagan)";
+  const value = raw.trim();
+  if (!value) return value;
+  try {
+    const url = new URL(value);
+    const auth = url.username || url.password ? '//[credentials olib tashlandi]@' : '';
+    return `${url.protocol}${auth}${url.host}${url.pathname === '/' ? '' : url.pathname}`;
+  } catch {
+    // `NO_PROXY` is a comma-separated host list, not a URL. Nothing in it is a credential, so it is
+    // printed as given rather than mangled by a parser that cannot read it.
+    return value;
+  }
+}
+
 export default defineTool({
   name: 'pro_fetch_config_get',
   description: 'Read the current server configuration',
@@ -45,7 +80,7 @@ export default defineTool({
       'ALL_PROXY',
       'NO_PROXY',
     ])
-      cfg[k] = process.env[k] ?? "(o'rnatilmagan)";
+      cfg[k] = PROXY_ENV_KEYS.has(k) ? describeProxyEnv(process.env[k]) : (process.env[k] ?? "(o'rnatilmagan)");
     cfg.GITHUB_TOKEN = credentialStatus('GITHUB_TOKEN');
     cfg.SEARCH_API_KEY = credentialStatus('SEARCH_API_KEY');
     cfg.OPENAI_API_KEY = credentialStatus('OPENAI_API_KEY');

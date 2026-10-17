@@ -6,6 +6,7 @@ import { outputRoot } from '../../core/output-dir.js';
 import { DEFAULT_MAX_INFLATED_BYTES, entryPath, readEntry, readZip, writeZip, type ZipEntry } from './_zip.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { assertWritablePath, isInside, realResolve } from '../../core/path-containment.js';
+import { assertWritable } from '../../core/read-only-guard.js';
 import path from 'node:path';
 
 export default defineTool({
@@ -76,6 +77,12 @@ export default defineTool({
       // permitted at all, so under `PRO_FETCH_READ_ONLY=true` this tool extracted to disk and answered
       // `isError: false`.
       assertWritablePath(destination, 'out_dir', 'arXivni ochish');
+    } else if (extract) {
+      // The default destination asked nothing, because the check lived in the `out_dir` branch above
+      // and this branch only runs when `out_dir` is absent. Measured: `pro_zip_extract` with
+      // `{ extract: true }` and no `out_dir` under `PRO_FETCH_READ_ONLY=true` wrote into the output
+      // root and reported success. The default path is a path, not an exemption from the policy.
+      assertWritable('arXivni ochish');
     }
     if (extract) await mkdir(destination, { recursive: true });
 
@@ -87,6 +94,20 @@ export default defineTool({
     const matched: Array<{ entry: ZipEntry; safe: string; content: Buffer }> = [];
     let totalInflated = 0;
 
+    // ---- Phase one: validate and inflate. Nothing is written here. ------------------------------
+    //
+    // Two defects came from writing inside this loop, and both are fixed by separating the phases.
+    //
+    // The total-size limit trusted the archive's own arithmetic. `totalInflated + entry.uncompressed_size`
+    // is read from the central directory, which is attacker-controlled, while `totalInflated` was
+    // incremented with the real inflated length and never re-compared against the limit. Measured
+    // with an in-memory archive of two entries whose headers both declared `uncompressed_size = 1`
+    // and whose real content was 20 bytes each: the limit check saw 2 bytes, the tool wrote 40, and
+    // answered success. A limit that can be declared rather than measured is not a limit.
+    //
+    // A failure part-way through left earlier entries on disk. Entry 5's CRC error returned "arXivni
+    // ochmading" while entries 1-4 stayed in the output directory. The result said nothing was
+    // extracted; the filesystem disagreed.
     for (const entry of archive.entries) {
       if (include && !entry.name.includes(include)) {
         skipped.push({ name: entry.name, reason: 'include filtriga mos kelmadi' });
@@ -98,9 +119,11 @@ export default defineTool({
         skipped.push({ name: entry.name, reason: 'tozalangandan keyin nom qolmadi' });
         continue;
       }
+      // Kept as a cheap early rejection, because it costs nothing and refuses an archive that
+      // declares itself too large. It is not the check that enforces the limit - the one below is.
       if (totalInflated + entry.uncompressed_size > inflatedLimit) {
         return fail(
-          `${entry.name}: umumiy ochilgan hajm ${totalInflated + entry.uncompressed_size} bayt ` +
+          `${entry.name}: e'lon qilingan umumiy ochilgan hajm ${totalInflated + entry.uncompressed_size} bayt ` +
             `chegaradan (${inflatedLimit}) oshadi. Arxivni ochmading.`,
         );
       }
@@ -114,11 +137,36 @@ export default defineTool({
         return fail((error as Error).message);
       }
       totalInflated += content.length;
+      // The limit is enforced on measured bytes, after the inflate. `maxOutputLength` inside
+      // `readEntry` bounds a single entry; this bounds the sum, which is the quantity the caller
+      // actually asked to be limited and the quantity the memory use follows.
+      if (totalInflated > inflatedLimit) {
+        return fail(
+          `${entry.name}: haqiqiy ochilgan hajm ${totalInflated} bayt chegaradan (${inflatedLimit}) oshdi ` +
+            `(shu yozuv o'zidan oldin ${totalInflated - content.length} bayt edi). Arxivni ochmading.`,
+        );
+      }
       matched.push({ entry, safe: safe.path, content });
-      if (extract) {
+    }
+
+    if (matched.length === 0) {
+      return fail('include filtriga mos keladigan yozuv topilmadi.');
+    }
+
+    // ---- Phase two: resolve every target, then write. --------------------------------------------
+    //
+    // Every path is checked before the first byte is written, so a refusal on the last entry cannot
+    // leave the earlier ones behind. Measured before this change: an archive whose fifth entry named
+    // a directory that was a symlink out of the destination wrote entries 1-4 and then reported that
+    // nothing was extracted.
+    if (extract) {
+      const resolvedDestination = realResolve(destination);
+      const targets: Array<{ name: string; safe: string; target: string; content: Buffer }> = [];
+      for (const { entry, safe, content } of matched) {
+        const target = path.resolve(destination, safe);
         // Per-entry containment, against the *resolved* destination.
         //
-        // `safe.path` has no `..` and is relative, which is enough while the destination is a fresh
+        // `safe` has no `..` and is relative, which is enough while the destination is a fresh
         // directory - and a fresh directory was the only case the earlier test covered. Measured:
         // with a symlink already inside the destination pointing elsewhere, an archive containing
         // `portal/stolen.txt` wrote `stolen.txt` outside the destination, answered `isError: false`,
@@ -126,25 +174,23 @@ export default defineTool({
         //
         // `realResolve` follows the link on the deepest ancestor that exists, so this compares
         // against where the file would actually land rather than where the path spells out.
-        const target = path.resolve(destination, safe.path);
-        if (!isInside(realResolve(destination), target)) {
+        if (!isInside(resolvedDestination, target)) {
           return fail(
             entry.name +
               ': yoziladigan joy ' +
               realResolve(target) +
               ' chiqish papkasi ' +
-              realResolve(destination) +
-              ' dan tashqarida - yozilmadi. Sabab: chiqish papkasining ichida boshqa joyga ko‘rsatuvchi symlink bor.',
+              resolvedDestination +
+              ' dan tashqarida - hech narsa yozilmadi. Sabab: chiqish papkasining ichida boshqa joyga ko‘rsatuvchi symlink bor.',
           );
         }
+        targets.push({ name: entry.name, safe, target, content });
+      }
+      for (const { target, content } of targets) {
         await mkdir(path.dirname(target), { recursive: true });
         await writeFile(target, content);
         written.push({ path: target, bytes: content.length });
       }
-    }
-
-    if (matched.length === 0) {
-      return fail('include filtriga mos keladigan yozuv topilmadi.');
     }
 
     const result: Record<string, unknown> = {

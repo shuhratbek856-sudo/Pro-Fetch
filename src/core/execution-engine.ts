@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { log } from './log.js';
 import { assertToolAllowed } from './security-policy.js';
+import { isMutationTool } from './tool-classification.js';
 import { boundedEnv } from './bounded-env.js';
 import type { ToolDefinition } from './types.js';
 
@@ -187,7 +188,17 @@ export async function executeTool<T>(
               release();
             }, graceMs);
             abandonTimer.unref?.();
-            reject(new ExecutionError(`Tool ${tool.name} ${timeoutMs} ms ichida tugamadi.`, 'TOOL_TIMEOUT', true));
+            // A timed-out mutation is not retryable. The handler is still running - `Promise.race` does not cancel
+            // it - so a retry would start a second copy of an operation that may have already done part of
+            // its work. For a write that means a duplicate: two rows, two files, two messages sent because
+            // the first was slow rather than absent. A read can be retried freely; a write cannot be
+            // retried safely.
+            //
+            // Measured before this: `TOOL_TIMEOUT` was marked `retryable: true` for every tool, so a
+            // client that retried a timed-out `task_create` could create two tasks. The timeout error
+            // said "retry me" about an operation whose outcome was unknown.
+            const retryable = !isMutationTool(tool.name);
+            reject(new ExecutionError(`Tool ${tool.name} ${timeoutMs} ms ichida tugamadi.`, 'TOOL_TIMEOUT', retryable));
           }, timeoutMs);
         }),
       ]);

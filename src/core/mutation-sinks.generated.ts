@@ -11,24 +11,43 @@
  *
  * Regenerate with `npm run gen:mutation-sinks`. The drift test fails if this file stops matching the
  * code, and both it and the generator read the same scanner in `mutation-scan.ts`.
- * 16 tools.
+ * 35 tools.
  */
 
 export const SINK_REACHING_TOOLS: Readonly<Record<string, readonly string[]>> = {
+  'pro_browser_browser_back': ['dispatched-action'],
+  'pro_browser_browser_dialog': ['dispatched-action', 'dispatched-mutating-action'],
+  'pro_browser_browser_download': ['dispatched-action', 'dispatched-mutating-action'],
+  'pro_browser_browser_drag': ['dispatched-action', 'dispatched-mutating-action'],
+  'pro_browser_browser_forward': ['dispatched-action'],
+  'pro_browser_browser_get_html': ['dispatched-action'],
+  'pro_browser_browser_get_state': ['dispatched-action'],
+  'pro_browser_browser_get_text': ['dispatched-action'],
+  'pro_browser_browser_get_title': ['dispatched-action'],
+  'pro_browser_browser_get_url': ['dispatched-action'],
+  'pro_browser_browser_hover': ['dispatched-action'],
+  'pro_browser_browser_list_sessions': ['dispatched-action'],
+  'pro_browser_browser_list_tabs': ['dispatched-action'],
+  'pro_browser_browser_new_tab': ['dispatched-action'],
+  'pro_browser_browser_press_key': ['dispatched-action', 'dispatched-mutating-action'],
+  'pro_browser_browser_reload': ['dispatched-action'],
+  'pro_browser_browser_select': ['dispatched-action'],
   'pro_fetch_feed_subscribe': ['cache'],
   'pro_fetch_fetch_graphql': ['http-write'],
   'pro_fetch_fetch_soap': ['http-write'],
+  'pro_fetch_image_search': ['dispatched-action'],
   'pro_fetch_import_bundle': ['cache'],
   'pro_fetch_jobs_watch': ['cache'],
   'pro_fetch_keyword_alert': ['cache'],
   'pro_fetch_oauth_device_flow': ['http-write'],
   'pro_fetch_page_diff_notify': ['cache'],
-  'pro_fetch_pdf_split_pages': ['fs-async'],
+  'pro_fetch_pdf_split_pages': ['fs-async', 'output-dir'],
   'pro_fetch_price_watch': ['cache'],
   'pro_fetch_release_watch': ['cache'],
   'pro_fetch_search_suggest': ['http-write'],
   'pro_fetch_snapshot_diff': ['cache'],
   'pro_fetch_url_watch': ['cache'],
-  'pro_pdf_split': ['fs-async', 'declared-write'],
-  'pro_zip_extract': ['fs-async'],
+  'pro_fetch_wiki_search': ['dispatched-action'],
+  'pro_pdf_split': ['fs-async', 'declared-write', 'output-dir'],
+  'pro_zip_extract': ['fs-async', 'declared-write'],
 };

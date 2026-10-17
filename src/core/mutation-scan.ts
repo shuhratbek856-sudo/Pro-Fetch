@@ -62,7 +62,44 @@ export const WRITE_SINKS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
     pattern: /\bassertWritable\s*\(/,
     label: 'declared-write',
   },
+  {
+    // Asking for an output directory is asking to write into it.
+    //
+    // `outputDir()` is the single funnel every producing tool passes through, and it creates the
+    // directory as a side effect. Measured: 17 tools reach it, and all 17 were classified read-only
+    // while writing files - including `pro_pdf_merge`, `pro_image_convert` and `pro_image_watermark`,
+    // none of which has a sink in its own body because each one reaches `writeFile` through a helper.
+    //
+    // Reading the handler is not enough for these, which is the point: the classification follows the
+    // declaration, and the declaration is now at the funnel where the check lives too.
+    pattern: /\boutputDir\s*\(/,
+    label: 'output-dir',
+  },
+  {
+    // A wrapper that fills in its own `action` is asking for that action.
+    //
+    // Measured: 24 browser tools do this - `browser_download` sets `action: 'download'` itself,
+    // `browser_press_key` sets `press`, `browser_dialog` sets `handle_dialog`. The central gate reads
+    // `input.action`, which these wrappers never supply from outside, so read-only mode could not see
+    // which behaviour ran. The annotation has the same blind spot: `pro_browser_browser_download` was
+    // read-only, and the file it writes went through a sink the policy engine never inspected.
+    //
+    // Only the values in `MUTATING_ACTIONS` matter downstream; listing all of them keeps the generated
+    // table honest about what the handler does rather than what the caller can reach.
+    pattern: /\baction:\s*'[a-z_]+'/,
+    label: 'dispatched-action',
+  },
 ];
+
+/**
+ * Extract the action value a wrapper injects, if any.
+ *
+ * Matches `action: 'download'` or `action: "download"` in the handler body. Returns the value or null.
+ */
+function injectedAction(body: string): string | null {
+  const match = /\baction:\s*'([a-z_]+)'/.exec(body) ?? /\baction:\s*"([a-z_]+)"/.exec(body);
+  return match ? match[1] : null;
+}
 
 /**
  * The text of each tool's own `async handler` body, located by brace matching.
@@ -173,7 +210,10 @@ export interface SinkEntry {
  * `alreadyMutating` is passed in rather than imported, because `tool-classification.ts` imports the
  * generated table this produces and importing it back would be a cycle.
  */
-export function scanSinkReachingTools(alreadyMutating: (name: string) => boolean): {
+export function scanSinkReachingTools(
+  alreadyMutating: (name: string) => boolean,
+  mutatingActions: ReadonlySet<string>,
+): {
   entries: SinkEntry[];
   missingBodies: string[];
 } {
@@ -183,6 +223,18 @@ export function scanSinkReachingTools(alreadyMutating: (name: string) => boolean
   for (const [name, body] of bodies) {
     if (alreadyMutating(name)) continue;
     const sinks = WRITE_SINKS.filter((sink) => sink.pattern.test(body)).map((sink) => sink.label);
+    // A wrapper that injects a mutating action is a mutation tool, even if its own body has no sink.
+    //
+    // `browser_download` writes a file but its handler body only says `action: 'download'` - the write
+    // happens inside `runBrowserAction`. So the sink scan cannot see it. But the action it dispatches
+    // is in `MUTATING_ACTIONS`, which is the same list the policy gate consults. Checking the injected
+    // action here keeps the annotation and the enforcement in agreement.
+    //
+    // Read-only actions like `get_html` are NOT in `MUTATING_ACTIONS`, so `browser_get_html` stays
+    // read-only. Without this distinction, every wrapper would be flagged as a mutation and read-only
+    // mode would block all browser browsing, including pure reads.
+    const action = injectedAction(body);
+    if (action && mutatingActions.has(action)) sinks.push('dispatched-mutating-action');
     if (sinks.length > 0) entries.push({ name, sinks });
   }
   entries.sort((left, right) => left.name.localeCompare(right.name));

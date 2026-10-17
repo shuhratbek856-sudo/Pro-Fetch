@@ -17,12 +17,13 @@ await import(base + 'env.js');
 await import(base + 'loader.js');
 const { allTools } = await import(base + 'core/tool.js');
 const { isMutationToolByName } = await import(base + 'core/tool-classification.js');
+const { MUTATING_ACTIONS } = await import(base + 'core/tool-classification.js');
 const { scanSinkReachingTools, renderTable } = await import(base + 'core/mutation-scan.js');
 
 // Bootstrap: `isMutationToolByName`, not `isMutationTool`. The latter already reads the generated table
 // this script is about to write, so asking it would make the scan see nothing to do and overwrite 13
 // tools with 0. Measured: that is exactly what happened the first time.
-const { entries, missingBodies } = scanSinkReachingTools(isMutationToolByName);
+const { entries, missingBodies } = scanSinkReachingTools(isMutationToolByName, MUTATING_ACTIONS);
 const known = new Set(allTools().map((tool) => tool.name));
 const unknown = entries.filter((entry) => !known.has(entry.name));
 

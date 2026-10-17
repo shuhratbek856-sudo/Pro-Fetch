@@ -1847,7 +1847,10 @@ async function runSecurity(action: string, i: Record<string, unknown>): Promise<
       // TLS audit is how an expired certificate gets reported as a pass.
       const headerChecks = {
         hsts: Boolean(h['strict-transport-security']),
-        csp: Boolean(h['content-security-security']),
+        // The header is `content-security-policy`. `content-security-security` does not exist, so
+        // this read was always undefined and every site with a CSP was reported as missing one - a security
+        // report claiming a header is absent when the browser is enforcing it.
+        csp: Boolean(h['content-security-policy']),
         xContentTypeOptions: Boolean(h['x-content-type-options']),
         frameProtection: Boolean(h['x-frame-options'] || h['content-security-policy']?.includes('frame-ancestors')),
         referrerPolicy: Boolean(h['referrer-policy']),
@@ -2318,6 +2321,34 @@ async function runKnowledge(action: string, i: Record<string, unknown>): Promise
   throw new Error('UNSUPPORTED_KNOWLEDGE_ACTION');
 }
 
+/**
+ * The `scheme://host:port` a URL resolves to, for comparing one configured origin against another.
+ *
+ * Compared rather than string-compared, because `https://jira.example.com`, `https://jira.example.com/`
+ * and `https://jira.example.com:443` are the same origin and three different strings. An allowlist that
+ * matched text would either reject the operator's own instance or, worse, accept a lookalike.
+ */
+function originOf(raw: string): string {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    throw new Error(`MANZIL_NOTO'G'RI: "${raw}" URL emas.`);
+  }
+}
+
+/**
+ * Whether the operator allows a credential to leave over cleartext HTTP for a given service.
+ *
+ * Read from the environment only, and never from a tool argument, for the reason the whole file cares
+ * about: this is a decision about whether a secret crosses a network in the clear, and it is the
+ * operator's to make. `config_set` cannot reach it - it accepts four cosmetic keys.
+ */
+function allowInsecureCredentialOrigin(service: string): boolean {
+  const flag = (process.env[`${service}_ALLOW_INSECURE_HTTP`] ?? '').trim().toLowerCase();
+  if (!flag) return false;
+  return flag === '1' || flag === 'true' || flag === 'yes';
+}
+
 async function runCollaboration(provider: string, action: string, i: Record<string, unknown>): Promise<unknown> {
   const q = inputString(i, 'query');
   const limit = bounded(i, 'limit', 20, 100);
@@ -2433,18 +2464,53 @@ async function runCollaboration(provider: string, action: string, i: Record<stri
     return data;
   }
   if (provider === 'jira') {
-    // `base` comes from the argument first, then the environment. It was environment-only, and the
-    // refusal it produced was `MISSING_INPUT: 'base' majburiy.` - which names an argument the tool
-    // never read. A caller who believed it and passed `base` would have it ignored, because
-    // `additionalProperties: false` drops it before the handler sees it, and the same error would
-    // come back. Found by calling `pro_fetch_collab_jira_projects` with `{}` and reading what it said.
-    const jiraBase = inputString(i, 'base') || process.env.JIRA_BASE_URL || '';
-    if (!jiraBase.trim())
+    // `base` is accepted so a caller can name the instance, but it is not trusted as the place
+    // credentials go: every Jira action is authenticated (the token is read before this branch), so a
+    // caller-chosen `base` is a caller-chosen destination for `Authorization: Basic base64(email:token)`.
+    //
+    // Measured before this: `base` won over `JIRA_BASE_URL` with no comparison, and `assertSafeUrl`
+    // passed it - that guard exists to stop private and internal addresses, not to decide who may
+    // receive a secret. Any public host satisfied it. So a single `base` argument in a tool call was
+    // enough to have the operator's Jira token and email sent to a server of the caller's choosing,
+    // and over `http:` in cleartext with nothing objecting.
+    //
+    // The rule now: the credential-bearing origin is the one the operator configured, the caller's
+    // `base` may only agree with it, and the transport must be TLS. `JIRA_ALLOW_INSECURE_HTTP` is the
+    // operator's own opt-out for a self-hosted instance on a trusted LAN - it is an environment
+    // variable, not a tool argument, so no model can set it.
+    const jiraBase = inputString(i, 'base').trim() || (process.env.JIRA_BASE_URL ?? '').trim();
+    if (!jiraBase)
       throw new Error(
         'JIRA_BASE_URL muhit o‘zgaruvchisi yo‘q va `base` argumenti ham berilmagan. ' +
           'Ikkalasidan birini bering: https://sizning-jira.example.com shaklida.',
       );
-    const base = (await assertSafeUrl(jiraBase.trim())).toString().replace(/\/$/, '');
+    // Decided before anything touches the network. `assertSafeUrl` resolves DNS, and it ran first in
+    // the first version of this: a call naming a host that does not exist was answered with
+    // `DNS_ERROR` from that lookup, so the refusal the caller was meant to see - which says the host
+    // is not the configured one and no credential will go there - never appeared. Measured with
+    // `base: "https://evil.example"`, which does not resolve. Ordering it this way also means an
+    // attacker-chosen hostname is never resolved at all, which is a lookup it would otherwise get.
+    const requested = originOf(jiraBase);
+    const operatorBase = (process.env.JIRA_BASE_URL ?? '').trim();
+    if (!operatorBase)
+      throw new Error(
+        'JIRA_BASE_URL operator tomonidan o‘rnatilmagan, shuning uchun credential qaysi origin ga ' +
+          'jo‘yishini aniqlab bo‘lmaydi. Server muhitida JIRA_BASE_URL ni belgilang.',
+      );
+    const operatorOrigin = originOf(operatorBase);
+    if (requested !== operatorOrigin)
+      throw new Error(
+        `JIRA_BASE_MISMATCH: so‘rov ${requested} ga yuborilmoqda, JIRA_BASE_URL esa ${operatorOrigin}. ` +
+          `Jira tokeni va emaili shu origin ga yuboriladi, shuning uchun boshqa origin ga ruxsat yo‘q. ` +
+          `\`base\` argumenti JIRA_BASE_URL bilan bir xil bo‘lishi kerak.`,
+      );
+    if (new URL(jiraBase).protocol !== 'https:' && !allowInsecureCredentialOrigin('JIRA')) {
+      throw new Error(
+        `JIRA_INSECURE_TRANSPORT: ${requested} — token va email shifrlanmagan ulanishda yuboriladi. ` +
+          `Operator JIRA_ALLOW_INSECURE_HTTP=true ni o‘rnatishi mumkin (ishonchli tarmoq uchun).`,
+      );
+    }
+    const base = (await assertSafeUrl(jiraBase)).toString().replace(/\/$/, '');
     const email = getCredential('JIRA_EMAIL');
     if (!email) throw new Error('CREDENTIAL_MISSING: Jira API uchun JIRA_EMAIL ham talab qilinadi.');
     const auth = Buffer.from(`${email}:${token}`).toString('base64');

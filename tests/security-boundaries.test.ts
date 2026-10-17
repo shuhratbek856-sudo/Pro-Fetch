@@ -33,6 +33,7 @@ import {
   isMutationTool,
   isMutationToolByName,
   mutationSinksOf,
+  MUTATING_ACTIONS,
 } from '../src/core/tool-classification.js';
 import { SINK_REACHING_TOOLS } from '../src/core/mutation-sinks.generated.js';
 import { scanSinkReachingTools } from '../src/core/mutation-scan.js';
@@ -497,7 +498,7 @@ describe('the generated mutation table matches the code', () => {
     // The same scanner the generator uses, so the two cannot disagree. It reads each tool's *own*
     // handler body: going through `resolveToolSource` appends the shared helpers a handler calls, and
     // the shared HTTP client contains `method: 'POST'`, which made 162 plain fetchers look like writers.
-    const { entries } = scanSinkReachingTools(isMutationToolByName);
+    const { entries } = scanSinkReachingTools(isMutationToolByName, MUTATING_ACTIONS);
     expect(entries.length).toBeGreaterThan(0);
 
     // Recomputed here rather than compared against the generated file directly, because that is the

@@ -29,6 +29,10 @@ import { mkdirSync } from 'node:fs';
 export const OUTPUT_KINDS = ['img-out', 'pdf-out', 'bin-out', 'geo-out', 'zip-out'] as const;
 export type OutputKind = (typeof OUTPUT_KINDS)[number];
 
+// Imported here rather than above the module: `read-only-guard` has no imports of its own, so this
+// cannot cycle, and keeping the guard free of dependencies is what lets `cache.ts` depend on it too.
+import { assertWritable } from './read-only-guard.js';
+
 function cacheRoot(): string {
   return process.env.PRO_FETCH_CACHE_DIR ?? '.pro-fetch-cache';
 }
@@ -91,6 +95,17 @@ export function writeBoundaryRoot(): string {
 
 /** A per-kind subdirectory of the output root, created on demand. */
 export function outputDir(kind: OutputKind): string {
+  // A per-kind output directory is only ever asked for in order to write something into it, and the
+  // `mkdirSync` below is already a write whether or not a file ever lands there. So this is the place
+  // read-only mode is enforced for every tool that produces output.
+  //
+  // Measured before this: `outputDir()` was the single funnel for 17 tools and none of them asked.
+  // `pro_pdf_merge`, `pro_image_convert`, `pro_image_watermark` and 14 more were classified read-only
+  // while writing files, and none of them had a guard of its own - each one reached `writeFile` through
+  // a module helper, so the handler-by-handler scan could not see the write. Fixing that by adding a
+  // guard to each handler would have been 17 edits that the next tool would forget. One funnel, one
+  // check: a tool cannot produce output without passing through here.
+  assertWritable('chiqish papkasini yaratish');
   const directory = path.join(outputRoot(), kind);
   mkdirSync(directory, { recursive: true });
   return directory;
