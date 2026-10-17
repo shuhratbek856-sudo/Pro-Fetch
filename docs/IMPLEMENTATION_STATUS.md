@@ -3,11 +3,13 @@
 > This file is the agent's memory across context loss. It is written to disk, not held in context.
 > Update it after every completed work item.
 
-**Last updated:** 2026-10-14
+**Last updated:** 2026-10-17
 
 ## Scope Actually Covered (read before claiming more)
 
-The request was "strengthen all 500+ tools". Status as of this increment, measured:
+Registered tools: **652**. Categories: **40**. Tests: **762** across **40** files. `npm run check` exit 0.
+
+This increment: audit round 2 (ChatGPT deep analysis). 14 confirmed defects fixed, 2 refuted, 1 documented limitation unchanged.
 
 - Registered tools: **572**. Tool source files: **395** under `src/tools/`.
 - **`npm run audit:schema`: dead properties 54 -> 0, empty `required` 46 -> 0** (excluding 8

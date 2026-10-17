@@ -575,3 +575,96 @@ Two capability knobs that look identical are in fact not: `PRO_FETCH_MAX_BATCH` 
 mode, so MAX mode can be deliberately held back in either direction. `tests/mode.test.ts` asserts the
 security probes with MAX mode switched on, so a future change that routes a containment limit through
 the mode fails the suite rather than shipping quietly.
+
+---
+
+## D-009: A credential-bearing origin is the operator's, not the caller's
+
+**Date:** 2026-10-17
+**Status:** accepted
+
+### Context
+ChatGPT audit F-02: `pro_fetch_collab_jira_*` accepted a `base` argument that overrode `JIRA_BASE_URL`, then sent `Authorization: Basic base64(email:token)` to that host. `assertSafeUrl` passed any public host — it exists to stop private and internal addresses, not to decide who may receive a secret. A single `base` argument in a tool call was enough to have the operator's Jira token sent to a server of the caller's choosing, over `http:` in cleartext.
+
+### Decision
+The caller's `base` may only agree with the operator's `JIRA_BASE_URL` origin. Credentials are attached only when the resolved origin equals the operator's configured origin. The transport must be TLS. `JIRA_ALLOW_INSECURE_HTTP` is the operator's own opt-out for a self-hosted instance on a trusted LAN — it is an environment variable, not a tool argument, so no model can set it.
+
+### Rationale
+The destination of a credential is a policy decision, not a convenience. Letting the caller name it turns every authenticated tool into a potential exfiltration channel: the model reads a URL from a page, passes it as `base`, and the operator's token leaves to wherever the page said.
+
+### Rejected alternatives
+- **Validate `base` against an HTTPS-only allowlist.** The operator already has `JIRA_BASE_URL`; a second list to keep in sync is a second thing to forget.
+- **Strip credentials when `base` is caller-supplied.** Silent — the tool would succeed with empty auth and every call would fail confusingly upstream.
+- **Leave as-is and document the risk.** A credential sent to an attacker-controlled host is not mitigated by a warning.
+
+### Consequences
+Self-hosted Jira over plain HTTP on a trusted LAN needs `JIRA_ALLOW_INSECURE_HTTP=true` in the server environment. That is a deliberate operator action, not a default.
+
+---
+
+## D-010: A limit that can be declared is not a limit
+
+**Date:** 2026-10-17
+**Status:** accepted
+
+### Context
+ChatGPT audit F-05: `pro_zip_extract` checked `totalInflated + entry.uncompressed_size > inflatedLimit`, where `uncompressed_size` comes from the ZIP central directory — attacker-controlled. The real inflated length was accumulated into `totalInflated` but never re-compared. An archive whose headers declared 1 byte per entry passed the check regardless of actual size.
+
+### Decision
+The cumulative limit is enforced on measured bytes, after each inflate. The declared size is kept only as a cheap early rejection.
+
+### Rationale
+A resource limit that trusts the resource's own description of itself is a hint, not a control. The header says how big the entry *should* be; the inflate says how big it *is*. Only the second is enforceable.
+
+### Rejected alternatives
+- **Compare declared vs actual per entry and refuse on mismatch.** Refuses honest archives written by tools that round or estimate sizes; the real problem is the sum, not the individual claim.
+- **Cap only the compressed size.** Bounded input, unbounded output — a zip bomb is precisely small input expanding to large output.
+
+### Consequences
+An archive that declares its size correctly and inflates beyond the cumulative cap is still refused, now with a message naming the measured total. The error distinguishes "declared too large" from "measured too large" so the operator can tell a lying archive from a merely big one.
+
+---
+
+## D-011: A wrapper that injects its own action is asking for that action
+
+**Date:** 2026-10-17
+**Status:** accepted
+
+### Context
+ChatGPT audit F-07: 24 browser wrapper tools fill in their own `action` before calling `runBrowserAction`. The central policy gate reads `input.action` from the *caller's* input, which those wrappers never supply. `browser_download` dispatching `download` — a file write — was invisible to read-only enforcement.
+
+### Decision
+`runBrowserAction` calls `assertActionAllowed(action, ...)` at the top, before any browser work. The check lives in `security-policy.ts` so there is one definition of what read-only means. The mutation scan's `action:` signal was also refined: only wrappers whose injected action is in `MUTATING_ACTIONS` are classified as mutations, so `browser_get_html` (a pure read) is not blocked.
+
+### Rationale
+A wrapper that hides its own dispatch target from the policy gate is a bypass by construction. The funnel is the only place the effective action is known.
+
+### Rejected alternatives
+- **Classify every wrapper as a mutation.** Blocks `browser_get_html`, `browser_get_text` and other pure reads — read-only mode would make browser browsing impossible.
+- **Pass the action through a reserved input field.** Pollutes the caller-visible schema with an internal detail.
+
+### Consequences
+Read-only mode now blocks state-changing browser actions dispatched through wrappers, while pure reads pass. The allowlist (`PRO_FETCH_MUTATION_ALLOWLIST`) can still exempt a specific wrapper by name.
+
+---
+
+## D-012: A write called twice is two writes
+
+**Date:** 2026-10-17
+**Status:** accepted
+
+### Context
+ChatGPT audit F-12: `runParallel` deduplicated identical tool+argument pairs, including mutations. Two identical `task_create` entries produced one dispatch and two identical results, so the caller believed two tasks existed.
+
+### Decision
+`runParallel` only deduplicates tools where `isMutationTool(tool)` is false. Mutations always run per entry.
+
+### Rationale
+Deduplication assumes the second call would have no additional effect. That is true for reads and false for writes: the second `create` may depend on the first having happened, and collapsing them reports one operation as two.
+
+### Rejected alternatives
+- **Deduplicate all tools.** One dispatch, N results — the caller cannot distinguish "ran twice" from "ran once, reported twice".
+- **Never deduplicate.** Loses the real win: composites asking the same question repeatedly (three heading extractions for one page) still multiply one expensive call into several.
+
+### Consequences
+Batches that repeat a mutation now run it once per entry. The dedup win is preserved for reads, which is where it matters.
