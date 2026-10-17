@@ -198,14 +198,31 @@ describe('a child process does not inherit the server credentials', () => {
     expect(env.OPENAI_API_KEY).toBe('needed');
   });
 
-  it('exempts the names that only *refer* to a credential', () => {
+  it('drops the names that only *refer* to a credential', () => {
     const { env } = childEnv({
       source: { SSH_AUTH_SOCK: '/tmp/agent.sock', GIT_ASKPASS: '/bin/askpass', NPM_TOKEN_USERCONFIG: '/x' },
     });
-    // Each names a file or a helper. Forwarding the *value* of any of them would not be safe.
-    expect(env.SSH_AUTH_SOCK).toBe('/tmp/agent.sock');
+    // `SSH_AUTH_SOCK` and `NPM_TOKEN_USERCONFIG` were removed from the default allowlist. They name
+    // a socket and a token file — forwarding them gives every child access to the SSH agent or the
+    // npm token. An operator who needs them opts in via `PRO_FETCH_CHILD_EXTRA_ENV`.
+    expect(env.SSH_AUTH_SOCK).toBeUndefined();
     expect(env.GIT_ASKPASS).toBe('/bin/askpass');
-    expect(env.NPM_TOKEN_USERCONFIG).toBe('/x');
+    expect(env.NPM_TOKEN_USERCONFIG).toBeUndefined();
+  });
+
+  it('operator opt-in forwards the names that were removed', () => {
+    const saved = process.env.PRO_FETCH_CHILD_EXTRA_ENV;
+    process.env.PRO_FETCH_CHILD_EXTRA_ENV = 'SSH_AUTH_SOCK,NPM_TOKEN_USERCONFIG';
+    try {
+      const { env } = childEnv({
+        source: { SSH_AUTH_SOCK: '/tmp/agent.sock', NPM_TOKEN_USERCONFIG: '/x' },
+      });
+      expect(env.SSH_AUTH_SOCK).toBe('/tmp/agent.sock');
+      expect(env.NPM_TOKEN_USERCONFIG).toBe('/x');
+    } finally {
+      if (saved === undefined) delete process.env.PRO_FETCH_CHILD_EXTRA_ENV;
+      else process.env.PRO_FETCH_CHILD_EXTRA_ENV = saved;
+    }
   });
 
   it('a real child process sees none of it', async () => {

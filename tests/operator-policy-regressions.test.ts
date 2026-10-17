@@ -348,13 +348,13 @@ describe('the test runner reads a summary that includes skipped tests', () => {
 // -------------------------------------------------------------------------------------------
 
 describe('the child environment matches what its own documentation says', () => {
-  it('forwards SSH_AUTH_SOCK, which the code exempts and the docs now explain', async () => {
-    // The module note used to list SSH_AUTH_SOCK as an example of a name that *is* dropped, while the
-    // code exempted it. A comment that contradicts the code is worse than no comment, because the next
-    // person trusts it.
+  it('drops SSH_AUTH_SOCK unless the operator opts in', async () => {
+    // `SSH_AUTH_SOCK` was removed from the default allowlist. It names the agent's socket — forwarding
+    // it gives every child the ability to ask the agent to sign. An operator who needs git-over-SSH
+    // opts in via `PRO_FETCH_CHILD_EXTRA_ENV`.
     const { childEnv } = await import('../src/core/child-env.js');
     const { env, dropped } = childEnv({ source: { SSH_AUTH_SOCK: '/tmp/agent.sock', PATH: '/bin' } });
-    expect(env.SSH_AUTH_SOCK).toBe('/tmp/agent.sock');
-    expect(dropped).not.toContain('SSH_AUTH_SOCK');
+    expect(env.SSH_AUTH_SOCK).toBeUndefined();
+    expect(dropped).toContain('SSH_AUTH_SOCK');
   });
 });

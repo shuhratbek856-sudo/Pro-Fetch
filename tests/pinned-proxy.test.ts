@@ -214,7 +214,12 @@ describe('what the proxy does not cover is stated, not implied', () => {
     // Asserting only that PROXIED excludes 'image' proves nothing: the handler consulted a *separate*
     // hand-written list, so a handler that proxied images would still have passed. This asserts the list
     // the handler uses, and that the two sets cannot overlap.
-    expect([...DIRECT_RESOURCE_TYPES].sort()).toEqual(['font', 'image', 'media', 'websocket']);
+    //
+    // `image`, `media` and `font` were moved into PROXIED: their bodies cannot be read back by page
+    // script, but the *request* still went to whatever address the resolver returned — a blind SSRF.
+    // Proxying them closes that. Only `websocket` remains direct, because Playwright's routing never
+    // sees it.
+    expect([...DIRECT_RESOURCE_TYPES].sort()).toEqual(['websocket']);
     for (const type of DIRECT_RESOURCE_TYPES) {
       expect(PROXIED_RESOURCE_TYPES.has(type), type).toBe(false);
     }
@@ -247,7 +252,7 @@ describe('what the proxy does not cover is stated, not implied', () => {
 
   it('the note says so in words a caller can read', () => {
     expect(PROXY_NOTE).toMatch(/WebSocket/);
-    expect(PROXY_NOTE).toMatch(/ko‘r ish/);
+    expect(PROXY_NOTE).toMatch(/image, media va font/);
   });
 });
 

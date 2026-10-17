@@ -79,9 +79,14 @@ export const ALL_RESOURCE_TYPES: readonly string[] = [
 /**
  * Resource types served through this process.
  *
- * `texttrack`, `prefetch` and `manifest` are proxied: a manifest is JSON that page script reads, and a
- * prefetch returns bytes that the page can then consume. `websocket` is never proxied - Playwright's
- * routing does not see it - so it lands in `DIRECT_RESOURCE_TYPES` and `PROXY_NOTE` says so.
+ * Every type that can carry a response body is proxied. `image`, `media` and `font` were excluded
+ * because their bodies cannot be read back by page script — but that is a data-leak argument, not a
+ * request argument. The request itself still goes to whatever address the resolver returns, which is
+ * the DNS rebinding window. Proxying them closes it: the bytes come from a connection this process
+ * made, to an address this process chose, and Chromium never resolves the name.
+ *
+ * `websocket` is never proxied - Playwright's routing does not see it - so it lands in
+ * `DIRECT_RESOURCE_TYPES` and `PROXY_NOTE` says so.
  *
  * There is deliberately no `json` member. Measured: Chromium reports a JSON response as `xhr`,
  * `fetch` or `other`, so a `json` entry here was dead - it made the two sets sum to 15 against a
@@ -98,14 +103,16 @@ export const PROXIED_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'prefetch',
   'texttrack',
   'other',
+  'image',
+  'media',
+  'font',
 ]);
 
 /**
  * Resource types Chromium still fetches itself.
  *
- * Derived, so adding a proxied type automatically stops it being fetched directly. The three that remain
- * cannot return a readable body to page script - the canvas is tainted and a stylesheet cannot exfiltrate
- * a body - so proxying them would cost every page its speed without stopping a leak.
+ * Derived, so adding a proxied type automatically stops it being fetched directly. Only `websocket
+ * remains - Playwright's routing does not intercept it, so it is outside this defence entirely.
  */
 export const DIRECT_RESOURCE_TYPES: ReadonlySet<string> = new Set(
   ALL_RESOURCE_TYPES.filter((type) => !PROXIED_RESOURCE_TYPES.has(type)),
@@ -117,10 +124,9 @@ export const DIRECT_RESOURCE_TYPES: ReadonlySet<string> = new Set(
  * A diagnostic that says "SSRF-protected" without this would be claiming more than is true.
  */
 export const PROXY_NOTE =
-  'document, xhr, fetch, script, stylesheet, json va eventsource ushbu jarayon orqali DNS pin qilingan ' +
-  'kanal orqali beriladi - Chromium umuman resolve qilmaydi. image, media va font to‘g‘ridan-to‘g‘ri ' +
-  'beriladi: ular javob tanasini sahifaga qaytarib bermaydi, shuning uchun ma’lumot sizib chiqmaydi, ' +
-  'lekin so‘rov manzilga yetib boradi (ko‘r ish). WebSocket Playwright marshrutidan o‘tmaydi.';
+  'document, xhr, fetch, script, stylesheet, json, eventsource, image, media va font ushbu jarayon ' +
+  'orqali DNS pin qilingan kanal orqali beriladi - Chromium umuman resolve qilmaydi. WebSocket ' +
+  'Playwright marshrutidan o‘tmaydi.';
 
 /** Largest body proxied, in bytes. Beyond this the request is refused rather than silently downgraded. */
 export const MAX_PROXIED_BODY_BYTES = 64 * 1024 * 1024;

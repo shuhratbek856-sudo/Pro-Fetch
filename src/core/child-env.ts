@@ -70,13 +70,11 @@ const REQUIRED: readonly string[] = [
   'npm_config_prefix',
   'NPM_CONFIG_CACHE',
   'NPM_CONFIG_PREFIX',
-  'NPM_TOKEN_USERCONFIG',
   // Git and other VCS clients
   'GIT_CONFIG_NOSYSTEM',
   'GIT_TERMINAL_PROMPT',
   'GIT_SSH_COMMAND',
   'GIT_ASKPASS',
-  'SSH_AUTH_SOCK',
   'GIT_PAGER',
   'GIT_EDITOR',
   'EDITOR',
@@ -97,11 +95,7 @@ const CREDENTIAL_NAME =
 const CREDENTIAL_EXEMPT: readonly string[] = [
   // Selects a credential *helper*; without it git cannot ask for one at all.
   'GIT_ASKPASS',
-  // The agent's socket path. It names the socket, not the key inside it; a child that can talk
-  // to the agent can ask it to sign, which is why an operator who does not want that forwards nothing.
-  'SSH_AUTH_SOCK',
-  // Names a token cache file, never the token.
-  'NPM_TOKEN_USERCONFIG',
+  // Names a CA bundle, not a key.
   'NODE_EXTRA_CA_CERTS',
 ];
 
@@ -170,6 +164,20 @@ export function childEnv(options: ChildEnvOptions = {}): { env: Record<string, s
     }
 
     if (options.allow?.includes(name) || options.allow?.includes(upper)) {
+      env[name] = value;
+      continue;
+    }
+
+    // Operator opt-in: `PRO_FETCH_CHILD_EXTRA_ENV` names additional variables to forward.
+    //
+    // `SSH_AUTH_SOCK` and `NPM_TOKEN_USERCONFIG` were removed from the default allowlist. They are
+    // needed for git-over-SSH and npm token auth, but forwarding them gives every child process
+    // access to the SSH agent or the token file. An operator who needs them can opt in by name.
+    const extraEnv = (process.env.PRO_FETCH_CHILD_EXTRA_ENV ?? '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (extraEnv.includes(name) || extraEnv.includes(upper)) {
       env[name] = value;
       continue;
     }
