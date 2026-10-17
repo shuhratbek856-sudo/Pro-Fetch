@@ -18,6 +18,7 @@ import '../src/loader.js';
 import { callTool } from '../src/router.js';
 import { allTools } from '../src/core/tool.js';
 import { cache } from '../src/core/cache.js';
+import { assertToolAllowed } from '../src/core/security-policy.js';
 import { assertWritable, readOnly, WriteBlockedError } from '../src/core/read-only-guard.js';
 import { childEnv, describeChildEnv } from '../src/core/child-env.js';
 import { sanitizeToolError } from '../src/core/tool.js';
@@ -25,9 +26,12 @@ import { describeUrl, resolveSafeUrl, UrlSecurityError } from '../src/core/ssrf-
 import { isInside } from '../src/core/path-containment.js';
 import { outputRoot } from '../src/core/output-dir.js';
 import {
+  MUTATING_ACTIONS,
+  READ_ONLY_ACTIONS,
+  deriveAnnotations,
+  isMutatingAction,
   isMutationTool,
   isMutationToolByName,
-  deriveAnnotations,
   mutationSinksOf,
 } from '../src/core/tool-classification.js';
 import { SINK_REACHING_TOOLS } from '../src/core/mutation-sinks.generated.js';
@@ -350,6 +354,143 @@ describe('written paths stay inside the output root', () => {
 // -------------------------------------------------------------------------------------------
 // 6. The mutation table cannot drift from the code
 // -------------------------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------------------------
+// 7. Multi-action tools: read-only has to look inside the name
+// -------------------------------------------------------------------------------------------
+
+describe('a tool that dispatches several actions cannot hide a write behind its name', () => {
+  const ACTIONS = [
+    'back',
+    'clear_cookies',
+    'close_all',
+    'close_session',
+    'close_tab',
+    'cookies_get',
+    'cookies_set',
+    'download',
+    'drag',
+    'forward',
+    'get_html',
+    'get_state',
+    'get_text',
+    'get_title',
+    'get_url',
+    'handle_dialog',
+    'hover',
+    'list_sessions',
+    'list_tabs',
+    'new_tab',
+    'press',
+    'reload',
+    'select',
+    'set_headers',
+    'switch_tab',
+    'upload_file',
+  ];
+
+  // Kept in sorted order because the assertions compare against a sorted result.
+  const MUTATING = [
+    'clear_cookies',
+    'close_all',
+    'close_session',
+    'close_tab',
+    'cookies_set',
+    'download',
+    'drag',
+    'handle_dialog',
+    'press',
+    'set_headers',
+    'upload_file',
+  ];
+
+  const browserAction = () => allTools().find((tool) => tool.name === 'pro_browser_browser_action');
+
+  it('every action the browser handler implements is classified', () => {
+    // Measured from the handler itself: the actions are the `case '...'` labels and the
+    // `action === '...'` comparisons in `browser-tools.ts`. An action added there and not here would be
+    // unclassified, and `isMutatingAction` treats unknown as a write - the safe direction, but still
+    // drift between the code and the list.
+    const source = readFileSync(new URL('../src/core/browser-tools.ts', import.meta.url), 'utf8');
+    const implemented = new Set<string>();
+    for (const match of source.matchAll(/case '([a-z_]+)':/g)) implemented.add(match[1] as string);
+    for (const match of source.matchAll(/action === '([a-z_]+)'/g)) implemented.add(match[1] as string);
+    for (const match of source.matchAll(/action !== '([a-z_]+)'/g)) implemented.add(match[1] as string);
+    expect([...implemented].sort()).toEqual(ACTIONS);
+
+    for (const action of ACTIONS) {
+      const classified = READ_ONLY_ACTIONS.has(action) || MUTATING_ACTIONS.has(action);
+      expect(classified, action + ' tasniflanmagan').toBe(true);
+    }
+  });
+
+  it('an action is in exactly one of the two sets', () => {
+    for (const action of ACTIONS) {
+      const readOnly = READ_ONLY_ACTIONS.has(action);
+      const mutating = MUTATING_ACTIONS.has(action);
+      expect(readOnly && mutating, action + ' ikkalasida ham').toBe(false);
+    }
+    expect([...MUTATING_ACTIONS].sort()).toEqual(MUTATING);
+  });
+
+  it('the published schema lists every action', () => {
+    const tool = browserAction();
+    if (!tool) return;
+    const enumBlock = /enum:\s*\[([\s\S]*?)\]/.exec(JSON.stringify(tool.inputSchema));
+    if (!enumBlock) return;
+    const published = [...(enumBlock[1] as string).matchAll(/'([a-z_]+)'/g)].map((m) => m[1] as string);
+    for (const action of ACTIONS) {
+      expect(published, action + ' sxemada yo q').toContain(action);
+    }
+  });
+
+  it('refuses every state-changing action under read-only, and allows the readers', () => {
+    // The measurement that motivated this: all eleven passed before the check existed, `cookies_set`
+    // among them, and it reaches no filesystem sink, so the sink-level guard could not see it either.
+    const tool = browserAction();
+    if (!tool) return;
+    const original = process.env.PRO_FETCH_READ_ONLY;
+    process.env.PRO_FETCH_READ_ONLY = 'true';
+    try {
+      const refused: string[] = [];
+      const allowed: string[] = [];
+      for (const action of ACTIONS) {
+        let blocked = false;
+        try {
+          assertToolAllowed(tool, { action });
+        } catch {
+          blocked = true;
+        }
+        if (blocked) refused.push(action);
+        else allowed.push(action);
+      }
+      expect(refused.sort()).toEqual(MUTATING);
+      expect(allowed.sort()).toEqual(ACTIONS.filter((action) => !MUTATING.includes(action)));
+    } finally {
+      if (original === undefined) delete process.env.PRO_FETCH_READ_ONLY;
+      else process.env.PRO_FETCH_READ_ONLY = original;
+    }
+  });
+
+  it('names the read-only actions in the refusal', () => {
+    const tool = browserAction();
+    if (!tool) return;
+    const original = process.env.PRO_FETCH_READ_ONLY;
+    process.env.PRO_FETCH_READ_ONLY = 'true';
+    try {
+      expect(() => assertToolAllowed(tool, { action: 'cookies_set' })).toThrow(/o'qishga ruxsat/i);
+    } finally {
+      if (original === undefined) delete process.env.PRO_FETCH_READ_ONLY;
+      else process.env.PRO_FETCH_READ_ONLY = original;
+    }
+  });
+
+  it('treats an unknown action as a write rather than assuming it is harmless', () => {
+    // A list that is wrong in the safe direction is a list that fails safe.
+    expect(isMutatingAction('something_new')).toBe(true);
+    expect(isMutatingAction('get_url')).toBe(false);
+  });
+});
 
 describe('the generated mutation table matches the code', () => {
   it('finds no tool that writes without being classified as a mutation', () => {

@@ -48,6 +48,7 @@ export function realResolve(target: string): string {
   }
 }
 
+import { isMutatingAction, READ_ONLY_ACTIONS } from './tool-classification.js';
 export { isMutationTool } from './tool-classification.js';
 
 export function assertToolAllowed(tool: ToolDefinition, input: Record<string, unknown>): void {
@@ -89,6 +90,16 @@ export function assertToolAllowed(tool: ToolDefinition, input: Record<string, un
     const method = typeof input.method === 'string' ? input.method.trim().toUpperCase() : '';
     if (!exceptions.has(tool.name) && method && !new Set(['GET', 'HEAD', 'OPTIONS']).has(method)) {
       throw new PolicyError(`HTTP ${method} usuli PRO_FETCH_READ_ONLY=true rejimida bloklangan.`);
+    }
+    // The same question for a tool that dispatches several behaviours from one name. Measured before
+    // this: all eleven state-changing `browser_action` behaviours passed read-only mode, including
+    // `cookies_set`, which writes a cookie and reaches no filesystem sink.
+    const action = typeof input.action === 'string' ? input.action.trim() : '';
+    if (!exceptions.has(tool.name) && action && isMutatingAction(action)) {
+      throw new PolicyError(
+        `'${action}' amali holatni o'zgartiradi, PRO_FETCH_READ_ONLY=true rejimida bloklangan. ` +
+          `O'qishga ruxsat etilgan amallar: ${[...READ_ONLY_ACTIONS].sort().join(', ')}.`,
+      );
     }
   }
   if (

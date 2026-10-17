@@ -100,6 +100,79 @@ export function mutationSinksOf(name: string): readonly string[] {
   return SINK_REACHING_TOOLS[name] ?? [];
 }
 
+/**
+ * Actions of a multi-action tool that change state, and the ones that do not.
+ *
+ * ## Why a list, when everything else here is derived
+ *
+ * `browser_action` dispatches 26 behaviours from one tool name. Read-only mode could not see inside it:
+ * `assertToolAllowed` classified by name, and the name says nothing about which of the 26 ran. Measured:
+ * all eleven state-changing actions passed, including `cookies_set`, which writes a cookie and touches
+ * no filesystem sink - so the sink-level guard added elsewhere cannot catch it either.
+ *
+ * This is the same dispatch problem as an HTTP `method`, and the policy engine already handles that
+ * case for `method`. It is handled here instead, in one place, so the answer to "does this action
+ * change anything" is not written twice.
+ *
+ * ## How the line is drawn
+ *
+ * An action is a mutation if it submits, deletes, uploads, downloads, or destroys state that existed
+ * before the call. Navigating, reading and hovering are what the server is for and are not mutations.
+ * `select` is on the reading side because it changes a control's value without submitting; `press` is not,
+ * because typing can submit on its own.
+ *
+ * `READ_ONLY_ACTIONS` is the complement of `MUTATING_ACTIONS`, computed rather than listed twice, so a
+ * new action cannot end up in neither. `tests/security-boundaries.test.ts` checks that set against every
+ * action the browser handler actually implements.
+ */
+const MUTATING_ACTION_LIST: readonly string[] = [
+  'cookies_set',
+  'clear_cookies',
+  'set_headers',
+  'close_tab',
+  'close_all',
+  'close_session',
+  'upload_file',
+  'download',
+  'handle_dialog',
+  'press',
+  'drag',
+];
+
+export const MUTATING_ACTIONS: ReadonlySet<string> = new Set(MUTATING_ACTION_LIST);
+
+/** Actions that only observe or navigate. */
+export const READ_ONLY_ACTIONS: ReadonlySet<string> = new Set(
+  [
+    'back',
+    'forward',
+    'reload',
+    'get_url',
+    'get_title',
+    'get_html',
+    'get_text',
+    'get_state',
+    'hover',
+    'select',
+    'cookies_get',
+    'list_tabs',
+    'list_sessions',
+    'new_tab',
+    'switch_tab',
+  ].filter((action) => !MUTATING_ACTIONS.has(action)),
+);
+
+/**
+ * Whether the `action` argument of a multi-action tool is a state change.
+ *
+ * Returns `true` for an action that is in neither set, because an unknown action should not be trusted
+ * to be harmless. That is the difference between a list that is wrong in the safe direction and one that
+ * is wrong in the dangerous one.
+ */
+export function isMutatingAction(action: string): boolean {
+  return !READ_ONLY_ACTIONS.has(action);
+}
+
 /** Whether the tool belongs to a category that reaches an external system. */
 export function isRemoteCategory(category: string): boolean {
   return REMOTE_CATEGORIES.has(category);
