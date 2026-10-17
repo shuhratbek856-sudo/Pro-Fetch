@@ -1,0 +1,16 @@
+# Files that Prettier must not rewrite.
+#
+# `src/core/mutation-sinks.generated.ts` is written by `scripts/generate-mutation-sinks.mts` and
+# regenerated whenever a tool's handler changes. Two problems with letting Prettier own it:
+#
+#   - `format:check` runs last in `npm run check`, so every regeneration made the full check fail on a
+#     file nobody hand-edited. Measured, repeatedly. A check that cries wolf over generated output is a
+#     check people learn to ignore, and the next real failure goes unread with it.
+#   - Prettier and the generator would disagree about layout on every run, so regenerating produced a
+#     diff even when no tool had changed.
+#
+# The generator still emits readable, stable output, and the drift test in
+# `tests/security-boundaries.test.ts` is what keeps it honest - it compares the committed file against a
+# fresh scan and fails when they differ. That is a stronger guarantee than a formatter gives, because it
+# checks the content rather than the whitespace.
+src/core/mutation-sinks.generated.ts

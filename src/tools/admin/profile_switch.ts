@@ -27,6 +27,27 @@ export default defineTool({
     const p = view(input);
     const prof = String(p.profile ?? 'standard');
     if (!(prof in PROFILE_LEVELS)) return fail('Profil: smart | minimal | standard | full');
+
+    // Narrowing is always allowed; widening is not. Measured before this: switching to `full` from
+    // whatever profile was configured succeeded with `isError: false`, so an operator who deliberately
+    // chose `standard` could be overruled by a single tool call.
+    const current = currentProfile();
+    const currentLevel = PROFILE_LEVELS[current] ?? PROFILE_LEVELS.full;
+    const requestedLevel = PROFILE_LEVELS[prof as keyof typeof PROFILE_LEVELS] ?? PROFILE_LEVELS.full;
+    if (requestedLevel > currentLevel) {
+      return fail(
+        'Profil kengaytirilmaydi: joriy ' +
+          current +
+          ' (' +
+          currentLevel +
+          ') dan ' +
+          prof +
+          ' (' +
+          requestedLevel +
+          ') ga o‘tish operator qarori. Toraytirish mumkin.',
+      );
+    }
+
     process.env.PRO_FETCH_PROFILE = prof;
     const active = allTools().filter((tool) =>
       isToolVisibleInProfile(tool, prof as keyof typeof PROFILE_LEVELS),

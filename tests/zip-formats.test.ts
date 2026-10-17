@@ -297,13 +297,20 @@ describe('pro_zip_extract', () => {
 
   it('refuses a destination outside the output root', async () => {
     const created = await callTool('pro_zip_create', { files: [{ name: 'a.txt', text: 'a' }] });
+    const outside = path.join(process.cwd(), '..', 'escaped');
     const result = await callTool('pro_zip_extract', {
       base64: payload(created).base64 as unknown as string,
-      out_dir: path.join(process.cwd(), '..', 'escaped'),
+      out_dir: outside,
       extract: true,
     });
+
+    // Asserted on what happened, not on the wording of the refusal. This used to require the
+    // message to match /sandbox/, which broke when the hand-written check here was replaced by the
+    // central assertWritablePath - the refusal was still correct and the test failed on a word.
+    // A test that pins the behaviour survives the message changing; one that pins the message does
+    // not, and it fails at the moment somebody improves the wording.
     expect(result.isError).toBeTruthy();
-    expect(textOf(result)).toMatch(/sandbox/);
+    expect(existsSync(outside)).toBe(false);
   });
 
   it('contains a traversing entry name instead of writing outside', async () => {

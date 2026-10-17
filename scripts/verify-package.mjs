@@ -1,4 +1,4 @@
-// Guards the artefacts that `npm publish` would ship.
+﻿// Guards the artefacts that `npm publish` would ship.
 //
 // `npm pack` honours the `files` allowlist in package.json, so this script asserts the two
 // properties that a package can silently fail on: the CLI entry point must be executable on
@@ -6,10 +6,44 @@
 // live API keys is git-ignored but still travels inside a ZIP of the project folder, which is the
 // most common way this project gets shared.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const failures = [];
+
+/**
+ * Compiled `.js` files under `dist` whose `.ts` source no longer exists.
+ *
+ * `tsc` compiles what it finds and leaves everything else alone, so a file whose source was renamed or
+ * deleted survives every later build. `package.json` publishes every `.js` under `dist`, so such a file reaches the, so such a file reaches the
+ * tarball. Measured on this repository before `build` learned to clean first: four such files, including
+ * `tools/document/tools.js` at 32 KB.
+ *
+ * Reported here rather than only fixed by the clean step, because a guard that cannot fail is not a
+ * guard - this one fires when someone runs `tsc` directly.
+ */
+function distWithoutSource() {
+  const stale = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith('.js')) continue;
+      const source = path.join('src', path.relative('dist', full).replace(/\.js$/, '.ts'));
+      if (!existsSync(source)) stale.push(full.replace(/\\/g, '/'));
+    }
+  };
+  walk('dist');
+  return stale;
+}
+
+for (const stale of distWithoutSource()) {
+  failures.push(`${stale} ships with no TypeScript source - stale build artefact`);
+}
 
 // 1. The bin target must exist, carry a shebang, and import nothing from the excluded type output.
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -37,7 +71,7 @@ const secretPattern =
 
 // `npm pack` must be invoked without a shell. On Windows the `npm`/`npm.cmd` shims are `.cmd`
 // files, which Node 24 refuses to spawn (`spawnSync npm.cmd EINVAL`), and `shell: true` trips
-// DEP0190. Resolve npm's own CLI entry and run it with the current Node binary instead — that
+// DEP0190. Resolve npm's own CLI entry and run it with the current Node binary instead вЂ” that
 // works identically on every platform and keeps the arguments properly escaped.
 function npmCommand() {
   if (process.platform !== 'win32') return { file: 'npm', args: [] };
@@ -76,7 +110,7 @@ for (const file of entries) {
 // 4. Every optional dependency the code imports at runtime must actually be declared.
 //
 // The SQLite tools shelled out to the `sqlite3` binary and shipped no driver, so all 24 database
-// tools failed with `spawn sqlite3 ENOENT` on any machine without that CLI — which is most of them.
+// tools failed with `spawn sqlite3 ENOENT` on any machine without that CLI вЂ” which is most of them.
 // A green suite did not catch it because the code path was never exercised with a real database.
 //
 // This walks the source for optional dependencies and checks each is declared, so a future driver

@@ -54,6 +54,12 @@ export { isMutationTool } from './tool-classification.js';
 export function assertToolAllowed(tool: ToolDefinition, input: Record<string, unknown>): void {
   const deniedTools = csv('PRO_FETCH_DENIED_TOOLS');
   const allowedTools = csv('PRO_FETCH_ALLOWED_TOOLS');
+  // '*' means "no allowlist", which is what an operator who writes it plainly expects.
+  //
+  // Measured before: with PRO_FETCH_ALLOWED_TOOLS='*' every tool was refused with "allowlist ichida
+  // yo'q", while the README documented this variable as "name or *". A list that blocks everything is
+  // the safe direction to fail in, but it means the documented value is a trap.
+  if (allowedTools.has('*')) allowedTools.clear();
   const deniedCategories = new Set([...csv('PRO_FETCH_DENIED_CATEGORIES')].map((value) => value.toLowerCase()));
   if (deniedTools.has(tool.name))
     throw new PolicyError(`Tool '${tool.name}' PRO_FETCH_DENIED_TOOLS siyosati bilan bloklangan.`);

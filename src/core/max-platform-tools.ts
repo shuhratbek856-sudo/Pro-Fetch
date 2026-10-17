@@ -951,6 +951,38 @@ async function assertProviderBase(raw: string, provider: string): Promise<string
     throw new Error(
       'CUSTOM_CODEHOST_HOST_BLOCKED: custom code-host host must be listed in PRO_FETCH_ALLOWED_CODEHOST_HOSTS; credential was not sent.',
     );
+  // A provider token is attached to every request made against this base, so an http:// base
+  // means the token crosses the network in clear text. Measured before this: the check accepted
+  // http:// for any host in PRO_FETCH_ALLOWED_CODEHOST_HOSTS and the token was then sent as an
+  // authorization header over that connection.
+  //
+  // HTTPS is required whenever a credential exists for the provider. A plain-http base is still allowed
+  // when there is no token, which is the local git server or a throwaway instance - the case where
+  // there is nothing to leak, and refusing it would be a cost with no security value.
+  const credentialName =
+    provider === 'gitlab'
+      ? 'GITLAB_TOKEN'
+      : provider === 'gitea'
+        ? 'GITEA_TOKEN'
+        : provider === 'forgejo'
+          ? 'FORGEJO_TOKEN'
+          : provider === 'bitbucket'
+            ? 'BITBUCKET_TOKEN'
+            : provider === 'github'
+              ? 'GITHUB_TOKEN'
+              : undefined;
+  const hasCredential = credentialName ? Boolean(getCredential(credentialName)) : false;
+  if (candidate.protocol === 'http:' && hasCredential) {
+    throw new Error(
+      'INSECURE_PROVIDER_BASE: ' +
+        provider +
+        ' uchun ' +
+        credentialName +
+        ' mavjud, shuning uchun base URL https:// bo‘lishi shart. ' +
+        'Token http orqali ochiq matnda yuborilardi.',
+    );
+  }
+
   const url = await assertSafeUrl(candidate.toString());
   return url.toString().replace(/\/$/, '');
 }

@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import '../src/loader.js';
 import { callTool } from '../src/router.js';
+import { allTools } from '../src/core/tool.js';
 import { splitModel } from '../src/core/llm-gateway.js';
 import { MAX_MODE_CEILING } from '../src/core/mode.js';
 import { assertNoUnknownArguments } from '../src/core/required-arguments.js';
@@ -99,11 +100,25 @@ describe('an undeclared argument is refused', () => {
     expect(text(result)).toMatch(/e’lon qilinmagan argument/);
   });
 
-  it('leaves a call with only declared arguments alone', async () => {
-    // No credential here, so the call itself fails - what must not happen is the unknown-argument
-    // refusal. Asserting isError === false would be asserting a network call succeeds.
-    const result = await callTool('pro_llm_chat', { model: 'x', prompt: 'y', max_tokens: 64 });
-    expect(text(result)).not.toMatch(/e�lon qilinmagan/);
+  it('leaves a call with only declared arguments alone', () => {
+    // Checked against the real schema through the same guard, without calling the tool.
+    //
+    // This went through `callTool` first, which reaches an LLM provider. In isolation it failed fast
+    // on the missing credential; in a full suite run it exceeded the 30 s timeout and failed the file,
+    // so a test asserting a schema fact was reporting a network symptom. Measured: full run 51.94 s
+    // with this case timing out, and the same file alone passing in 5.01 s.
+    //
+    // Nothing about the assertion needs a network: `assertNoUnknownArguments` is what produces the
+    // refusal. It is asked directly, with the *actual* registry schema rather than a synthetic one, so
+    // the tool's own properties are what get checked.
+    const tool = allTools().find((entry) => entry.name === 'pro_llm_chat');
+    if (!tool) throw new Error('pro_llm_chat registryda yo q');
+    const declared = { model: 'x', prompt: 'y', max_tokens: 64 };
+    expect(() => assertNoUnknownArguments(tool, declared)).not.toThrow();
+
+    // And a misspelling of one of those same arguments is still caught, so the pair is a real
+    // regression guard rather than a check that nothing is ever refused.
+    expect(() => assertNoUnknownArguments(tool, { ...declared, max_tokns: 64 })).toThrow(/max_tokns/);
   });
 });
 

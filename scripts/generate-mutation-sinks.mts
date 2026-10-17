@@ -22,7 +22,7 @@ const { scanSinkReachingTools, renderTable } = await import(base + 'core/mutatio
 // Bootstrap: `isMutationToolByName`, not `isMutationTool`. The latter already reads the generated table
 // this script is about to write, so asking it would make the scan see nothing to do and overwrite 13
 // tools with 0. Measured: that is exactly what happened the first time.
-const { entries } = scanSinkReachingTools(isMutationToolByName);
+const { entries, missingBodies } = scanSinkReachingTools(isMutationToolByName);
 const known = new Set(allTools().map((tool) => tool.name));
 const unknown = entries.filter((entry) => !known.has(entry.name));
 
@@ -32,3 +32,10 @@ console.log(`  yozuv sinkiga yetadigan tool: ${entries.length}`);
 console.log(
   `  registryda yo'q bo'lgan nom: ${unknown.length}${unknown.length > 0 ? ' - ' + unknown.map((entry) => entry.name).join(', ') : ''}`,
 );
+// Reported because a tool the scanner cannot read is a tool it cannot classify, and silence about it is
+// how `pro_pdf_split` ended up labelled read-only while its own handler refused to write. The count was
+// always zero because nothing filled it; the brace matcher silently dropped unreadable tools instead.
+console.log(`  handler tanasi topilmagan: ${missingBodies.length}`);
+if (missingBodies.length > 0) {
+  console.log(`    ${missingBodies.slice(0, 10).join(', ')}${missingBodies.length > 10 ? ' ...' : ''}`);
+}

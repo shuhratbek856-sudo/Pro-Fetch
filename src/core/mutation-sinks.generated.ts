@@ -11,21 +11,24 @@
  *
  * Regenerate with `npm run gen:mutation-sinks`. The drift test fails if this file stops matching the
  * code, and both it and the generator read the same scanner in `mutation-scan.ts`.
- * 13 tools.
+ * 16 tools.
  */
 
 export const SINK_REACHING_TOOLS: Readonly<Record<string, readonly string[]>> = {
-  pro_fetch_feed_subscribe: ['cache'],
-  pro_fetch_fetch_graphql: ['http-write'],
-  pro_fetch_fetch_soap: ['http-write'],
-  pro_fetch_import_bundle: ['cache'],
-  pro_fetch_jobs_watch: ['cache'],
-  pro_fetch_keyword_alert: ['cache'],
-  pro_fetch_oauth_device_flow: ['http-write'],
-  pro_fetch_page_diff_notify: ['cache'],
-  pro_fetch_price_watch: ['cache'],
-  pro_fetch_release_watch: ['cache'],
-  pro_fetch_search_suggest: ['http-write'],
-  pro_fetch_snapshot_diff: ['cache'],
-  pro_fetch_url_watch: ['cache'],
+  'pro_fetch_feed_subscribe': ['cache'],
+  'pro_fetch_fetch_graphql': ['http-write'],
+  'pro_fetch_fetch_soap': ['http-write'],
+  'pro_fetch_import_bundle': ['cache'],
+  'pro_fetch_jobs_watch': ['cache'],
+  'pro_fetch_keyword_alert': ['cache'],
+  'pro_fetch_oauth_device_flow': ['http-write'],
+  'pro_fetch_page_diff_notify': ['cache'],
+  'pro_fetch_pdf_split_pages': ['fs-async'],
+  'pro_fetch_price_watch': ['cache'],
+  'pro_fetch_release_watch': ['cache'],
+  'pro_fetch_search_suggest': ['http-write'],
+  'pro_fetch_snapshot_diff': ['cache'],
+  'pro_fetch_url_watch': ['cache'],
+  'pro_pdf_split': ['fs-async', 'declared-write'],
+  'pro_zip_extract': ['fs-async'],
 };

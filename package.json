@@ -40,9 +40,10 @@
   ],
   "scripts": {
     "audit:schema": "tsx scripts/audit-schema.mts",
-    "build": "tsc",
-    "check": "npm run verify:static && npm run verify:registry && npm run build && npm test && npm run verify:package && npm run format:check",
+    "build": "node scripts/clean-dist.mjs && tsc",
+    "check": "npm run verify:static && npm run build && npm test && npm run verify:registry && npm run verify:package && npm run format:check",
     "dev": "tsx src/server.ts",
+    "dump:catalog": "tsx scripts/dump-catalog.mts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.{mts,mjs}\"",
     "gen:mutation-sinks": "tsx scripts/generate-mutation-sinks.mts",

@@ -36,8 +36,32 @@ export const WRITE_SINKS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
       /\b(?:writeFileSync|appendFileSync|createWriteStream|mkdirSync|rmSync|unlinkSync|renameSync|copyFileSync)\s*\(/,
     label: 'fs',
   },
+  {
+    // The `node:fs/promises` sinks, which the pattern above cannot see because it looks for the `Sync`
+    // suffix. Measured: with only the synchronous patterns, `pro_zip_extract`, `pro_pdf_split` and
+    // `pro_fetch_pdf_split_pages` were all classified read-only while writing files, and under
+    // `PRO_FETCH_READ_ONLY=true` `pro_zip_extract` completed with `isError: false` and a file on disk.
+    //
+    // The lookbehind keeps `writeFileSync` and `appendFileSync` out of this entry rather than relying on
+    // the synchronous entry running first, so adding a sync sink cannot be silently double-counted.
+    pattern:
+      /(?<!writeFileSync)(?<!appendFileSync)(?<!createWriteStreamSync)\b(?:writeFile|appendFile|mkdir|rm|unlink|rename|copyFile|createWriteStream|truncate|chmod|chown)\s*\(/,
+    label: 'fs-async',
+  },
   { pattern: /\.saveAs\s*\(|\.screenshot\s*\(|\.pdf\s*\(/, label: 'browser-write' },
   { pattern: /method:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/i, label: 'http-write' },
+  {
+    // A handler that calls the write guard is declaring that it writes.
+    //
+    // This is the general form of the rule, and it is why the list does not need an entry per
+    // filesystem call: a tool that reaches a sink through a module helper cannot be seen by reading its
+    // own body, but it can still say so. Measured: `pro_pdf_split` writes through `pdfSplit`'s helper,
+    // so the `writeFile` pattern never matched it and it stayed classified read-only - while the guard
+    // inside that very handler refused the write. The annotation and the enforcement disagreed about the
+    // same function.
+    pattern: /\bassertWritable\s*\(/,
+    label: 'declared-write',
+  },
 ];
 
 /**
@@ -45,6 +69,20 @@ export const WRITE_SINKS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
  *
  * Brace matching rather than a regex over the whole file, because a handler can contain any string
  * literal - including one with an unbalanced brace - and a regex would stop at the wrong place.
+ *
+ * ## Comments are skipped, because not skipping them loses tools silently
+ *
+ * The first version treated every quote character as a string delimiter, wherever it appeared. A comment
+ * containing an apostrophe - "the tool's name" - opened a string that never closed, so the brace depth
+ * never returned to zero and the tool was dropped from the map entirely.
+ *
+ * Measured: `pro_pdf_split` became invisible because of a sentence in a comment about `pdf_split`. It
+ * was not reported as a failure, it simply stopped being classified, and the classification table then
+ * said it was read-only while the guard inside its own handler refused the write. A scanner that goes
+ * quiet on the file it cannot read is worse than one that errors.
+ *
+ * So `/`, `*`, and the delimiters inside them are skipped, and `missingBodies` reports every tool whose
+ * body could not be located so the gap is a number rather than an absence.
  */
 export function ownHandlerBodies(root = 'src'): Map<string, string> {
   const bodies = new Map<string, string>();
@@ -62,6 +100,21 @@ export function ownHandlerBodies(root = 'src'): Map<string, string> {
     let end = -1;
     for (let index = open; index < text.length; index += 1) {
       const character = text[index] as string;
+      const next = text[index + 1];
+
+      // Line comment. A newline ends it, and an escaped newline continues it.
+      if (quote === undefined && character === '/' && next === '/') {
+        while (index < text.length && text[index] !== '\n') index += 1;
+        continue;
+      }
+      // Block comment.
+      if (quote === undefined && character === '/' && next === '*') {
+        const close = text.indexOf('*/', index + 2);
+        if (close < 0) break;
+        index = close + 1;
+        continue;
+      }
+
       if (quote) {
         if (character === '\\') {
           index += 1;
@@ -83,9 +136,30 @@ export function ownHandlerBodies(root = 'src'): Map<string, string> {
         }
       }
     }
-    if (end > 0 && !bodies.has(nameMatch[1])) bodies.set(nameMatch[1], text.slice(open + 1, end));
+    if (end > 0 && !bodies.has(nameMatch[1])) {
+      bodies.set(nameMatch[1], text.slice(open + 1, end));
+    } else if (end <= 0) {
+      // Recorded rather than skipped. A tool the scanner cannot read is a tool it cannot classify, and
+      // saying nothing about it is how `pro_pdf_split` ended up labelled read-only while refusing to
+      // write.
+      unreadable.push(nameMatch[1]);
+    }
   }
   return bodies;
+}
+
+/**
+ * Tools whose handler body could not be located.
+ *
+ * Filled by the last `ownHandlerBodies` call. A module-level value is a compromise - it is only
+ * meaningful immediately after a scan - and the alternative, threading it through the return type,
+ * changes the signature the generator and the drift test both call. `scanSinkReachingTools` reports it
+ * either way, which is the part that matters: the gap is visible.
+ */
+const unreadable: string[] = [];
+
+export function toolsWithUnreadableBodies(): readonly string[] {
+  return unreadable;
 }
 
 export interface SinkEntry {
@@ -105,13 +179,14 @@ export function scanSinkReachingTools(alreadyMutating: (name: string) => boolean
 } {
   const bodies = ownHandlerBodies();
   const entries: SinkEntry[] = [];
-  const missingBodies: string[] = [];
+  const missingBodies: string[] = [...unreadable];
   for (const [name, body] of bodies) {
     if (alreadyMutating(name)) continue;
     const sinks = WRITE_SINKS.filter((sink) => sink.pattern.test(body)).map((sink) => sink.label);
     if (sinks.length > 0) entries.push({ name, sinks });
   }
   entries.sort((left, right) => left.name.localeCompare(right.name));
+  missingBodies.sort();
   return { entries, missingBodies };
 }
 

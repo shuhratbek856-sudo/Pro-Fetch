@@ -52,10 +52,19 @@ function installProcessGuards(): void {
     console.error('[pro-fetch] unhandled rejection (tool davom etadi):', describe(reason));
   });
   process.on('uncaughtException', (error) => {
-    // An uncaught exception leaves the process in an unknown state, so this one is not survivable.
-    // It is logged in full first because by the time a client notices a dead server, this line is the
-    // only evidence of what happened.
-    console.error('[pro-fetch] uncaught exception (jarohat olindi):', error);
+    // Logged in full first: by the time a client notices a dead server, this line is the only evidence.
+    //
+    // Then the process stops. The comment above this used to say the state is unknown and
+    // "not survivable" while the handler returned and the process carried on - so the comment claimed a
+    // guarantee the code did not make. Continuing past an uncaught exception means continuing with
+    // whatever the broken code left behind: a half-written file, a lock still held, a session map that
+    // no longer matches its browser. Node's default behaviour is to exit, and overriding it needs a
+    // reason; the reason here would have been "we said it was not survivable".
+    //
+    // Exit code 1 rather than 0, so a supervisor can tell a crash from a clean shutdown.
+    console.error('[pro-fetch] uncaught exception - jarayon to‘xtatilmoqda:', error);
+    process.exitCode = 1;
+    process.exit(1);
   });
 }
 

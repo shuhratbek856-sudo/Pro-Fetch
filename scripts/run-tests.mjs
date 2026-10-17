@@ -64,58 +64,22 @@ function runVitest(attempt) {
   });
 }
 
+// The decision lives in its own module because a unit test cannot import this file to reach it:
+// importing here would spawn a nested suite run and, on failure, call process.exit inside the test
+// worker. Measured - "Error: process.exit unexpectedly called with 1" against a file with 0 tests.
+// See scripts/vitest-summary.mjs, and tests/operator-policy-regressions.test.ts for the parsing cases.
+const { evaluateSummary } = await import(new URL('./vitest-summary.mjs', import.meta.url));
+
 function evaluate(output) {
-  // ANSI escapes otherwise split the summary tokens this parses.
-  const plain = output.replace(/\x1b\[[0-9;]*m/g, '');
-
-  const fileMatch = plain.match(/Test Files\s+(?:(\d+)\s+failed\s*\|?\s*)?(?:(\d+)\s+passed\s*)?\((\d+)\)/);
-  const testMatch = plain.match(/Tests\s+(?:(\d+)\s+failed\s*\|?\s*)?(?:(\d+)\s+passed\s*\|?\s*)?\((\d+)\)/);
-
-  const failures = [];
-  const reportedFiles = fileMatch ? Number(fileMatch[3]) : null;
-  const reportedTests = testMatch ? Number(testMatch[3]) : null;
-  const failedFiles = fileMatch && fileMatch[1] ? Number(fileMatch[1]) : 0;
-  const failedTests = testMatch && testMatch[1] ? Number(testMatch[1]) : 0;
-
-  if (reportedFiles === null || reportedTests === null) {
-    failures.push('vitest printed no completion summary, so the run never reached the end');
-  } else {
-    if (failedTests > 0) failures.push(`${failedTests} test(s) failed`);
-    if (failedFiles > 0) failures.push(`${failedFiles} test file(s) failed`);
-
-    // Fewer than expected is the signal this check exists for: a worker that dies mid-run prints a
-    // summary covering only the files that finished.
-    //
-    // *More* than expected is not that. It means the manifest is stale, which happened three times
-    // while categories were being added - each time with every single test passing, and each time
-    // reported as "only 30 of 29 test files completed", a sentence that describes a crash and reads
-    // as one. The two directions are therefore separated, and the stale case rewrites the manifest
-    // from the number the runner just measured instead of failing a green suite.
-    if (reportedFiles < expectedTestFiles) {
-      failures.push(`only ${reportedFiles} of ${expectedTestFiles} test files completed`);
-    }
-    if (reportedTests < expectedTests) {
-      failures.push(`only ${reportedTests} of ${expectedTests} tests completed`);
-    }
-  }
-
-  return {
-    failures,
-    reportedFiles,
-    reportedTests,
-    failedTests,
-    failedFiles,
-    nativeAbort: plain.includes(NATIVE_ABORT),
-  };
+  return evaluateSummary(output, { expectedTestFiles, expectedTests });
 }
 
 /**
  * Record the counts the runner just measured.
  *
- * Writing them here is what makes the manifest stop being a hand-maintained number. The README still
- * has to be updated by hand after this - `verify:registry` compares its prose against the manifest and
- * will say so - but two exact-string edits is a different cost from a red build that looks like a
- * crash, three times over.
+ * Writing them here is what makes the manifest stop being a hand-maintained number. The README badges
+ * are updated alongside it, from the same two measured numbers - see `syncReadmeBadges` for why that is
+ * guarded rather than done with a loose substitution.
  */
 function syncManifestCounts(reportedFiles, reportedTests) {
   const file = path.join(root, 'scripts', 'tool-counts.json');
@@ -126,9 +90,75 @@ function syncManifestCounts(reportedFiles, reportedTests) {
   writeFileSync(file, JSON.stringify(current, null, 2) + '\n', 'utf8');
   console.warn(
     `note: scripts/tool-counts.json testFiles ${expectedTestFiles} -> ${reportedFiles}, ` +
-      `testCount ${expectedTests} -> ${reportedTests}. README dagi test badge'larini yangilang.`,
+      `testCount ${expectedTests} -> ${reportedTests}.`,
   );
   return true;
+}
+
+/**
+ * Updates the test badge in both READMEs, with a guard that refuses rather than guesses.
+ *
+ * `verify:registry` compares the prose against the manifest and fails when they disagree, so a stale
+ * badge breaks `npm run check` on the run *after* the one that measured the new number. That ordering
+ * made this a manual step after every session in which tests were added, and it was done by hand each
+ * time.
+ *
+ * Scripted, but deliberately narrowly: only the two badge shapes are touched, each pattern must match
+ * exactly once, and if it does not, the file is left untouched and the reason is printed. Prose editing
+ * by loose regex damaged this README five times before; a delimited badge with an exact-match
+ * requirement is a different operation, and the guard is what makes it one.
+ */
+function syncReadmeBadges(reportedFiles, reportedTests) {
+  const edits = [
+    {
+      file: 'README.md',
+      // `tests-<n>%20passing` inside a shields.io badge URL.
+      pattern: /(\[\!\[tests\]\(https:\/\/img\.shields\.io\/badge\/tests-)(\d+)(\s*%20passing)/,
+      replacement: (_whole, before, _old, after) => `${before}${reportedTests}${after}`,
+      what: 'badge',
+    },
+    {
+      file: 'README.md',
+      // A table cell: `**741 tests** across 39 files`.
+      pattern: /(\*\*\s*)(\d+)(\s+tests\*\*\s+across\s+)(\d+)(\s+files)/,
+      replacement: (_whole, a, _t, b, _f, c) => `${a}${reportedTests}${b}${reportedFiles}${c}`,
+      what: 'jadval',
+    },
+    {
+      file: 'README.uz.md',
+      pattern: /(!\[tests\]\(https:\/\/img\.shields\.io\/badge\/tests-)(\d+)(\s*%20passing)/,
+      replacement: (_whole, before, _old, after) => `${before}${reportedTests}${after}`,
+      what: 'badge',
+    },
+    {
+      file: 'README.uz.md',
+      pattern: /(\*\*\s*)(\d+)(\s+ta\s+test\*\*)/,
+      replacement: (_whole, a, _t, b) => `${a}${reportedTests}${b}`,
+      what: 'jadval',
+    },
+  ];
+
+  const byFile = new Map();
+  for (const edit of edits) {
+    const entry = byFile.get(edit.file) ?? { text: null, applied: [], refused: [] };
+    if (entry.text === null) entry.text = readFileSync(path.join(root, edit.file), 'utf8');
+    const matches = entry.text.match(new RegExp(edit.pattern.source, 'g')) ?? [];
+    if (matches.length !== 1) {
+      entry.refused.push(`${edit.what}: ${matches.length} ta moslik (aniq 1 ta bo‘lishi kerak edi)`);
+    } else {
+      entry.text = entry.text.replace(edit.pattern, edit.replacement);
+      entry.applied.push(edit.what);
+    }
+    byFile.set(edit.file, entry);
+  }
+
+  for (const [file, entry] of byFile) {
+    if (entry.applied.length > 0) writeFileSync(path.join(root, file), entry.text, 'utf8');
+    const summary = [];
+    if (entry.applied.length > 0) summary.push(`${entry.applied.length} ta yangilandi`);
+    if (entry.refused.length > 0) summary.push(`qo‘lda: ${entry.refused.join('; ')}`);
+    console.warn(`note: ${file} - ${summary.join(', ')}`);
+  }
 }
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -142,6 +172,14 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // describe it. Doing it here rather than by hand means the number cannot lag the code.
     if (result.reportedFiles !== null && result.reportedTests !== null) {
       syncManifestCounts(result.reportedFiles, result.reportedTests);
+      // Reconciled on every green run, not only when the manifest moved.
+      //
+      // It started inside `syncManifestCounts`, behind its early return, so the badge was only fixed in
+      // the run where the count changed - and not in the next one, which is exactly the run that failed.
+      // Measured: the manifest reached 758, the README stayed at 741, and `verify:registry` kept
+      // reporting the disagreement across repeated runs because the code that would have fixed it had
+      // already returned.
+      syncReadmeBadges(result.reportedFiles, result.reportedTests);
     }
     if (result.nativeAbort) {
       console.warn('note: a native teardown abort occurred after every test had already passed.');

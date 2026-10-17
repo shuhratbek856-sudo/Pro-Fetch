@@ -5,6 +5,7 @@ import { readBinarySource } from '../../core/binary-source.js';
 import { outputRoot } from '../../core/output-dir.js';
 import { DEFAULT_MAX_INFLATED_BYTES, entryPath, readEntry, readZip, writeZip, type ZipEntry } from './_zip.js';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { assertWritablePath, isInside, realResolve } from '../../core/path-containment.js';
 import path from 'node:path';
 
 export default defineTool({
@@ -69,11 +70,12 @@ export default defineTool({
     let destination = outputRoot();
     if (outDir) {
       destination = path.resolve(outDir);
-      const root = outputRoot();
-      const relative = path.relative(root, destination);
-      if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
-        return fail(`out_dir chiqish sandboxidan tashqarida: ${destination}\nRuxsat etilgan papka: ${root}`);
-      }
+      // The central containment check, rather than a hand-written comparison here. Two reasons, both
+      // measured: this block compared `path.relative` without resolving symlinks, so a linked
+      // directory inside the root still wrote through it; and it never asked whether writing is
+      // permitted at all, so under `PRO_FETCH_READ_ONLY=true` this tool extracted to disk and answered
+      // `isError: false`.
+      assertWritablePath(destination, 'out_dir', 'arXivni ochish');
     }
     if (extract) await mkdir(destination, { recursive: true });
 
@@ -114,13 +116,26 @@ export default defineTool({
       totalInflated += content.length;
       matched.push({ entry, safe: safe.path, content });
       if (extract) {
-        // One more containment check at the point of writing, against the *resolved* destination.
-        // `safe.path` has no `..` and is relative, so this can only fail if a future change breaks one
-        // of those guarantees - which is exactly when this line should catch it.
+        // Per-entry containment, against the *resolved* destination.
+        //
+        // `safe.path` has no `..` and is relative, which is enough while the destination is a fresh
+        // directory - and a fresh directory was the only case the earlier test covered. Measured:
+        // with a symlink already inside the destination pointing elsewhere, an archive containing
+        // `portal/stolen.txt` wrote `stolen.txt` outside the destination, answered `isError: false`,
+        // and reported one entry extracted successfully.
+        //
+        // `realResolve` follows the link on the deepest ancestor that exists, so this compares
+        // against where the file would actually land rather than where the path spells out.
         const target = path.resolve(destination, safe.path);
-        const relative = path.relative(destination, target);
-        if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
-          return fail(`${entry.name}: tozalangan yo‘l ham chegaradan chiqdi, yozilmadi.`);
+        if (!isInside(realResolve(destination), target)) {
+          return fail(
+            entry.name +
+              ': yoziladigan joy ' +
+              realResolve(target) +
+              ' chiqish papkasi ' +
+              realResolve(destination) +
+              ' dan tashqarida - yozilmadi. Sabab: chiqish papkasining ichida boshqa joyga ko‘rsatuvchi symlink bor.',
+          );
         }
         await mkdir(path.dirname(target), { recursive: true });
         await writeFile(target, content);

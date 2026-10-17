@@ -97,7 +97,8 @@ const CREDENTIAL_NAME =
 const CREDENTIAL_EXEMPT: readonly string[] = [
   // Selects a credential *helper*; without it git cannot ask for one at all.
   'GIT_ASKPASS',
-  // Passphrase-free key path only - it names a file, not the secret in it.
+  // The agent's socket path. It names the socket, not the key inside it; a child that can talk
+  // to the agent can ask it to sign, which is why an operator who does not want that forwards nothing.
   'SSH_AUTH_SOCK',
   // Names a token cache file, never the token.
   'NPM_TOKEN_USERCONFIG',

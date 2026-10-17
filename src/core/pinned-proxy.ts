@@ -51,17 +51,65 @@ import { dispatcherFor } from './http-client.js';
 import { resolveSafeUrl } from './ssrf-guard.js';
 import { withNetworkConcurrency } from './network-gate.js';
 
-/** Resource types served through this process. */
+/**
+ * Every resource type Chromium reports.
+ *
+ * Listed so `DIRECT_RESOURCE_TYPES` can be the *complement* of the proxied set rather than a second
+ * hand-written list. The two were separate, and the test asserted on the exported one while the handler
+ * consulted the private one - so the test would have passed with a handler that proxied images, because
+ * asserting `PROXIED.has('image') === false` is true by construction. One list, derived, cannot drift.
+ */
+export const ALL_RESOURCE_TYPES: readonly string[] = [
+  'document',
+  'stylesheet',
+  'image',
+  'media',
+  'font',
+  'script',
+  'texttrack',
+  'xhr',
+  'fetch',
+  'prefetch',
+  'eventsource',
+  'websocket',
+  'manifest',
+  'other',
+];
+
+/**
+ * Resource types served through this process.
+ *
+ * `texttrack`, `prefetch` and `manifest` are proxied: a manifest is JSON that page script reads, and a
+ * prefetch returns bytes that the page can then consume. `websocket` is never proxied - Playwright's
+ * routing does not see it - so it lands in `DIRECT_RESOURCE_TYPES` and `PROXY_NOTE` says so.
+ *
+ * There is deliberately no `json` member. Measured: Chromium reports a JSON response as `xhr`,
+ * `fetch` or `other`, so a `json` entry here was dead - it made the two sets sum to 15 against a
+ * list of 13 and looked like a type that was handled when nothing handled it by that name.
+ */
 export const PROXIED_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'document',
   'xhr',
   'fetch',
   'script',
   'stylesheet',
-  'json',
   'eventsource',
+  'manifest',
+  'prefetch',
+  'texttrack',
   'other',
 ]);
+
+/**
+ * Resource types Chromium still fetches itself.
+ *
+ * Derived, so adding a proxied type automatically stops it being fetched directly. The three that remain
+ * cannot return a readable body to page script - the canvas is tainted and a stylesheet cannot exfiltrate
+ * a body - so proxying them would cost every page its speed without stopping a leak.
+ */
+export const DIRECT_RESOURCE_TYPES: ReadonlySet<string> = new Set(
+  ALL_RESOURCE_TYPES.filter((type) => !PROXIED_RESOURCE_TYPES.has(type)),
+);
 
 /**
  * Why the excluded types are excluded, for a caller that wants to report the boundary.
@@ -119,6 +167,14 @@ const STRIPPED_REQUEST_HEADERS: ReadonlySet<string> = new Set([
  */
 export interface ProxyOptions {
   resolve?: (rawUrl: string) => Promise<{ url: URL; addresses: Array<{ address: string; family: number }> }>;
+  /**
+   * Byte ceiling for this call.
+   *
+   * Injectable so the streaming behaviour can be tested with a fixture small enough to send. The
+   * production value is 64 MiB, and the thing worth testing is *when* the cap applies - while reading,
+   * not after - which a 64 MiB fixture could not show.
+   */
+  maxBytes?: number;
 }
 
 export interface ProxiedResponse {
@@ -155,6 +211,8 @@ export async function fetchPinnedHop(
   init: { method: string; headers: Record<string, string>; body?: string },
   options: ProxyOptions = {},
 ): Promise<ProxiedResponse> {
+  // Resolved once so every comparison below reads the same number.
+  const limit = options.maxBytes ?? MAX_PROXIED_BODY_BYTES;
   const resolution = await (options.resolve ?? resolveSafeUrl)(rawUrl);
   const dispatcher = dispatcherFor(resolution.url, resolution.addresses);
 
@@ -207,44 +265,76 @@ export async function fetchPinnedHop(
   }
 
   const declared = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > MAX_PROXIED_BODY_BYTES) {
+  if (Number.isFinite(declared) && declared > limit) {
     await response.body?.cancel().catch(() => {});
     return {
       status: response.status,
       headers,
       body: Buffer.alloc(0),
-      cookies: setCookieValues
-        .map((raw) => parseSetCookie(raw, resolution.url.toString()))
-        .filter((entry): entry is ParsedCookie => entry !== null),
+      cookies: parseSetCookies(setCookieValues, resolution.url.toString()),
       url: resolution.url.toString(),
       tooLarge: true,
     };
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.length > MAX_PROXIED_BODY_BYTES) {
+  // Streamed with a running total, never accumulated first.
+  //
+  // This used to be Buffer.from(await response.arrayBuffer()) followed by a length check, which is
+  // the same as no check: a 400 MiB chunked response was fully resident before anything looked at its
+  // size. Measured by the audit - RSS grew by about the size of the body. A response with no
+  // content-length cannot be refused by declaration either, so the only place a limit can be enforced
+  // is while reading.
+  const reader = response.body?.getReader();
+  if (!reader) {
     return {
       status: response.status,
       headers,
       body: Buffer.alloc(0),
-      cookies: setCookieValues
-        .map((raw) => parseSetCookie(raw, resolution.url.toString()))
-        .filter((entry): entry is ParsedCookie => entry !== null),
+      cookies: parseSetCookies(setCookieValues, resolution.url.toString()),
       url: resolution.url.toString(),
-      tooLarge: true,
+      tooLarge: false,
     };
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let tooLarge = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        // Stopped here rather than after the fact. The point of the cap is to bound memory, and a
+        // check that runs once the whole body is resident bounds nothing.
+        tooLarge = true;
+        break;
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    // Cancelled whether or not the limit was hit, so the socket and the upstream read both stop.
+    await reader.cancel().catch(() => {});
   }
 
   return {
     status: response.status,
     headers,
-    body: buffer,
-    cookies: setCookieValues
-      .map((raw) => parseSetCookie(raw, resolution.url.toString()))
-      .filter((entry): entry is ParsedCookie => entry !== null),
+    body: tooLarge ? Buffer.alloc(0) : Buffer.concat(chunks, total),
+    cookies: parseSetCookies(setCookieValues, resolution.url.toString()),
     url: resolution.url.toString(),
-    tooLarge: false,
+    tooLarge,
   };
+}
+
+/**
+ * Parse a whole Set-Cookie list, dropping the ones that do not parse.
+ *
+ * One place, because it was written out three times and a rule written three times is a rule that
+ * can disagree with itself.
+ */
+function parseSetCookies(headers: readonly string[], url: string): ParsedCookie[] {
+  return headers.map((raw) => parseSetCookie(raw, url)).filter((entry): entry is ParsedCookie => entry !== null);
 }
 
 /**
@@ -332,9 +422,6 @@ export interface ProxyTarget {
   addCookies(cookies: ParsedCookie[]): Promise<void>;
   mainFrame(): unknown;
 }
-
-/** Resource types that continue to bypass this process. */
-const DIRECT_RESOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'media', 'font']);
 
 /**
  * Build the route handler that serves a browser's requests from this process.

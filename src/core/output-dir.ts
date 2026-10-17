@@ -66,8 +66,27 @@ export function outputRoot(): string {
  */
 export function writeBoundaryRoot(): string {
   const configured = process.env.PRO_FETCH_OUTPUT_ROOT?.trim();
-  if (configured && configured.length > 0) return path.resolve(configured);
-  return path.resolve(cacheRoot());
+  if (configured && configured.length > 0) {
+    const root = path.resolve(configured);
+    // Defence in depth, and it covers the operator as well as the model: a filesystem root is never a
+    // sensible place for generated files, and accepting one turns any path check into a no-op. Measured
+    // as reachable - PRO_FETCH_CACHE_DIR=/ was accepted by a tool call and moved this boundary with it.
+    if (path.dirname(root) === root) {
+      throw new Error(
+        'PRO_FETCH_OUTPUT_ROOT a fayl tizimi ildizi bo‘lmaydi (' +
+          root +
+          '). Chiqish chegarasi katalog bo‘lishi kerak.',
+      );
+    }
+    return root;
+  }
+  const fallback = path.resolve(cacheRoot());
+  if (path.dirname(fallback) === fallback) {
+    throw new Error(
+      'PRO_FETCH_CACHE_DIR a fayl tizimi ildizi bo‘lmaydi (' + fallback + '). Kesh papkasi katalog bo‘lishi kerak.',
+    );
+  }
+  return fallback;
 }
 
 /** A per-kind subdirectory of the output root, created on demand. */

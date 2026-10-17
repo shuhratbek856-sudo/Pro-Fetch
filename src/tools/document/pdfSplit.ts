@@ -2,6 +2,7 @@ import { defineTool } from '../../core/tool.js';
 import { outputDir } from '../../core/output-dir.js';
 import type { OutputKind } from '../../core/output-dir.js';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { assertWritable } from '../../core/read-only-guard.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { result, fail, jsonBlock } from '../../core/format.js';
@@ -61,6 +62,14 @@ export const pdfSplit = defineTool({
   },
   async handler(input) {
     const p = view(input);
+    // Checked before the document is fetched. Splitting writes one file per page, so under read-only
+    // mode the whole operation is refused rather than half-completed - and refusing it first means a
+    // refused call costs nothing. Measured: with this check after the fetch, the call answered
+    // "Download HTTP 404": it had already paid for a request before discovering it could not finish.
+    //
+    // The check lives in the handler rather than in the tool's name, because `pdf_split` reads as a
+    // read operation and a name cannot tell you whether the call writes.
+    assertWritable('PDF sahifalarini ajratish');
     try {
       const pdf = await PDFDocument.load(await readBinarySource(input, 'PDF split'), { updateMetadata: false });
       const total = pdf.getPageCount();

@@ -23,7 +23,7 @@
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { assertWritable } from './read-only-guard.js';
-import { outputRoot, writeBoundaryRoot } from './output-dir.js';
+import { writeBoundaryRoot } from './output-dir.js';
 
 /** Raised when a path is outside its boundary, or when writing is not permitted at all. */
 export class PathContainmentError extends Error {
@@ -106,19 +106,4 @@ export function assertReadablePath(candidate: string, field: string, effect: str
   if (!isInside(root, candidate)) {
     throw new PathContainmentError(describeEscape(root, candidate, field));
   }
-}
-
-/**
- * Contained *or* already inside the output root.
- *
- * Used where reading from the workspace and writing into the output tree are both legitimate, such as a
- * conversion that takes a source and produces a file.
- */
-export function assertReadableOrOutputPath(candidate: string, field: string, effect: string): void {
-  if (isInside(workspaceRoot(), candidate) || isInside(outputRoot(), candidate)) return;
-  throw new PathContainmentError(
-    `${field} nafaqat ish papkasida, nafaqat chiqish papkasida emas: ${realResolve(candidate)}\n` +
-      `Ish papkasi: ${realResolve(workspaceRoot())}\n` +
-      `Chiqish papkasi: ${realResolve(outputRoot())}`,
-  );
 }

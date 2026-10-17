@@ -8,7 +8,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import {
+  ALL_RESOURCE_TYPES,
   createProxyRouteHandler,
+  DIRECT_RESOURCE_TYPES,
   PROXIED_RESOURCE_TYPES,
   PROXY_NOTE,
   parseSetCookie,
@@ -206,9 +208,41 @@ describe('what the proxy does not cover is stated, not implied', () => {
     expect(PROXIED_RESOURCE_TYPES.has('document')).toBe(true);
     expect(PROXIED_RESOURCE_TYPES.has('xhr')).toBe(true);
     expect(PROXIED_RESOURCE_TYPES.has('script')).toBe(true);
-    for (const excluded of ['image', 'media', 'font']) {
-      expect(PROXIED_RESOURCE_TYPES.has(excluded), excluded).toBe(false);
+  });
+
+  it('DIRECT_RESOURCE_TYPES is what the handler actually consults', () => {
+    // Asserting only that PROXIED excludes 'image' proves nothing: the handler consulted a *separate*
+    // hand-written list, so a handler that proxied images would still have passed. This asserts the list
+    // the handler uses, and that the two sets cannot overlap.
+    expect([...DIRECT_RESOURCE_TYPES].sort()).toEqual(['font', 'image', 'media', 'websocket']);
+    for (const type of DIRECT_RESOURCE_TYPES) {
+      expect(PROXIED_RESOURCE_TYPES.has(type), type).toBe(false);
     }
+    for (const type of PROXIED_RESOURCE_TYPES) {
+      expect(DIRECT_RESOURCE_TYPES.has(type), type).toBe(false);
+    }
+  });
+
+  it('every type Chromium reports lands in exactly one set', () => {
+    // A first version asserted `4 + 11 === 13`, which failed at 15 and exposed that 'json' was listed as
+    // a proxied resource type when Chromium never reports one: a JSON response arrives as `xhr`, `fetch`
+    // or `other`. A dead member is worse than a missing one, because it looks like coverage.
+    const reported = new Set(ALL_RESOURCE_TYPES);
+    for (const type of reported) {
+      const inProxied = PROXIED_RESOURCE_TYPES.has(type);
+      const inDirect = DIRECT_RESOURCE_TYPES.has(type);
+      expect(inProxied !== inDirect, type + ' is in both, or in neither').toBe(true);
+    }
+    // Nothing outside Chromium's own vocabulary is claimed, or the sum stops meaning anything.
+    for (const type of PROXIED_RESOURCE_TYPES) {
+      expect(reported.has(type), type + ' is never reported by Chromium').toBe(true);
+    }
+  });
+
+  it('websocket is listed as direct because routing never sees it', () => {
+    // Not a choice - Playwright does not route websocket upgrades. It is listed so the set a caller reads
+    // is complete rather than quietly missing a type.
+    expect(DIRECT_RESOURCE_TYPES.has('websocket')).toBe(true);
   });
 
   it('the note says so in words a caller can read', () => {
