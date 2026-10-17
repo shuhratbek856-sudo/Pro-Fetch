@@ -26,7 +26,7 @@ import { mkdirSync } from 'node:fs';
  * disagree about where output belongs.
  */
 
-export const OUTPUT_KINDS = ['img-out', 'pdf-out', 'bin-out', 'geo-out'] as const;
+export const OUTPUT_KINDS = ['img-out', 'pdf-out', 'bin-out', 'geo-out', 'zip-out'] as const;
 export type OutputKind = (typeof OUTPUT_KINDS)[number];
 
 function cacheRoot(): string {

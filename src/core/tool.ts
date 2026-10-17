@@ -50,6 +50,7 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   // in `tests/schema-narrowing.test.ts` caught. The vocabulary below is empty on purpose: these tools
   // read only the properties they declare, so there is nothing to add and nothing to strip.
   'time',
+  'zip',
   'data',
   'admin',
   'http',
@@ -334,6 +335,9 @@ const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   // `years`, `from`, `to`, `units`, `sum`, `show_units`, `dates_only` - and none of those come from the
   // shared vocabulary. Listing a property here would advertise an argument that does nothing.
   time: [],
+  // The same reasoning for zip: `pro_zip_*` declares its own inputs (`url`, `base64`, `files`,
+  // `query`, ...) and reads nothing from the shared vocabulary.
+  zip: [],
 };
 const RESEARCH_TOOL_PROPERTIES: Record<string, readonly string[]> = {
   pro_research_research_plan: ['query', 'topic', 'sources', 'items', 'documents'],
