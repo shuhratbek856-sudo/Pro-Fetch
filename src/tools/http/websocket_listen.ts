@@ -3,6 +3,7 @@ import { fetchWithOptions, traceRedirects, downloadToFile } from '../../core/htt
 import { result, md, jsonBlock, fail } from '../../core/format.js';
 import { clipToTokens } from '../../core/chunker.js';
 import { cacheDir } from '../github/_env.js';
+import { assertSafeWebSocketUrl } from '../../core/ssrf-guard.js';
 import path from 'node:path';
 
 /**
@@ -41,6 +42,15 @@ export default defineTool({
     }
     if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
       return fail(`WebSocket uchun ws:// yoki wss:// kerak, berilgan: ${parsed.protocol}`);
+    }
+
+    // The SSRF guard is HTTP-shaped and rejects ws/wss, so `new WebSocket(target)` used to connect to
+    // anything — ws://localhost:6379, ws://169.254.169.254 — and stream the frames back. Run the same
+    // host / private-IP / DNS checks, allowing the WebSocket schemes.
+    try {
+      await assertSafeWebSocketUrl(target);
+    } catch (error) {
+      return fail((error as Error).message);
     }
 
     // A hostile `timeout_ms` must not pin a socket open indefinitely, and `max_messages` must be a
