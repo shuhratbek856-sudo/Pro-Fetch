@@ -59,6 +59,11 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'admin',
   'http',
   'docs',
+  // `sql` arrived without this too, for the same reason `qr` did: nine schemas with
+  // `additionalProperties: undefined`, caught by the registry-wide assertion in
+  // `tests/schema-narrowing.test.ts` on the first run after the category was added. Measured across all
+  // ten SQL tools: 0 unread properties, so there is nothing to add and nothing to strip.
+  'sql',
   // `qr` arrived without this and its nine schemas stayed open, which the registry-wide assertion in
   // `tests/schema-narrowing.test.ts` caught on the first run after the category was added. Measured:
   // `pro_qr_encode`, `pro_qr_decode`, `pro_qr_capacity`, `pro_qr_rs_encode`, `pro_qr_rs_decode`,

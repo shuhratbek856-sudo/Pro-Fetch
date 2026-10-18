@@ -51,6 +51,7 @@ import './tools/color/index.js';
 import './tools/time/index.js';
 import './tools/zip/index.js';
 import './tools/qr/index.js';
+import './tools/sql/index.js';
 import './tools/opendata/index.js';
 import './tools/units/index.js';
 import './tools/phonetics/index.js';
