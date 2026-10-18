@@ -1,9 +1,9 @@
 import { ghSchema } from './_schema.js';
 import { defineTool } from '../../core/tool.js';
-import { result, fail } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
-import { renderPipeline, runParallel, runStep } from '../../core/composite.js';
-import { detailMode, renderBudgeted } from '../../core/composite-budget.js';
+import { fail } from '../../core/format.js';
+import { bool, num, strOrEmpty, view } from '../../core/input.js';
+import { runParallel } from '../../core/composite.js';
+import { budgetedResult, detailMode } from '../../core/composite-budget.js';
 
 /**
  * pro_repo_audit — Complete repository report in one call
@@ -17,11 +17,11 @@ export default defineTool({
   name: 'pro_repo_audit',
   description:
     'Full GitHub repository audit in one call: metadata, README, directory structure, languages, ' +
-    'license, contributors, commit activity, open issues and pull requests, releases, topics, ' +
-    'CI status and security advisories. Use this instead of calling a dozen GitHub tools by hand.',
+    'license, contributors, commit activity, open issues and pull requests, releases, topics and ' +
+    'optionally CI status. Use this instead of calling a dozen GitHub tools by hand.',
   category: 'github',
   inputSchema: {
-    ...ghSchema(['owner', 'repo', 'repository', 'detail', 'include_ci', 'include_security'], []),
+    ...ghSchema(['owner', 'repo', 'repository', 'detail', 'include_ci'], []),
     // Either spelling addresses the repository, so `required: ['owner','repo']` rejected the
     // `repository` that this tool's own description invites. An `anyOf` states the choice where
     // `required` would demand both.
@@ -38,47 +38,48 @@ export default defineTool({
     const ownerInput = strOrEmpty(p, 'owner').trim();
     const repoInput = strOrEmpty(p, 'repo').trim();
     const combined = strOrEmpty(p, 'repository').trim() || (repoInput.includes('/') ? repoInput : '');
-    const [owner, repo] = combined ? combined.split('/') : [ownerInput, repoInput];
-    if (!owner || !repo) {
+    // `combined.split('/')` on `owner/a/b` silently produced owner/`a` and dropped `b`; take the first
+    // segment as owner and the remainder as repo so a malformed specifier cannot point at a different
+    // repository than the caller asked for.
+    let owner = ownerInput;
+    let repo = repoInput;
+    if (combined) {
+      const slash = combined.indexOf('/');
+      owner = slash === -1 ? '' : combined.slice(0, slash);
+      repo = slash === -1 ? '' : combined.slice(slash + 1);
+    }
+    if (!owner || !repo || repo.includes('/')) {
       return fail('repository talab qilinadi: "owner/reko" shaklida, yoki owner va repo alohida.');
     }
     const base = { owner, repo };
 
+    // Argument names must match each target's own schema. These tools declare `per_page` (or nothing),
+    // not `limit`/`max_depth`, and run with `additionalProperties: false`, so an unknown key is rejected
+    // by `assertNoUnknownArguments` before the handler runs — measured at 8/15 steps failing every call.
     const steps: Array<[string, string, Record<string, unknown>]> = [
       ['Repository info', 'pro_gh_repo_info', base],
       ['README', 'pro_gh_repo_readme', base],
-      ['Structure summary', 'pro_gh_repo_structure_summary', { ...base, max_depth: 3 }],
+      ['Structure summary', 'pro_gh_repo_structure_summary', base],
       ['Languages', 'pro_gh_repo_languages', base],
       ['License', 'pro_gh_repo_license', base],
       ['Topics', 'pro_gh_repo_topics', base],
-      ['Contributors', 'pro_gh_repo_contributors', { ...base, limit: 20 }],
+      ['Contributors', 'pro_gh_repo_contributors', { ...base, per_page: 20 }],
       ['Commit activity', 'pro_gh_repo_commit_activity', base],
-      ['Open issues', 'pro_gh_issues_list', { ...base, state: 'open', limit: 20 }],
-      ['Open pull requests', 'pro_gh_prs_list', { ...base, state: 'open', limit: 20 }],
-      ['Releases', 'pro_gh_releases_list', { ...base, limit: 10 }],
-      ['Branches', 'pro_gh_branches_list', { ...base, limit: 20 }],
-      ['Tags', 'pro_gh_tags_list', { ...base, limit: 20 }],
+      ['Open issues', 'pro_gh_issues_list', { ...base, state: 'open', per_page: 20 }],
+      ['Open pull requests', 'pro_gh_prs_list', { ...base, state: 'open', per_page: 20 }],
+      ['Releases', 'pro_gh_releases_list', { ...base, per_page: 10 }],
+      ['Branches', 'pro_gh_branches_list', base],
+      ['Tags', 'pro_gh_tags_list', base],
       ['Community activity', 'pro_gh_repo_stats', base],
       ['Fork network', 'pro_gh_repo_fork_network', base],
     ];
 
-    if (p.include_ci === true) {
+    if (bool(p, 'include_ci')) {
       steps.push(['Recent CI runs', 'pro_gh_actions_runs', base]);
-    }
-    if (p.include_security === true) {
-      steps.push(
-        // Both were `pro_sec_*`, which is not in the registry: the security pack prefixes with
-        // `pro_fetch_security_`. The advisories step was also pointed at the wrong tool for the job -
-        // `pro_fetch_security_package_advisories` requires `package` *and* `version`, which a
-        // repository does not have. `pro_fetch_security_dependency_files` reads the repo's actual
-        // manifests, which is what an audit is asking for.
-        ['Dependency files', 'pro_fetch_security_dependency_files', { path: '.', recursive: true }],
-        ['Secret scan', 'pro_fetch_security_secret_scan_files', { path: '.', limit: 20 }],
-      );
     }
 
     const outcomes = await runParallel(steps);
-    return result(renderBudgeted(`Repository audit: ${owner}/${repo}`, outcomes, detailMode(p.detail)));
+    return budgetedResult(`Repository audit: ${owner}/${repo}`, outcomes, detailMode(p.detail));
   },
 });
 
@@ -107,7 +108,12 @@ export const PR_DEEP_TOOL = defineTool({
     const repository = strOrEmpty(p, 'repository').trim();
     const prNumber = num(p, 'pr_number', 0, 1, 1_000_000);
     if (!repository || prNumber <= 0) return fail('repository va pr_number talab qilinadi.');
-    const [owner, repo] = repository.includes('/') ? repository.split('/') : ['', repository];
+    const slash = repository.indexOf('/');
+    const owner = slash === -1 ? '' : repository.slice(0, slash);
+    const repo = slash === -1 ? '' : repository.slice(slash + 1);
+    if (!owner || !repo || repo.includes('/')) {
+      return fail('repository "owner/reko" ko‘rinishida bo‘lishi kerak.');
+    }
     const base = { owner, repo, pr_number: prNumber };
 
     const steps: Array<[string, string, Record<string, unknown>]> = [
@@ -118,9 +124,9 @@ export const PR_DEEP_TOOL = defineTool({
       ['Changed files', 'pro_gh_pr_files', base],
       ['Related issue timeline', 'pro_gh_issue_timeline', { owner, repo, issue_number: prNumber }],
     ];
-    if (p.include_diff === true) steps.push(['Diff', 'pro_gh_pr_diff', base]);
+    if (bool(p, 'include_diff')) steps.push(['Diff', 'pro_gh_pr_diff', base]);
 
     const outcomes = await runParallel(steps);
-    return result(renderBudgeted(`PR #${prNumber} · ${repository}`, outcomes, detailMode(p.detail)));
+    return budgetedResult(`PR #${prNumber} · ${repository}`, outcomes, detailMode(p.detail));
   },
 });
