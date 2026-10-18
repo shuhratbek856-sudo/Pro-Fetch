@@ -538,14 +538,38 @@ export function isInsufficientMaterial(position: Position): boolean {
   return position.squares.every((piece) => piece === '' || piece === 'K' || piece === 'k');
 }
 
-/** Count leaf nodes of the move tree. */
-export function perft(position: Position, depth: number): number {
-  if (depth <= 0) return 1;
-  let total = 0;
-  for (const move of legalMoves(position)) {
-    total += depth === 1 ? 1 : perft(applyMove(position, move), depth - 1);
+/** Raised when perft would exceed its node budget, so the caller can report a truncated count. */
+export class PerftLimitError extends Error {
+  readonly code = 'PERFT_LIMIT';
+  constructor(message = 'perft tugun chegarasiga yetdi') {
+    super(message);
+    this.name = 'PerftLimitError';
   }
-  return total;
+}
+
+/**
+ * Count leaf nodes of the move tree.
+ *
+ * `maxNodes` bounds the work: a depth-5 perft on a busy midgame position reaches hundreds of millions of
+ * leaves, and because handlers run synchronously on a single-threaded stdio server the per-tool watchdog
+ * cannot preempt CPU-bound work — the whole server would freeze for every concurrent request. When the
+ * budget is exhausted a PerftLimitError is thrown so the caller can report a truncated result instead.
+ * The default is unbounded, so exact-count callers and tests are unaffected.
+ */
+export function perft(position: Position, depth: number, maxNodes = Number.POSITIVE_INFINITY): number {
+  const budget = { remaining: maxNodes };
+  const count = (pos: Position, d: number): number => {
+    if (d <= 0) return 1;
+    let total = 0;
+    for (const move of legalMoves(pos)) {
+      if (budget.remaining <= 0) throw new PerftLimitError();
+      const leaves = d === 1 ? 1 : count(applyMove(pos, move), d - 1);
+      total += leaves;
+      budget.remaining -= leaves;
+    }
+    return total;
+  };
+  return count(position, depth);
 }
 
 function checkSuffix(position: Position, move: Move): string {

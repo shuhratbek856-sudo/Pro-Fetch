@@ -30,7 +30,10 @@ export default defineTool({
     } catch (e) {
       return fail('Regex xato: ' + (e as Error).message);
     }
-    const matches = fr.text.match(re) ?? [];
+    // Bound the scanned text: a catastrophic backtracking pattern still cannot grind over an
+    // arbitrarily large document (handlers run synchronously, so a hang freezes every request).
+    const haystack = fr.text.length > 200_000 ? fr.text.slice(0, 200_000) : fr.text;
+    const matches = haystack.match(re) ?? [];
     if (!matches.length) return fail('Moslama topilmadi');
     return md(
       '# Regex: ' +

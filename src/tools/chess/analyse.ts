@@ -9,6 +9,7 @@ import {
   legalMoves,
   parseFen,
   perft,
+  PerftLimitError,
   statusOf,
   toFen,
   toSan,
@@ -16,6 +17,11 @@ import {
 } from './_chess.js';
 
 const MAX_PERFT_DEPTH = 5;
+// A depth-5 perft on a busy position can reach hundreds of millions of leaves; because handlers run
+// synchronously the per-tool watchdog cannot preempt that, so bound the work and report a truncated
+// count instead of freezing every concurrent request. Sized so the start position at depth 5
+// (4,865,609 leaves) still completes.
+const PERFT_NODE_BUDGET = 6_000_000;
 
 function play(position: Position, san: string): { position: Position; san: string } {
   const move = findMove(position, san);
@@ -105,7 +111,18 @@ export default defineTool({
       if (depth > MAX_PERFT_DEPTH) {
         result.perft_note = `chuqurlik ${MAX_PERFT_DEPTH} ga qisqartirildi; chuqurroq hisob sekin.`;
       }
-      result.perft = { depth: capped, nodes: perft(position, capped) };
+      try {
+        result.perft = { depth: capped, nodes: perft(position, capped, PERFT_NODE_BUDGET) };
+      } catch (error) {
+        if (error instanceof PerftLimitError) {
+          result.perft = { depth: capped, nodes: null, truncated: true };
+          result.perft_note =
+            (result.perft_note ? result.perft_note + ' ' : '') +
+            `hisob ${PERFT_NODE_BUDGET.toLocaleString('en-US')} tugun chegarasida to‘xtatildi (pozitsiya juda keng).`;
+        } else {
+          throw error;
+        }
+      }
     }
 
     if (lineLength > 1 && legal.length > 0) {
