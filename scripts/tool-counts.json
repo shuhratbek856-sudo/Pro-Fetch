@@ -1,52 +1,53 @@
 {
-  "total": 652,
+  "total": 661,
   "categories": {
-    "http": 19,
-    "convert": 30,
-    "search": 20,
-    "research": 26,
     "github": 49,
-    "crawl": 22,
+    "browser": 41,
+    "convert": 30,
+    "collaboration": 28,
+    "research": 26,
     "data": 26,
+    "codehost": 25,
     "extract": 24,
+    "admin": 24,
+    "devops": 24,
+    "database": 24,
+    "security": 24,
+    "git": 23,
+    "crawl": 22,
+    "search": 20,
+    "http": 19,
+    "knowledge": 18,
+    "productivity": 18,
+    "storage": 16,
     "media": 15,
     "archive": 15,
-    "admin": 24,
+    "docs": 15,
+    "document": 13,
     "auth": 12,
     "apitest": 12,
-    "docs": 15,
-    "browser": 41,
+    "i18n": 12,
     "monitoring": 10,
-    "llm": 5,
     "encoding": 9,
+    "qr": 9,
+    "imageproc": 9,
     "schema": 6,
-    "document": 13,
-    "binary": 4,
-    "geo_data": 4,
-    "color": 3,
+    "llm": 5,
     "time": 5,
     "zip": 5,
     "opendata": 5,
     "units": 5,
-    "phonetics": 3,
+    "binary": 4,
+    "geo_data": 4,
     "chess": 4,
-    "imageproc": 9,
-    "i18n": 12,
-    "git": 23,
-    "codehost": 25,
-    "devops": 24,
-    "database": 24,
-    "security": 24,
-    "knowledge": 18,
-    "collaboration": 28,
-    "storage": 16,
-    "productivity": 18
+    "color": 3,
+    "phonetics": 3
   },
   "profiles": {
     "smart": 11,
     "minimal": 73,
     "standard": 178,
-    "full": 652
+    "full": 661
   },
   "smartComposites": [
     "pro_capability_call",
@@ -61,8 +62,8 @@
     "pro_data_pipeline",
     "pro_synthesize"
   ],
-  "testFiles": 40,
-  "testCount": 763,
+  "testFiles": 41,
+  "testCount": 838,
   "coverageComposites": {
     "pro_workspace_ops": {
       "categories": [
@@ -83,6 +84,6 @@
       "purpose": "One call for hosted-provider operations across the four MAX packs that had no composite."
     }
   },
-  "full": 652,
-  "categoryCount": 40
+  "full": 661,
+  "categoryCount": 41
 }

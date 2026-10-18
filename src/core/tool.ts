@@ -59,6 +59,16 @@ const CATEGORY_SCHEMA_CATEGORIES = new Set([
   'admin',
   'http',
   'docs',
+  // `qr` arrived without this and its nine schemas stayed open, which the registry-wide assertion in
+  // `tests/schema-narrowing.test.ts` caught on the first run after the category was added. Measured:
+  // `pro_qr_encode`, `pro_qr_decode`, `pro_qr_capacity`, `pro_qr_rs_encode`, `pro_qr_rs_decode`,
+  // `pro_qr_field`, `pro_qr_format_info`, `pro_qr_layout` and `pro_qr_plan` all reported
+  // `additionalProperties: undefined`.
+  //
+  // No vocabulary is declared, which is the point: each of the nine tools reads only what it declares,
+  // measured by the audit's `undeclaredReads` arm — 0 unread properties across all nine. So there is
+  // nothing to add and nothing to strip.
+  'qr',
 ]);
 const CATEGORY_SCHEMA_PROPERTIES: Record<string, readonly string[]> = {
   apitest: [
