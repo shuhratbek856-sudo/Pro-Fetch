@@ -362,7 +362,13 @@ export async function runIntegrationTool(toolName: string, input: Input): Promis
   if (name === 'json_schema_infer') {
     const source = str(input, 'json', 'sample', 'text', 'content');
     if (!source) return result('Namuna JSON yoki sample parametri kerak.');
-    return result(JSON.stringify(inferSchema(JSON.parse(source)), null, 2));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(source);
+    } catch (error) {
+      return result('JSON ajratib bo‘lmadi: ' + (error as Error).message);
+    }
+    return result(JSON.stringify(inferSchema(parsed), null, 2));
   }
   if (name.startsWith('openapi_') || name === 'swagger_validate' || name === 'api_diff') {
     if (name === 'api_diff') {

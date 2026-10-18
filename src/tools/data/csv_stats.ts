@@ -33,8 +33,8 @@ export default defineTool({
       if (nums.length)
         out[h] = {
           count: nums.length,
-          min: Math.min(...nums),
-          max: Math.max(...nums),
+          min: nums.reduce((a, b) => (b < a ? b : a), nums[0]),
+          max: nums.reduce((a, b) => (b > a ? b : a), nums[0]),
           mean: Number((nums.reduce((a: number, b: number) => a + b, 0) / nums.length).toFixed(2)),
         };
       else out[h] = { count: body.length, unique: new Set(body.map((r: string[]) => r[i])).size };

@@ -103,7 +103,7 @@ export const PROVIDERS: Record<LlmProvider, LlmProviderSpec> = {
 /** Resolve a provider name, or explain what is wrong with it. */
 export function resolveProvider(name: string): LlmProviderSpec {
   const key = name.trim().toLowerCase();
-  const spec = PROVIDERS[key as LlmProvider];
+  const spec = Object.prototype.hasOwnProperty.call(PROVIDERS, key) ? PROVIDERS[key as LlmProvider] : undefined;
   if (!spec) {
     throw new Error(`Noma'lum provider: "${name}". Mumkin bo'lganlar: ${Object.keys(PROVIDERS).join(', ')}.`);
   }

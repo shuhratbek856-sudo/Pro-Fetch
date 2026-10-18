@@ -20,7 +20,8 @@ export default defineTool({
   async handler(input) {
     const p = view(input);
     const r = await ghApi('/repos/' + p.owner + '/' + p.repo + '/contents/.gitmodules', 'application/vnd.github.raw');
-    if (r.status >= 400) return result("Submodul yo'q (.gitmodules topilmadi)");
+    if (r.status === 404) return result("Submodul yo'q (.gitmodules topilmadi)");
+    if (r.status >= 400) return ghErr(r.status, r.json);
     const lines = r.text.split('\n').filter((l: string) => l.includes('path =') || l.includes('url ='));
     return md('# .gitmodules\n\n' + lines.join('\n'));
   },

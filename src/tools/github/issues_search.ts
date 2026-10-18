@@ -24,7 +24,7 @@ export default defineTool({
     if (!p.query) return fail('query kerak');
     const q = encodeURIComponent(buildIssueQuery(String(p.owner), String(p.repo), String(p.query)));
     const r = await ghApiPaginated(
-      '/search/issues?q=' + q + '&per_page=' + Math.max(1, Math.min(100, Number(p.per_page ?? 15))),
+      '/search/issues?q=' + q + '&per_page=' + Math.max(1, Math.min(100, Number(p.per_page) || 15)),
       typeof p.max_pages === 'number' ? p.max_pages : undefined,
     );
     if (r.status >= 400) return ghErr(r.status, r.json);

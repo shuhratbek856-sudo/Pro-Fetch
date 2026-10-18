@@ -31,7 +31,8 @@ function parseTsv(text: string, hasHeader: boolean): Array<Record<string, string
   }
   const populated = rows.filter((values) => values.some((value) => value.length > 0));
   if (!populated.length) return [];
-  const width = Math.max(...populated.map((values) => values.length));
+  // reduce, not Math.max(...spread): spreading >~125k rows throws RangeError and fails the whole file.
+  const width = populated.reduce((max, values) => Math.max(max, values.length), 0);
   const sourceHeaders = hasHeader ? populated.shift()! : [];
   const duplicates = new Map<string, number>();
   const headers = Array.from({ length: width }, (_, index) => {

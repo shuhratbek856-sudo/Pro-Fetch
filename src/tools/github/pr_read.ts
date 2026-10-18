@@ -30,11 +30,11 @@ export default defineTool({
         '\n\n**Holat:** ' +
         r.json.state +
         ' | **Muallif:** ' +
-        r.json.user.login +
+        (r.json.user?.login ?? '(o‘chirilgan)') +
         ' | **Branch:** ' +
-        r.json.head.ref +
+        (r.json.head?.ref ?? '?') +
         ' → ' +
-        r.json.base.ref +
+        (r.json.base?.ref ?? '?') +
         '\n\n' +
         (r.json.body ?? ''),
     );

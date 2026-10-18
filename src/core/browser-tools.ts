@@ -341,6 +341,8 @@ export async function runBrowserAction(input: Input): Promise<ToolResult> {
 
   const session = getSession(id);
   const context = session.browser.contexts()[0];
+  if (!context)
+    throw new Error(`Session '${id}' konteksti mavjud emas (barcha sahifalar yopilgan). Avval browser_open ishlating.`);
   const selector = string(input, 'selector');
   const timeout = Number(input.timeout_ms ?? 20000);
   const evalSafe = async <T>(fn: () => T | Promise<T>): Promise<T> => {
@@ -503,8 +505,15 @@ export async function runBrowserAction(input: Input): Promise<ToolResult> {
       const downloadPromise = session.page.waitForEvent('download', { timeout: Number(input.timeout_ms ?? 30000) });
       if (selector) await session.page.locator(selector).click({ timeout: Number(input.timeout_ms ?? 10000) });
       const download = await downloadPromise;
-      const target = savePath || (await download.path()).toString();
-      if (savePath) await download.saveAs(savePath);
+      let target: string;
+      if (savePath) {
+        await download.saveAs(savePath);
+        target = savePath;
+      } else {
+        const p = await download.path();
+        if (!p) throw new Error('Yuklab olish tugamadi (download yo‘q qilindi yoki muvaffaqiyatsiz).');
+        target = p;
+      }
       return result(JSON.stringify({ suggested: download.suggestedFilename(), saved_to: target }, null, 2));
     }
     case 'clear_cookies':

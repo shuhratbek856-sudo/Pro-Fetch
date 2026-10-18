@@ -36,7 +36,8 @@ function parseCsv(text: string, delimiter: string, hasHeader: boolean): Array<Re
   }
   const nonEmptyRows = rows.filter((values) => values.some((value) => value.length > 0));
   if (!nonEmptyRows.length) return [];
-  const width = Math.max(...nonEmptyRows.map((values) => values.length));
+  // reduce, not Math.max(...spread): spreading >~125k rows throws RangeError and fails the whole file.
+  const width = nonEmptyRows.reduce((max, values) => Math.max(max, values.length), 0);
   const sourceHeaders = hasHeader ? nonEmptyRows.shift()! : [];
   const headers: string[] = [];
   const seen = new Map<string, number>();

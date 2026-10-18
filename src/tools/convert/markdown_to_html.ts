@@ -24,7 +24,13 @@ export default defineTool({
   async handler(input) {
     const p = view(input);
     const md = await readTextSource(input, 'Markdown to HTML');
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const esc = (s: string) =>
+      s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     const lines = md.split(/\r?\n/);
     const out: string[] = [];
     let inList = false;
@@ -32,7 +38,11 @@ export default defineTool({
       esc(s)
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
+        .replace(/\[(.+?)\]\((.+?)\)/g, (_m, text: string, href: string) => {
+          // Only allow schemes that cannot execute: absolute http(s)/mailto or a relative path/anchor.
+          const safe = /^(?:https?:|mailto:|#|\/|\.)/i.test(href.trim()) ? href : '#';
+          return `<a href="${safe}">${text}</a>`;
+        });
     for (const line of lines) {
       const h = line.match(/^(#{1,6})\s+(.*)$/);
       const li = line.match(/^\s*[-*]\s+(.*)$/);
