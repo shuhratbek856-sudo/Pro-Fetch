@@ -139,8 +139,31 @@ export function assertRequiredPresent(
     );
   }
 
-  if (alternatives && alternatives.length > 0) return;
   if (isNestedCallTool(tool)) return;
+
+  // A schema can declare both `required` and `anyOf`. JSON-Schema then demands the object satisfy each,
+  // so enforce that at least one anyOf branch is present before falling through to the always-required
+  // keys below. The old code returned the moment `anyOf` existed, silently dropping the `required`
+  // enforcement for tools that declared both.
+  if (alternatives && alternatives.length > 0) {
+    const satisfied = alternatives.some((branch) =>
+      (Array.isArray(branch?.required) ? (branch.required as string[]) : []).some(
+        (key) => input[key] !== undefined && input[key] !== null && String(input[key]).trim() !== '',
+      ),
+    );
+    if (!satisfied) {
+      const options = [
+        ...new Set(
+          alternatives.map((branch) => (Array.isArray(branch?.required) ? (branch.required as string[]) : [])).flat(),
+        ),
+      ];
+      throw new RequiredArgumentError(
+        options.length > 0
+          ? `majburiy argumentlardan kamida bittasi kerak: ${options.join(' yoki ')}.`
+          : 'majburiy argumentlar berilmadi.',
+      );
+    }
+  }
 
   const missing: string[] = [];
   for (const key of required) {

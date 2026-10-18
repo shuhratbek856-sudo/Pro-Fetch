@@ -59,8 +59,10 @@ function cleanUrl(raw: string): string {
  * Extract the first URL mentioned in the task, if any.
  */
 export function inferUrl(task: string): string | undefined {
+  URL_PATTERN.lastIndex = 0;
   const match = URL_PATTERN.exec(task);
   if (match) return cleanUrl(match[0]);
+  BARE_HOST_PATTERN.lastIndex = 0;
   const bare = BARE_HOST_PATTERN.exec(task);
   if (bare) return 'https://' + bare[1];
   return undefined;
@@ -70,6 +72,7 @@ export function inferUrl(task: string): string | undefined {
  * Extract an email address from the task, if any.
  */
 export function inferEmail(task: string): string | undefined {
+  EMAIL_PATTERN.lastIndex = 0;
   const match = EMAIL_PATTERN.exec(task);
   return match ? match[0] : undefined;
 }
