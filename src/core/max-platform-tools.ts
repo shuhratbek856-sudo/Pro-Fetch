@@ -156,6 +156,23 @@ const P: Record<string, { type: string; description: string; enum?: string[]; [k
   status: { type: 'string', description: 'Holat' },
   description: { type: 'string', description: 'Tavsif' },
   repository: { type: 'string', description: 'owner/repo' },
+  // Scopes `npm audit` and `npm outdated` to the whole machine instead of `cwd`, by appending
+  // `--global` to the command rather than substituting the flag list, so the default is unchanged.
+  //
+  // Declared `boolean` because that is what the handler checks first. Without an entry here `schemas()`
+  // fell back to `{ type: 'string', description: 'global' }`, which told a caller nothing: the declared
+  // type disagreed with the primary branch of the check, and the description restated the property name.
+  global: {
+    type: 'boolean',
+    description:
+      'true bo‘lsa butun mashina bo‘ylab tekshiriladi (npm --global). Berilmasa faqat `cwd` ichida. ' +
+      'Bu read-only: hech narsani o‘zgartirmaydi, faqat ko‘rish sohasini kengaytiradi.',
+  },
+  // S3 `list` key prefix, so a caller can narrow a bucket instead of listing everything.
+  prefix: {
+    type: 'string',
+    description: 'Kalit prefiksi; berilmasa butun bucket ro‘yxatlanadi',
+  },
 };
 const result = (value: unknown): ToolResult => ({
   content: [

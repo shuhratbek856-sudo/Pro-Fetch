@@ -238,7 +238,15 @@ export const llmCompare = defineTool({
   inputSchema: {
     type: 'object',
     properties: {
-      provider: { type: 'string', enum: Object.keys(PROVIDERS), description: 'Provider' },
+      provider: {
+        type: 'string',
+        enum: Object.keys(PROVIDERS),
+        // The enum already carries the valid values, so the description's job is what the enum cannot
+        // say: which one is the default, and that it can be left out.
+        description:
+          'Qaysi provayder orqali yuborilsin. Berilmasa "openai" ishlatiladi. ' +
+          "Har bir model o'z provayderiga tegishli bo'lishi kerak.",
+      },
       models: {
         type: 'array',
         description: "Modellar ro'yxati",
