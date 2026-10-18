@@ -1096,14 +1096,27 @@ was a string `replace`, which rewrites only the first occurrence.
 
 #### Still open
 
-- Five credential-free categories not built: `geo_data` (OpenStreetMap/Nominatim/Overpass), `govdata`
-  (CKAN/data.gov/SEC EDGAR), `color`, `time`, `zip`.
-- `global` on the `pro_fetch_devops_npm_*` pair. Refused rather than ignored since `204b766`; still does
-  nothing. It lives in the SPECS packs, so its shape is among the 198 above.
 - `pro_research_deep` 429/403 from third parties (Serper quota, Medium bot protection) - upstream, not
   a code defect.
-- Three thin descriptions named earlier (`pro_fetch_xml_to_json`, `pro_gh_gist_read`,
-  `pro_fetch_session_list`).
+
+Resolved on 2026-10-18 after measurement, and each resolution is worth recording because the item was
+believed open and was not:
+
+- **"Five credential-free categories not built"** was stale. `geo_data` (4), `color` (3), `time` (5) and
+  `zip` (5) all exist and pass. Only `govdata` was genuinely absent and is now unnecessary: the
+  `opendata` category (5) covers CKAN.
+- **`global` on the `pro_fetch_devops_npm_*` pair** was stale and partly wrong. The flag lives on
+  `pro_fetch_security_npm_audit` and `pro_fetch_security_npm_outdated`, and it *was* implemented - the
+  handler appends `--global`. The real defect was that its schema declared `type: 'string'` with
+  `description: 'global'` while the code's first branch tested `i.global === true`, so the natural
+  value and `"yes"` and `1` were all silently ignored. Fixed: declared `boolean` with a 172-character
+  description, and the type mismatch is now swept registry-wide.
+- **Three thin descriptions** (`pro_fetch_xml_to_json`, `pro_gh_gist_read`, `pro_fetch_session_list`)
+  were refuted by measurement rather than rewritten. BM25 discovery ranks each one in the **top 3** for
+  its own natural-language query, and across a 96-tool sample the under-60-character descriptions found
+  their tool exactly as often as the longer ones did (50/50 vs 46/46). The tool *name* carries the
+  discriminating signal, so length is not what makes a description useful. Rewriting 334 terse
+  descriptions on that basis would have been work done to no measured end.
 
 | Command | Result |
 |---|---|

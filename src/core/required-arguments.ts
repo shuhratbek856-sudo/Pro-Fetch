@@ -63,7 +63,6 @@ export function assertNoUnknownArguments(
     { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
   if (!schema || schema.additionalProperties !== false) return;
   const declared = Object.keys(schema.properties ?? {});
-  if (declared.length === 0) return;
   // The meta-executor forwards a payload shaped like `{ tool, arguments }`; those two keys are its own
   // envelope, not arguments to the inner tool.
   if (isNestedCallTool(tool)) return;
