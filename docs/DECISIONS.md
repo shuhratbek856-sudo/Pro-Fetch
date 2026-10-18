@@ -668,3 +668,78 @@ Deduplication assumes the second call would have no additional effect. That is t
 
 ### Consequences
 Batches that repeat a mutation now run it once per entry. The dedup win is preserved for reads, which is where it matters.
+
+---
+
+## D-013: A table the data must satisfy is checked; a table believed is not
+
+**Date:** 2026-10-18
+**Status:** accepted
+
+### Context
+The QR block-layout tables were transcribed. Nineteen of the rows could not be correct, and nothing
+in the file said so: version 7 at level Q claimed 10 blocks carrying 226 data and 260 EC codewords,
+which is 3 888 bits against a symbol of 3 721 modules. The table read as authoritative and was wrong.
+
+### Decision
+Derive an independent check and hold the tables to it. Every version/level row must satisfy
+`data + EC codewords == codewordCapacity(version)`, where capacity is computed from the symbol's module
+geometry rather than transcribed. Rows that fail are removed from the file, not patched.
+
+### Rationale
+A round trip proves the implementation is self-consistent and nothing more. Every encoding bug found
+while building `qr` — the descending generator polynomial, the parity pass starting at index 0, the
+alphanumeric 6-bits-per-character packing, the data strips dropping column 0 — passed a round trip
+locally and would still have produced a symbol no scanner reads. The geometry check is the only thing
+that could not be satisfied by a matching pair of mistakes.
+
+### Rejected alternatives
+- **Write the missing rows from memory.** The rows are published and a plausible-looking table that is
+  off by one block fails silently at the scanner. A smaller table that says what it covers fails here,
+  where the caller can see it.
+- **Keep the rows and let the encoder validate at runtime.** An encoder that accepts an impossible
+  symbol is worse than one that refuses, and the check would have to run on every encode.
+- **Ship versions 1-6 only and say nothing.** Measured ceilings are per level: L reaches 21, M 20,
+  Q 6, H 10. Saying "version 6" without the per-level breakdown would have been false of L.
+
+### Consequences
+`MAX_VERSION` became a getter over the tables rather than a constant, so the limit cannot claim a
+capability the data does not have. `maxVersion()` returns 6 — the version every level covers — and
+`dataCodewords` refuses anything above a level's own ceiling with the measured number in the message.
+Adding a row raises the ceiling automatically; removing one lowers it.
+
+---
+
+## D-014: A reader told the answer is not a reader
+
+**Date:** 2026-10-18
+**Status:** accepted
+
+### Context
+`decodeMatrix` could have taken level and mask as arguments, the way `rsDecode` takes a parity count
+from its caller. That is the convenient signature, and it would have made the round-trip test pass
+regardless of whether the format information was written to the right modules.
+
+### Decision
+`decodeMatrix` reads level and mask from the matrix itself, recovering them through the same BCH-coded
+placement the encoder used. The test that matters is then a real one: if the format placement is
+wrong on both sides, the round trip still passes — but if it is wrong on one side, it fails.
+
+### Rationale
+The two properties are checked in one direction and none in the other. A format-info bug that is
+symmetric is invisible to any check that shares its assumption with the code under test. Reading from
+the matrix at least forces the encoder and decoder to agree on positions, which is the larger of the
+two error surfaces.
+
+### Rejected alternatives
+- **Accept level and mask as arguments.** Convenience at the cost of making the round trip prove
+  nothing about format information.
+- **Decode format information and cross-check it against the arguments when supplied.** Better, but it
+  keeps a path that bypasses the check, and the tool would then have two modes with different trust.
+- **Claim scanner compatibility from the round trip.** Not supported by anything measured. No camera
+  path exists, and the tool output says so.
+
+### Consequences
+`pro_qr_encode` output carries an explicit statement that a round trip was verified and a scanner was
+not, and `tests/qr-reed-solomon.test.ts` asserts that the statement is present. If camera-based
+verification is added later, that assertion is the place it has to change.

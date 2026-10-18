@@ -3,13 +3,63 @@
 > This file is the agent's memory across context loss. It is written to disk, not held in context.
 > Update it after every completed work item.
 
-**Last updated:** 2026-10-17
+**Last updated:** 2026-10-18
 
 ## Scope Actually Covered (read before claiming more)
 
-Registered tools: **652**. Categories: **40**. Tests: **762** across **40** files. `npm run check` exit 0.
+Registered tools: **672**. Categories: **42**. Tests: **936** across **42** files. Packaged files: **556**.
+`npm run check` exit 0.
 
-This increment: audit round 2 (ChatGPT deep analysis). 14 confirmed defects fixed, 2 refuted, 1 documented limitation unchanged.
+This increment: two new categories, each built so the measurement could fail.
+
+### `qr` — 9 tools, Reed-Solomon over GF(256) and a real encoder
+
+The tables are checked against computed geometry rather than trusted: every version/level row must
+have `data + EC codewords` exactly equal to the symbol's codeword capacity. That check found **19
+transcribed rows that could not fit** (Q version 7 claimed 244 codewords against a capacity of 196),
+and they were removed rather than patched from memory. Measured ceilings per level: L 1-21, M 1-20,
+Q 1-6, H 1-10. `maxVersion()` is 6 because it is the version every level covers, and it is computed
+from the tables so a row added later raises it.
+
+Two geometry defects were found the same way and are worth recording because both produced a
+self-consistent wrong answer:
+
+- `ALIGNMENT_CENTRES` was missing its version-1 entry, shifting the whole table. Version 6 reserved 8
+  alignment patterns instead of 2 and computed a capacity of 158 where the standard needs 172.
+- The data-module reading order dropped column 0 entirely, because strips were stepped
+  (`right -= 2`) rather than built from the right edge. Version 1 held 200 data modules (25 codewords)
+  where the standard's table says 26.
+
+`decodeMatrix` reads level and mask *from the matrix* rather than accepting them as arguments. A
+reader told the answer is not a reader — that is what would let an encoder bug hide behind a passing
+round trip. The tool output states plainly that a round trip does not prove a scanner reads the
+symbol; no camera path exists.
+
+### `sql` — 11 tools, a real lexer and a risk classification
+
+A lexer rather than a regex, because the interesting part of SQL is what is *not* a keyword: `''`
+inside a string, a quoted identifier that is not the keyword it spells, a dollar-quoted body hiding
+semicolons, a nested block comment. Each of those splits a statement in the wrong place if the reader
+gets it wrong, and `pro_sql_split` proves it does not by counting them.
+
+The formatter's safety property is asserted rather than stated: format, tokenize, compare the token
+streams. Measured across 10 statements including a PostgreSQL function body and a string containing a
+semicolon.
+
+Six real defects were found while building it, all by measurement:
+
+| Defect | Measured consequence |
+|---|---|
+| Schema/alias ambiguity resolved by adjacency, not pattern | `FROM users u` reported schema `users` with name `u` |
+| `INSERT INTO t (a, b)` skipped the table with the column list | `INSERT INTO logs (a, b) VALUES (1,2)` reported zero tables |
+| CTE hid the real verb | `WITH x AS (DELETE FROM t RETURNING *)` classified as a read |
+| Depth counted before the first paren | `SELECT a FROM t` reported depth 1 |
+| `?` placeholders keyed on text | every `?` received the first `?`'s value |
+| `PARAMETER_GAP` required a `?` to be present | a purely numbered query was never checked |
+
+### Prior increment: audit round 2
+
+14 confirmed defects fixed, 2 refuted, 1 documented limitation unchanged.
 
 - Registered tools: **572**. Tool source files: **395** under `src/tools/`.
 - **`npm run audit:schema`: dead properties 54 -> 0, empty `required` 46 -> 0** (excluding 8
@@ -36,26 +86,27 @@ What was actually wrong, beyond schema noise:
 
 ## Current State
 
-- **Phase:** Smart System strengthening + verification-integrity repair
-- **Active task:** None. Smart System increment complete; `npm run check` green end to end.
+- **Phase:** Category expansion — each new category's tables verified against computed geometry
+- **Active task:** None. `qr` and `sql` committed and pushed; `npm run check` green end to end.
 - **Blocked on:** nothing
 
 ## Prior State (superseded)
 
-- **Phase:** Product-readiness hardening (round 4)
-- **Active task:** Revert the OCR worker pool — it costs process stability for latency on a rarely used tool
+- **Phase:** Smart System strengthening + verification-integrity repair
+- **Active task:** None. Smart System increment complete; `npm run check` green end to end.
 - **Blocked on:** nothing
 
 ## Resume Instruction
 
 > Read `docs/DECISIONS.md` for reasoning, then continue the action below.
 
-**Next exact action:** pick the next unstrengthened category, audit before editing, one category per
-increment:
+**Next exact action:** the next credential-free category. The rule learned building `qr` and `sql` is
+what to carry over: find an *independent* check the data must satisfy, because a round trip only proves
+self-consistency. `qr` used geometry; `sql` used token preservation.
 
 ```powershell
 cd C:\Users\user\Downloads\pro-fetch\pro-fetch-mcp
-node scripts/verify-registry.mts   # confirm 572 and read per-category counts
+node scripts/verify-registry.mts   # confirm 672 and read per-category counts
 ```
 
 Start with the largest untouched categories (`github` 49, `browser` 41, `convert` 30). Re-run
