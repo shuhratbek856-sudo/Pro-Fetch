@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
 import { jsonBlock } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
+import { float, strOrEmpty, view } from '../../core/input.js';
 import { convert, findUnit, formatNumber } from './_units.js';
 
 const TEMPERATURE_UNITS = ['degC', 'degF', 'K', 'degR'] as const;
@@ -63,7 +63,7 @@ export default defineTool({
       });
     }
 
-    const value = num(p, 'value', Number.NaN);
+    const value = float(p, 'value', Number.NaN);
     if (!Number.isFinite(value)) return jsonBlock('Harorat', { error: 'qiymat kerak.' });
 
     const from = strOrEmpty(p, 'from') || 'degC';

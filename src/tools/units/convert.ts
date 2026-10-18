@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
 import { jsonBlock } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
+import { float, num, strOrEmpty, view } from '../../core/input.js';
 import {
   allFamilies,
   convert,
@@ -67,7 +67,7 @@ export default defineTool({
       value = parsed.value;
       fromName = parsed.unit;
     } else {
-      value = num(p, 'value', Number.NaN);
+      value = float(p, 'value', Number.NaN);
       fromName = strOrEmpty(p, 'from');
     }
     if (!Number.isFinite(value)) {

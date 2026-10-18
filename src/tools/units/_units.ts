@@ -115,12 +115,14 @@ export const UNITS: Unit[] = [
     aliases: ['f', 'fahrenheit', 'degf', '°f'],
   },
   { symbol: 'K', family: 'temperature', factor: 1, offset: -273.15, prefixable: true, aliases: ['kelvin'] },
-  // Rankine has no zero point of its own, so 0 degR is -273.15 C: base_C = R * (5/9) - 151.75.
+  // Rankine shares Celsius's degree size scaled by 5/9 and starts at absolute zero: 0 degR is -273.15 C,
+  // so base_C = R * (5/9) - 273.15. The offset is expressed in the Celsius base unit, so it is NOT scaled
+  // by the factor. An earlier bug multiplied -273.15 by 5/9 (giving -151.75), reporting 0 degR as -151.75 C.
   {
     symbol: 'degR',
     family: 'temperature',
     factor: 5 / 9,
-    offset: (-273.15 * 5) / 9,
+    offset: -273.15,
     prefixable: false,
     aliases: ['rankine', 'r'],
   },
