@@ -4,6 +4,7 @@
 // the active profile without importing this file — which would close an import cycle and make
 // parts of the registry evaluate to `undefined`.
 import {
+  configuredProfile,
   currentProfile,
   isToolVisibleInProfile,
   levelOf,
@@ -15,6 +16,7 @@ import {
 import type { Profile } from './core/profile.js';
 
 export {
+  configuredProfile,
   currentProfile,
   isToolVisibleInProfile,
   levelOf,

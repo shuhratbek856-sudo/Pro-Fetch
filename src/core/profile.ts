@@ -72,6 +72,26 @@ export function levelOf(category: string): number {
   return CATEGORY_LEVELS[category] ?? 3;
 }
 
+/**
+ * The profile the operator configured, captured once at load.
+ *
+ * `currentProfile()` is mutable — `pro_fetch_profile_switch` writes the environment variable — so the
+ * operator's setting is gone the moment a tool narrows the profile. Without this capture there is no
+ * record of what the ceiling was, and the tool can never widen back to it.
+ *
+ * Captured at module load, which is when the operator's choice is made: the process starts with
+ * `PRO_FETCH_PROFILE` set and every later change is the agent's.
+ */
+const CONFIGURED_PROFILE: Profile = (() => {
+  const value = process.env.PRO_FETCH_PROFILE as Profile | undefined;
+  return value && Object.prototype.hasOwnProperty.call(PROFILE_LEVELS, value) ? value : 'standard';
+})();
+
+/** The profile the operator configured at start-up. Fixed for the life of the process. */
+export function configuredProfile(): Profile {
+  return CONFIGURED_PROFILE;
+}
+
 /** The active profile, read fresh from the environment on every call. */
 export function currentProfile(): Profile {
   const value = process.env.PRO_FETCH_PROFILE as Profile | undefined;
