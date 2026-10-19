@@ -97,3 +97,49 @@ describe('the refusal is not a blanket ban on arguments', () => {
     }
   });
 });
+
+describe('no key is exempt from the unknown-argument check', () => {
+  // The check used to exempt `tool`, `arguments` and `label` on the assumption that the meta-executor
+  // envelope reaches the tool. Measured: no tool in the registry declares `tool` or `label`, and
+  // `arguments` is declared by exactly one — `pro_fetch_tool_execute` — which needs no exemption
+  // because a declared property is allowed anyway. The list therefore exempted nothing and hid three
+  // typos: `arguments` and `label` on any tool were accepted and silently dropped, which is the
+  // failure this function exists to prevent.
+  it('no tool declares `tool` or `label`', () => {
+    const declaring = allTools().filter((candidate) => {
+      const properties = Object.keys(candidate.inputSchema.properties ?? {});
+      return properties.includes('tool') || properties.includes('label');
+    });
+    expect(declaring.map((candidate) => candidate.name)).toEqual([]);
+  });
+
+  it.each(['arguments', 'label', 'tool'])('%s is refused on an ordinary tool', async (key) => {
+    const result = await dispatch('pro_fetch_xml_to_json', { text: '<a>1</a>', [key]: 'x' });
+    expect(result.isError, `${key} rad etilishi kerak edi`).toBe(true);
+    expect(textOf(result)).toMatch(/e’lon qilinmagan argument/);
+  });
+
+  it('the meta-executor still works, because it unwraps the envelope itself', async () => {
+    // `pro_capability_call` reads `record.arguments` and passes that object to the inner tool, and
+    // `pro_fetch_tool_execute` reads `input.arguments` the same way, so the envelope keys never reach
+    // a tool's input and the exemption was never needed.
+    const execute = await dispatch('pro_fetch_tool_execute', {
+      tool_name: 'pro_fetch_xml_to_json',
+      arguments: { text: '<a>1</a>' },
+    });
+    expect(execute.isError).toBeFalsy();
+
+    const batch = await dispatch('pro_capability_call', {
+      calls: [{ tool: 'pro_fetch_xml_to_json', arguments: { text: '<a>1</a>' } }],
+    });
+    expect(batch.isError).toBeFalsy();
+    expect(textOf(batch)).toMatch(/"ok":\s*1/);
+  });
+
+  it('an unknown argument inside a batch call is still refused', async () => {
+    const batch = await dispatch('pro_capability_call', {
+      calls: [{ tool: 'pro_fetch_xml_to_json', arguments: { text: '<a>1</a>', bogus: 1 } }],
+    });
+    expect(textOf(batch)).toMatch(/"failed":\s*1/);
+  });
+});

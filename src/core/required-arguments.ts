@@ -63,13 +63,21 @@ export function assertNoUnknownArguments(
     { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
   if (!schema || schema.additionalProperties !== false) return;
   const declared = Object.keys(schema.properties ?? {});
-  // The meta-executor forwards a payload shaped like `{ tool, arguments }`; those two keys are its own
-  // envelope, not arguments to the inner tool.
+  // The meta-executor forwards a payload shaped like `{ tool, arguments }`. It unwraps the envelope
+  // itself — `pro_capability_call` reads `record.arguments` and passes that object to the inner tool,
+  // and `pro_fetch_tool_execute` reads `input.arguments` the same way — so the envelope keys never
+  // reach a tool's input and the inner tool sees only the arguments its own schema describes.
   if (isNestedCallTool(tool)) return;
 
-  const unknown = Object.keys(input).filter(
-    (key) => !declared.includes(key) && key !== 'tool' && key !== 'arguments' && key !== 'label',
-  );
+  // No key is exempt.
+  //
+  // The exemption list used to be `tool`, `arguments` and `label`, on the assumption that the
+  // envelope reaches the tool. Measured: no tool in the registry declares `tool` or `label`, and
+  // `arguments` is declared by exactly one, `pro_fetch_tool_execute`, which does not need an
+  // exemption because a declared property is allowed anyway. So the list exempted nothing and
+  // hid three typos — `arguments` and `label` on any tool were accepted and silently dropped, the
+  // same failure this function exists to prevent.
+  const unknown = Object.keys(input).filter((key) => !declared.includes(key));
   if (unknown.length === 0) return;
 
   // A close match is almost always the intended key, so naming it turns a dead end into a fix.
