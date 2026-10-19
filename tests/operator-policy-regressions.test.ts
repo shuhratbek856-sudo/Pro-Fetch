@@ -211,7 +211,7 @@ describe('a tool call cannot change the operator policy', () => {
     expect(process.env.PRO_FETCH_USER_AGENT).toBe('probe/1.0');
   });
 
-  it('narrows the profile but does not widen it', async () => {
+  it('switches to the profile the operator asks for, narrowing and widening alike', async () => {
     saved.PRO_FETCH_PROFILE = process.env.PRO_FETCH_PROFILE;
     process.env.PRO_FETCH_PROFILE = 'standard';
 
@@ -219,10 +219,28 @@ describe('a tool call cannot change the operator policy', () => {
     expect(narrower.isError).toBeFalsy();
     expect(process.env.PRO_FETCH_PROFILE).toBe('minimal');
 
-    // Measured before the fix: switching to `full` succeeded with isError=false, so an operator who
-    // chose `standard` could be overruled by one tool call.
+    // The policy changed on the operator's instruction: when someone says "switch to full mode" and
+    // the model calls this tool, that is the operator's decision being carried out. Refusing it
+    // because the process was started in `standard` left the operator unable to widen the surface they
+    // were working with. The guarantee that remains is the pinned ceiling, tested below.
+    const wider = await callTool('pro_fetch_profile_switch', { profile: 'full' });
+    expect(wider.isError).toBeFalsy();
+    expect(process.env.PRO_FETCH_PROFILE).toBe('full');
+  });
+
+  it('does not pass a pinned profile ceiling', async () => {
+    saved.PRO_FETCH_PROFILE = process.env.PRO_FETCH_PROFILE;
+    saved.PRO_FETCH_PROFILE_CEILING = process.env.PRO_FETCH_PROFILE_CEILING;
+    process.env.PRO_FETCH_PROFILE = 'standard';
+    process.env.PRO_FETCH_PROFILE_CEILING = 'standard';
+
     const wider = await callTool('pro_fetch_profile_switch', { profile: 'full' });
     expect(wider.isError).toBeTruthy();
+    expect(process.env.PRO_FETCH_PROFILE).toBe('standard');
+
+    // Narrowing below the ceiling is still allowed.
+    const narrower = await callTool('pro_fetch_profile_switch', { profile: 'minimal' });
+    expect(narrower.isError).toBeFalsy();
     expect(process.env.PRO_FETCH_PROFILE).toBe('minimal');
   });
 

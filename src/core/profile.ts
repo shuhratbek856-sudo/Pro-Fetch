@@ -73,23 +73,23 @@ export function levelOf(category: string): number {
 }
 
 /**
- * The profile the operator configured, captured once at load.
+ * The optional ceiling on profile switching, or `undefined` when there is none.
  *
- * `currentProfile()` is mutable — `pro_fetch_profile_switch` writes the environment variable — so the
- * operator's setting is gone the moment a tool narrows the profile. Without this capture there is no
- * record of what the ceiling was, and the tool can never widen back to it.
+ * Unset by default, and that is the right default: the operator's instruction governs. When someone
+ * says "switch to full mode" and the model calls `pro_fetch_profile_switch`, that *is* the operator's
+ * decision being carried out — refusing it because the process was started in `standard` means the
+ * operator cannot widen the surface they are working with without restarting the server.
  *
- * Captured at module load, which is when the operator's choice is made: the process starts with
- * `PRO_FETCH_PROFILE` set and every later change is the agent's.
+ * Set `PRO_FETCH_PROFILE_CEILING` to pin a maximum when the server is shared and the operator wants
+ * the model to stay inside a smaller surface regardless of what is asked. Measured: with the ceiling
+ * pinned to `standard`, `full` advertises 494 tools that setting does not, and the switch is refused.
+ *
+ * This is a *visibility* control, not authorization. What a tool may actually run is a separate,
+ * enforced layer: `PRO_FETCH_ALLOWED_TOOLS` and `PRO_FETCH_DENIED_TOOLS`.
  */
-const CONFIGURED_PROFILE: Profile = (() => {
-  const value = process.env.PRO_FETCH_PROFILE as Profile | undefined;
-  return value && Object.prototype.hasOwnProperty.call(PROFILE_LEVELS, value) ? value : 'standard';
-})();
-
-/** The profile the operator configured at start-up. Fixed for the life of the process. */
-export function configuredProfile(): Profile {
-  return CONFIGURED_PROFILE;
+export function profileCeiling(): Profile | undefined {
+  const value = process.env.PRO_FETCH_PROFILE_CEILING as Profile | undefined;
+  return value && Object.prototype.hasOwnProperty.call(PROFILE_LEVELS, value) ? value : undefined;
 }
 
 /** The active profile, read fresh from the environment on every call. */

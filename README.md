@@ -10,7 +10,7 @@ catalog in a single round trip.
 [![npm](https://img.shields.io/npm/v/pro-fetch-mcp?label=npm&logo=npm)](https://www.npmjs.com/package/pro-fetch-mcp)
 [![node](https://img.shields.io/badge/node-%3E%3D22.13-5FA04E?logo=node.js)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/pro-fetch-mcp?color=blue)](./LICENSE)
-[![tests](https://img.shields.io/badge/tests-966%20passing-success?logo=vitest)](./)
+[![tests](https://img.shields.io/badge/tests-971%20passing-success?logo=vitest)](./)
 
 </div>
 
@@ -128,6 +128,17 @@ Ready-to-copy config: [`mcp.example.json`](./mcp.example.json)
 | `standard` *(default)* | 178 | + github, search, extract, auth |
 | `smart` | 11 | the Smart System above |
 | `full` | 672 | everything |
+
+The profile can also be changed **at runtime** — `pro_fetch_profile_switch` takes effect on the next
+request, and asking for `full` switches to `full`:
+
+```json
+{"tool": "pro_fetch_profile_switch", "arguments": {"profile": "full"}}
+```
+
+Set `PRO_FETCH_PROFILE_CEILING` to pin a maximum the switch may not pass. Unset by default, because
+the operator's instruction is what should govern; set it when the server is shared and the model must
+stay inside a smaller surface regardless of what is asked.
 
 Real access control lives in the environment and is enforced on **every** call, including calls made
 through the meta-executor:
@@ -294,7 +305,7 @@ Each step answers a different question:
 |---|---|
 | `verify:static` | Structural invariants must not regress: the tool count in `package.json` and in the READMEs, the smart profile's required meta-tools, the intent-search synonym vocabulary, no template dispatcher in the MAX packs, OSV batch bounds, knowledge content size, Windows `npm-cli.js` resolution, image-byte validation before OCR |
 | `verify:registry` | Boots the real registry: **672 tools / 42 categories / all four profile counts**, every tool has a schema and a handler, and the published counts in both READMEs still match |
-| `test` | **966 tests** across 45 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
+| `test` | **971 tests** across 45 files - SSRF, redirects, permission policy, output sandbox, timeouts, every tool's input contract, every internal tool reference, live provider-failure behaviour |
 | `verify:package` | The published tarball has its shebang and `files` allowlist, and **zero credentials or source files** |
 | `audit:schema` *(on demand)* | Schemas against their code — 0 dead properties, 0 unread required |
 
