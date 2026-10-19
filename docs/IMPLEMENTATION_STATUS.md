@@ -86,9 +86,9 @@ What was actually wrong, beyond schema noise:
 
 ## Current State
 
-- **Phase:** Category expansion — each new category's tables verified against computed geometry
-- **Active task:** None. `qr` and `sql` committed and pushed; `npm run check` green end to end.
-- **Blocked on:** nothing
+- **Phase:** Defect sweep by measurement — hunting real gaps, refuting presumed ones
+- **Active task:** None. The MexaPlan/SmartToDo/MaxEffort tools were removed on request and the code returned to its exact previous state; the specification and the agent working rules remain as documents. `npm run check` green end to end.
+- **Blocked on:** nothing except `pro_research_deep`, which is upstream (Serper quota / Medium bot protection)
 
 ## Prior State (superseded)
 
@@ -1132,3 +1132,53 @@ believed open and was not:
 **Next exact action:** `src/tools/geo_data/` on OpenStreetMap Nominatim and Overpass - both credential-free
 and both reachable without a key. One tool per file, `readBinarySource` or the fetch path called directly in
 the handler body, and every error path checked before the success path is written.
+
+### Session 43 - MexaPlan/SmartToDo/MaxEffort: built, measured, then removed on request
+
+Files changed:
+
+- `docs/AGENT_WORKFLOW.md` (new) - the MexaPlan + SmartToDo + MaxEffort specification, copied
+  byte-for-byte from the source document (46 903 bytes, 1 195 lines, verified identical).
+- `AGENTS.md` (new) - the agent-facing working rules distilled from that specification: the mandatory
+  flow, evidence-over-claims, the investigation-vs-modification scope split, stagnation recovery, and
+  the security limits an agent may not cross.
+
+Then, on the user's instruction, the implementation was removed and the code returned to its exact
+previous state:
+
+- `src/tools/agent/` (deleted) - `mexa_plan.ts`, `smart_todo.ts`, `max_effort.ts`, `plan_gate.ts`,
+  `orchestrator.ts`, `index.ts`.
+- `src/loader.ts` - the `import './tools/agent/index.js';` line removed.
+- `src/core/tool.ts` - `'agent'` removed from `CATEGORY_SCHEMA_CATEGORIES`.
+
+Verified, not assumed: `git diff --cached --stat` after `git add -A` lists **only** the two new
+documents, so `src/loader.ts` and `src/core/tool.ts` are byte-identical to the previous commit.
+
+Two defects were found and fixed while the tools existed, and both were caught by measurement rather
+than by reading:
+
+- `plan_gate.ts` declared `graph` as "Tekshiriladigraph" - a typo in the description a caller reads.
+- The tool names were undiscoverable: BM25 tokenises `pro_agent_smart_todo` into "pro, agent, smart,
+  todo", so a user asking to "audit my plan" got `pro_fetch_devops_npm_audit` and
+  `pro_fetch_devops_terraform_plan_preview` instead, and "validate the task graph" got
+  `pro_fetch_swagger_validate`. The names carry a 3x field boost in `intent-search.ts`, so a
+  description change could not compete. Measured: `pro_agent_plan_gate` ranked #14 of 305 and
+  `pro_agent_smart_todo` #16.
+
+Profile switching was measured rather than assumed, because the first probe reported all four
+profiles at 677 tools and that looked like a broken filter. It was a probe defect: `allTools()`
+ignores the profile entirely, and the real filter is `listTools(profile)`. Measured with the correct
+call: smart 11, minimal 73, standard 178, full 672 — monotonically increasing, every profile a
+subset of `full`, `minimal ⊆ standard ⊆ full`, and `PRO_FETCH_PROFILE` read at module load in a
+separate process gives the same count.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - STATIC / TEST_RUN (44 files, 956 tests) / REGISTRY / PACKAGE |
+| `npm run verify:registry` | `registered=672; categories=42; smart=11; unique_names=672` |
+| profile-switch probe | smart 11, minimal 73, standard 178, full 672; monotonic, subset of full, ENV switch matches |
+| `npx tsc --noEmit` | exit 0 |
+
+**Next exact action:** the `agent` implementation is available as a branch-ready change if it is wanted
+again; the specification it was built from is in `docs/AGENT_WORKFLOW.md` and the working rules in
+`AGENTS.md`, both of which stand on their own without the tools.
