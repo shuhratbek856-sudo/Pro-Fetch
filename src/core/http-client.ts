@@ -12,18 +12,31 @@ import { USER_AGENT } from './version.js';
 export interface FetchOptions {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
   timeoutMs?: number;
   maxBytes?: number;
   retries?: number;
   cache?: boolean;
   cacheTtlMs?: number;
+  /** A proxy named by the caller for this exact request (see `dispatcherFor`). */
+  proxy?: string;
 }
 
 const UA = USER_AGENT;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const proxyAgents = new Map<string, ProxyAgent>();
 const directAgents = new Map<string, Agent>();
+
+/**
+ * Header names that carry credentials, by name pattern, not by a fixed list.
+ *
+ * A name list always lags what senders actually use: `x-gitlab-token`, `x-azure-key`,
+ * `x-supabase-auth` are credentials the way `x-api-key` is, and routing a redirect across
+ * origins with one still attached hands the credential to a host that never saw it. Every
+ * reader of outbound headers matches this one pattern, so the policy exists once.
+ */
+const CREDENTIAL_TARGET_HEADER =
+  /authorization|cookie|proxy-authorization|token|api[-_]?key|secret|subscription|password|session|signature|credential/i;
 
 function noProxyMatch(url: URL): boolean {
   const entries = (process.env.NO_PROXY ?? process.env.no_proxy ?? '')
@@ -44,14 +57,43 @@ function noProxyMatch(url: URL): boolean {
   });
 }
 
+/** One ProxyAgent per proxy URL, shared by the env path and the explicit-request path. */
+function proxyAgentFor(proxy: string): ProxyAgent {
+  let parsed: URL;
+  try {
+    parsed = new URL(proxy.trim());
+  } catch {
+    throw new Error('HTTP proxy URL noto‘g‘ri formatda.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol))
+    throw new Error('HTTP proxy faqat http:// yoki https:// formatida bo‘lishi kerak.');
+  const key = parsed.toString();
+  let proxyAgent = proxyAgents.get(key);
+  if (!proxyAgent) {
+    proxyAgent = new ProxyAgent(key);
+    proxyAgents.set(key, proxyAgent);
+  }
+  return proxyAgent;
+}
+
 /**
  * A dispatcher bound to the addresses that were validated for this request.
  *
  * Exported so the browser proxy can make the same pinned connection the HTTP client makes. Pinning is
  * the only reason there is a DNS rebinding defence at all, so anything that connects on this server's
  * behalf needs it rather than a private copy.
+ *
+ * `explicitProxy` is a proxy named BY the caller for this exact request (the `pro_fetch_fetch_with_proxy`
+ * tool). It skips the `NO_PROXY` table — the caller asked to route through the proxy — and skips the
+ * unpinned-DNS refusal: an explicit request is a trust decision the caller already made, where the env
+ * path is a silent one. The SSRF scans in `assertSafeUrl`/`resolveSafeUrl` still run first either way.
  */
-export function dispatcherFor(url: URL, addresses: Array<{ address: string; family: number }>): Agent | ProxyAgent {
+export function dispatcherFor(
+  url: URL,
+  addresses: Array<{ address: string; family: number }>,
+  explicitProxy?: string,
+): Agent | ProxyAgent {
+  if (explicitProxy?.trim()) return proxyAgentFor(explicitProxy);
   if (!noProxyMatch(url)) {
     const proxy =
       url.protocol === 'https:'
@@ -65,21 +107,7 @@ export function dispatcherFor(url: URL, addresses: Array<{ address: string; fami
           'PROXY_DNS_PINNING_UNAVAILABLE: proxy orqali DNS rebinding himoyasini kafolatlab bo‘lmaydi. Ishonchli proxy uchun PRO_FETCH_ALLOW_UNPINNED_PROXY_DNS=true ni ataylab yoqing yoki hostni NO_PROXY ga qo‘shing.',
         );
       }
-      let parsed: URL;
-      try {
-        parsed = new URL(proxy);
-      } catch {
-        throw new Error('HTTP proxy URL noto‘g‘ri formatda.');
-      }
-      if (!['http:', 'https:'].includes(parsed.protocol))
-        throw new Error('HTTP proxy faqat http:// yoki https:// formatida bo‘lishi kerak.');
-      const key = parsed.toString();
-      let proxyAgent = proxyAgents.get(key);
-      if (!proxyAgent) {
-        proxyAgent = new ProxyAgent(key);
-        proxyAgents.set(key, proxyAgent);
-      }
-      return proxyAgent;
+      return proxyAgentFor(proxy);
     }
   }
   const addressKey = addresses.map((item) => `${item.address}/${item.family}`).join(',');
@@ -124,6 +152,7 @@ export async function fetchFollowingSafeRedirects(
   rawUrl: string,
   init: RequestInit,
   maxRedirects = 5,
+  proxy?: string,
 ): Promise<{ response: Response; url: string; chain: string[] }> {
   let current = await assertSafeUrl(rawUrl);
   let requestInit: RequestInit = { ...init, redirect: 'manual' };
@@ -131,7 +160,7 @@ export async function fetchFollowingSafeRedirects(
   for (let hop = 0; ; hop++) {
     const resolution = await resolveSafeUrl(current.toString());
     current = resolution.url;
-    const dispatcher = dispatcherFor(current, resolution.addresses);
+    const dispatcher = dispatcherFor(current, resolution.addresses, proxy);
     const response = await withNetworkConcurrency(current.hostname, () =>
       fetch(current, { ...requestInit, dispatcher } as RequestInit),
     );
@@ -151,17 +180,10 @@ export async function fetchFollowingSafeRedirects(
     await response.body?.cancel().catch(() => {});
     if (next.origin !== current.origin) {
       const headers = new Headers(requestInit.headers);
-      for (const name of [
-        'authorization',
-        'cookie',
-        'proxy-authorization',
-        'x-api-key',
-        'api-key',
-        'x-auth-token',
-        'x-subscription-token',
-        'x-goog-api-key',
-      ])
-        headers.delete(name);
+      // Strip by pattern, not by the previous 8-name list: the list was a real leak — a redirect
+      // carrying, say, `x-gitlab-token` reached the new origin with the credential attached,
+      // because nothing in the list matches it and the names a deployment invents are unbounded.
+      for (const name of [...headers.keys()]) if (CREDENTIAL_TARGET_HEADER.test(name)) headers.delete(name);
       if (
         current.protocol === 'https:' &&
         next.protocol === 'http:' &&
@@ -304,8 +326,7 @@ async function downloadToBufferDirectly(
 }
 
 function cacheSafeForRequest(url: URL, headers: Headers): boolean {
-  if ([...headers.keys()].some((key) => /authorization|cookie|token|api[-_]?key|secret|subscription/i.test(key)))
-    return false;
+  if ([...headers.keys()].some((key) => CREDENTIAL_TARGET_HEADER.test(key))) return false;
   for (const key of url.searchParams.keys())
     if (/token|key|secret|auth|password|session|signature|credential/i.test(key)) return false;
   return true;
@@ -378,6 +399,12 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
   const retries = retryableMethod ? requestedRetries : 0;
   const outgoingHeaders = new Headers({ 'user-agent': UA, ...headers });
   const safeUrl = await assertSafeUrl(url);
+  // One deadline for the whole call. Each retry attempt used to arm a fresh timer, so a server
+  // that hangs counted the full timeout against every attempt: the default 2 retries turned a
+  // 15 s call into ~46 s of wall clock (plus backoff sleeps), 5 retries into ~95 s — the
+  // documented timeout was a per-connection fact wearing a call-level name. The per-attempt
+  // timer now spends only what is left of the call's own budget.
+  const deadline = Date.now() + timeoutMs;
   const cacheable = normalizedMethod === 'GET' && opts.cache !== false && cacheSafeForRequest(safeUrl, outgoingHeaders);
   const cacheKey = cacheable ? cacheKeyForRequest(safeUrl, outgoingHeaders) : '';
   let stalePayload: HttpResult | undefined;
@@ -402,15 +429,30 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      lastErr ??= Object.assign(
+        new Error(`HTTP_TIMEOUT: request ${timeoutMs} ms ichida tugamadi (retry budget tugadi)`),
+        { code: 'HTTP_TIMEOUT', retryable: false },
+      );
+      break;
+    }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), remaining);
     try {
-      const { response: res, url: finalUrl } = await fetchFollowingSafeRedirects(safeUrl.toString(), {
-        method: normalizedMethod,
-        headers: outgoingHeaders,
-        body,
-        signal: controller.signal,
-      });
+      const { response: res, url: finalUrl } = await fetchFollowingSafeRedirects(
+        safeUrl.toString(),
+        {
+          method: normalizedMethod,
+          headers: outgoingHeaders,
+          // `BodyInit` in this lib does not name generic `Uint8Array<ArrayBufferLike>` (Buffer),
+          // but undici accepts it as a byte source, which is the whole point of a byte body.
+          body: body as RequestInit['body'],
+          signal: controller.signal,
+        },
+        undefined,
+        opts.proxy,
+      );
       if (res.status === 304 && stalePayload && cacheable) {
         const refreshed: HttpResult = {
           ...stalePayload,
@@ -440,7 +482,14 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
         return refreshed;
       }
       if (retryableMethod && attempt < retries && [429, 500, 502, 503, 504].includes(res.status)) {
-        const delay = retryDelay(res, attempt);
+        // The sleep is capped by what is left of the call's budget, so a `Retry-After: 30`
+        // inside a 5 s call cannot stretch the promise by itself.
+        const delay = Math.min(retryDelay(res, attempt), Math.max(0, deadline - Date.now()));
+        lastErr = Object.assign(new Error('HTTP ' + res.status + ' — retry uchun budget tugadi'), {
+          code: 'HTTP_TIMEOUT',
+          retryable: false,
+          status: res.status,
+        });
         await res.body?.cancel().catch(() => {});
         clearTimeout(timer);
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -524,8 +573,18 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
       );
       clearTimeout(timer);
       if (attempt < retries) {
-        const delay = Math.min(8_000, 350 * 2 ** attempt + Math.floor(Math.random() * 250));
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        // Same budget cap as above: backoff only runs while the call still has time to spend.
+        const delay = Math.min(
+          Math.min(8_000, 350 * 2 ** attempt + Math.floor(Math.random() * 250)),
+          Math.max(0, deadline - Date.now()),
+        );
+        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+      } else if (deadline - Date.now() <= 0) {
+        // No budget left for anything further; the final throw below needs a truthful error.
+        lastErr ??= Object.assign(new Error(`HTTP_TIMEOUT: request ${timeoutMs} ms ichida tugamadi`), {
+          code: 'HTTP_TIMEOUT',
+          retryable: false,
+        });
       }
     }
   }
@@ -548,8 +607,27 @@ export async function downloadToFile(
   return { status: downloaded.status, bytes: downloaded.bytes.byteLength };
 }
 
-export async function traceRedirects(url: string, maxHops = 10): Promise<string[]> {
-  const safe = await fetchFollowingSafeRedirects(url, { method: 'GET' }, maxHops);
-  await safe.response.body?.cancel().catch(() => {});
-  return safe.chain;
+/**
+ * Walks the redirect chain without downloading bodies.
+ *
+ * Bounded on purpose: a chain against a server that accepts a connection and then never answers
+ * used to hang this call indefinitely, because no signal and no timer were attached — the one
+ * HTTP helper a caller could invoke and never return from. The abort covers every hop at once,
+ * not per hop, so a 15 s budget is a 15 s budget.
+ */
+export async function traceRedirects(url: string, maxHops = 10, timeoutMs = 15_000): Promise<string[]> {
+  const boundedHops = boundedOption(maxHops, 10, 1, 20);
+  const boundedTimeout = boundedOption(timeoutMs, 15_000, 100, 60_000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), boundedTimeout);
+  try {
+    const safe = await fetchFollowingSafeRedirects(url, { method: 'GET', signal: controller.signal }, boundedHops);
+    await safe.response.body?.cancel().catch(() => {});
+    return safe.chain;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`HTTP_TIMEOUT: redirect chain ${boundedTimeout} ms ichida tugamadi`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }

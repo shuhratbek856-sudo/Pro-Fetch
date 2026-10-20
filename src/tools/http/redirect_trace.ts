@@ -19,12 +19,15 @@ export default defineTool({
     type: 'object',
     properties: {
       url: { type: 'string', description: 'Manzil (URL)' },
+      timeout_ms: { type: 'number', description: 'Zanjir uchun umumiy timeout ms (standart 15000)' },
     },
     required: ['url'],
   },
   async handler(input) {
     const p = view(input);
-    const chain = await traceRedirects(String(p.url));
+    // A chain against a server that accepts connections and never answers used to hang forever:
+    // no caller asked for a bound, so none existed. The trace is now time-boxed like any fetch.
+    const chain = await traceRedirects(String(p.url), 10, Number(p.timeout_ms));
     return result(
       '# Redirect zanjiri (' +
         (chain.length - 1) +

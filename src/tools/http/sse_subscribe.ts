@@ -48,29 +48,43 @@ export default defineTool({
       reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let firstChunk = true;
       const events: Array<{ event: string; id: string; data: string }> = [];
+      const parseBlock = (block: string) => {
+        let event = 'message';
+        let id = '';
+        const data: string[] = [];
+        for (const line of block.split(/\r?\n/)) {
+          if (line.startsWith(':')) continue;
+          const separator = line.indexOf(':');
+          const field = separator < 0 ? line : line.slice(0, separator);
+          const fieldValue = separator < 0 ? '' : line.slice(separator + 1).replace(/^ /, '');
+          if (field === 'event') event = fieldValue;
+          else if (field === 'id' && !fieldValue.includes('\0')) id = fieldValue;
+          else if (field === 'data') data.push(fieldValue);
+        }
+        if (data.length && events.length < limit) events.push({ event, id, data: data.join('\n') });
+      };
       while (events.length < limit) {
         const { done, value } = await reader.read();
-        buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+        let decoded = done ? decoder.decode() : decoder.decode(value, { stream: true });
+        if (firstChunk) {
+          // The event-stream spec says to skip a leading UTF-8 BOM. Servers that send one got
+          // their very first event read as a field named `data-with-a-BOM-prefix`, so the event
+          // was silently discarded.
+          decoded = decoded.replace(/^\uFEFF/, '');
+          firstChunk = false;
+        }
+        buffer += decoded;
         const blocks = buffer.split(/\r?\n\r?\n/);
         buffer = blocks.pop() ?? '';
-        for (const block of blocks) {
-          let event = 'message';
-          let id = '';
-          const data: string[] = [];
-          for (const line of block.split(/\r?\n/)) {
-            if (line.startsWith(':')) continue;
-            const separator = line.indexOf(':');
-            const field = separator < 0 ? line : line.slice(0, separator);
-            const fieldValue = separator < 0 ? '' : line.slice(separator + 1).replace(/^ /, '');
-            if (field === 'event') event = fieldValue;
-            else if (field === 'id' && !fieldValue.includes('\0')) id = fieldValue;
-            else if (field === 'data') data.push(fieldValue);
-          }
-          if (data.length) events.push({ event, id, data: data.join('\n') });
-          if (events.length >= limit) break;
+        for (const block of blocks) parseBlock(block);
+        if (done) {
+          // The stream ended without a trailing blank line. The old code left this remainder
+          // popped and unparsed, so the last event a server sent before closing was dropped.
+          if (buffer) parseBlock(buffer);
+          break;
         }
-        if (done) break;
       }
       return result(
         JSON.stringify({ url, events, eventCount: events.length, truncated: events.length >= limit }, null, 2),
