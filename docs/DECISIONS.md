@@ -818,3 +818,300 @@ for revocation, over-matching is a security behaviour, not a convenience.
 
 Anything that actually wanted substring deletion would need a new explicit API; none exists today.
 
+---
+
+## D-017: A timeout is the call's budget, and it covers the wait for a slot
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+Two places gave a timeout two different meanings. The HTTP client armed a fresh timer per retry
+attempt, so a hanging server spent the full timeout on every attempt (2 retries turned a 15 s call
+into ~46 s). The execution engine armed its timer only after both concurrency gates were acquired,
+so a call that queued behind a busy category waited 1418 ms against a 1200 ms timeout and then ran
+with a fresh timer.
+
+### Decision
+
+A timeout is one deadline for the whole call. The HTTP client takes the deadline when the request
+arrives; each attempt and each retry sleep spends only what is left of it, and a spent budget
+throws `HTTP_TIMEOUT`. The execution engine takes the deadline when the call arrives; the handler's
+abort timer spends what is left, and a call whose budget was spent queueing is refused with
+`TOOL_TIMEOUT` rather than run.
+
+### Rationale
+
+A timeout that a caller can read as "at most this long" has to mean it. Both old behaviours were
+defects of the same shape: a number in a schema and a promise in a log, with something else
+underneath.
+
+### Rejected alternatives
+
+- **Keep per-attempt timeouts and document them.** Standard in HTTP clients - and still a lie when
+  the tool's own schema names a single number the caller is meant to rely on.
+- **Leave the engine's timer where it is.** The queueing wait is invisible in the metrics, so the
+  overrun never showed up as a timeout.
+
+### Consequences
+
+A slow-but-healthy server now gets the whole budget once, not once per attempt. A call that queues
+longer than its budget fails instead of starting late; callers that need a longer queue should raise
+`PRO_FETCH_TOOL_TIMEOUT_MS`.
+
+---
+
+## D-018: A cache key carries every option that shaped the cached payload
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`fetchUrl` cached the *clipped* document under a key made of the URL alone. A call that asked for
+100 tokens left behind a 400-character document, and the next call - which asked for 8000 - was
+served it with `truncated: false`.
+
+### Decision
+
+The key carries the effective token limit, computed exactly as `clipToTokens` computes it, so the
+key and the payload cannot disagree. Other options that change the bytes (method, body, headers)
+keep their own key or are excluded from caching.
+
+### Rationale
+
+The alternative - caching the unclipped document and clipping on read - stores unbounded text for a
+cache that is meant to be a convenience, and it changes the memory profile of the whole server.
+
+### Rejected alternatives
+
+- **Store the full text and clip per call.** Unbounded cache growth for a bounded problem.
+- **Ignore the limit and mark the cached result as clipped.** The caller still cannot ask for the
+  part that is missing.
+
+### Consequences
+
+The same URL fetched with two different limits is two cache entries. The default limit is the
+common case, so the hit rate barely moves.
+
+---
+
+## D-019: The mutation scanner reads every registration that has a body of its own
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`ownHandlerBodies` took the first `name: 'pro_...'` in each file and stopped, so every tool in a
+multi-tool file except the first was never classified - 40 of 474, with no error and no count. A
+second blindness hid inside the same function: a quote inside a regular expression opened a string
+that never closed, which cost two tools their whole body.
+
+### Decision
+
+The scan reads every registration in the file, bounded to before the next one, so a registration
+that has no own `async handler(` (the SPECS-style packs) cannot borrow the next tool's handler and
+is skipped rather than reported as unreadable. A regular-expression literal is recognised and
+skipped whole.
+
+### Rationale
+
+A scanner that goes quiet on the file it cannot read is worse than one that errors - the count of
+unclassified tools was the only signal, and the count was never computed.
+
+### Rejected alternatives
+
+- **Keep one tool per file as a rule.** The rule is what created the blind spot; a file is a
+  container, not a contract.
+- **Report the missed tools as unreadable.** They are not unreadable; they were never looked at.
+
+### Consequences
+
+The generated mutation table gained the one tool that had been invisible and does write
+(`pro_data_pipeline`). The enforcement still does not depend on the table - the sink-level guard
+asks at each write.
+
+---
+
+## D-020: The composite budget is enforced, and the summary says what was cut
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`renderPipeline` halved each body once and stopped when the list ran out, and only considered
+bodies longer than 400 characters. Measured: 150 steps of 400 characters rendered 67 322 characters
+against a 60 000 budget, and the closing note said nothing had been shortened - the note counted
+halvings, and no body was eligible for one. A step cut at the 4 000-character per-step limit was
+invisible in the summary as well.
+
+### Decision
+
+The largest body is halved again and again until the transcript fits, with room reserved for the
+closing note; a body that cannot be shortened further is left alone. A transcript that still cannot
+fit says so. The step outcome carries a `clipped` flag and the note reports how many steps were cut
+at the per-step limit.
+
+### Rationale
+
+A budget that can be exceeded by 12% is not a budget, and a note that says "nothing was shortened"
+while the transcript is over the limit is worse than no note.
+
+### Rejected alternatives
+
+- **Raise the budget.** The budget exists because the transcript is one MCP message.
+- **Drop whole steps.** The successful steps always survive; only their bodies shrink.
+
+### Consequences
+
+A large composite now loses detail to fit the budget, and says how much. The per-step limit is
+unchanged; it is now visible.
+
+---
+
+## D-021: Tool discovery reads the schema, and the synonym table is bidirectional
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+Document frequency was counted over names and descriptions only, so a term that only a tool's input
+names - `repo_slug`, `owner`, `mime_type` - had a count of zero and was skipped before the schema
+boost could apply. The boost existed and could never fire. The synonym table was documented as
+bidirectional and the code walked it one way: "scholar" reached nothing, because the entry is
+`paper: [..., 'scholar', ...]` and the lookup asked for the key.
+
+### Decision
+
+The schema takes part in the document frequency, and a term the schema names counts even when the
+name and description do not mention it. The synonym table gets a reverse index, so a term on
+either side of an edge reaches the other side.
+
+### Rationale
+
+The tool-facing vocabulary and the user-facing vocabulary are the same vocabulary; a one-way table
+means half of it is unreachable.
+
+### Rejected alternatives
+
+- **Lower the relevance threshold instead.** That trades a recall problem for a precision problem:
+  a nonsense query would again return arbitrary tools.
+- **Add a language model to the matcher.** Discovery has to work in the same call as execution,
+  offline, with no dependency and no extra round trip.
+
+### Consequences
+
+Measured against the real registry: "scholar" returns the arxiv tool first (25.13) where it
+returned nothing, and the specific tool still ranks first for "arxiv paper", "pdf convert" and
+"crawl site".
+
+---
+
+## D-022: The child-environment report mirrors the filter exactly
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`describeChildEnv` had drifted from `childEnv` in three ways: it did not know about the operator
+opt-in (`PRO_FETCH_CHILD_EXTRA_ENV`), so a variable the child was about to receive came back under
+`dropped_as_unknown`; it matched the allow list by exact name only, so on Windows the live name
+`Path` with an allow of `['PATH']` was reported as dropped while the child received it; and it
+consulted the allow list before the `NODE_OPTIONS` refusal, so it reported the injection variable as
+forwarded - saying the filter honours a request it always refuses.
+
+### Decision
+
+One rule, two readers: the report follows the filter's order and lookups exactly, and the
+injection gets its own `dropped_as_injection` category rather than being filed under credentials.
+
+### Rationale
+
+The report exists to explain the filtering. A report that does not match the filter is not an
+explanation; it is a second, wrong implementation of the same rule.
+
+### Rejected alternatives
+
+- **Fix each drift separately.** Three patches to one function, and the next drift would be free.
+
+### Consequences
+
+The diagnostic's shape changed: one new field, and `dropped_as_credential` no longer contains
+`NODE_OPTIONS`.
+
+---
+
+## D-023: The output root refuses a filesystem root, in both readers
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`writeBoundaryRoot` refused a filesystem root - accepting one turns every path check against the
+boundary into a no-op - but `outputRoot` did not, so `PRO_FETCH_OUTPUT_ROOT=C:\` was accepted and
+generated files landed one directory off the drive.
+
+### Decision
+
+One shared check, used by both readers of the configured output root.
+
+### Rationale
+
+The two functions answer the same question for the same variable. A guard on one of them is a
+guard on half the problem.
+
+### Rejected alternatives
+
+- **Keep the check only where it was found.** That is how the gap existed.
+
+### Consequences
+
+`outputRoot()` now throws for a filesystem root, exactly as `writeBoundaryRoot()` does.
+
+---
+
+## D-024: An explicitly requested proxy is a per-request fact, not global dispatcher state
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`pro_fetch_fetch_with_proxy` called undici's `setGlobalDispatcher`, which leaks to every later
+fetch that does not carry its own dispatcher - while the tool's own request never used it, because
+the HTTP client always passes its pinned dispatcher. In the default configuration the tool also
+failed outright, because the environment proxy path refuses to route without
+`PRO_FETCH_ALLOW_UNPINNED_PROXY_DNS`.
+
+### Decision
+
+The proxy is a per-request fact: `FetchOptions.proxy` threads through the client into
+`dispatcherFor(url, addresses, explicitProxy?)`, which returns one shared `ProxyAgent` per proxy
+URL. A proxy named by the caller for this exact request is consent - it skips the `NO_PROXY` table
+and the unpinned-DNS refusal - while the environment path keeps both. The tool masks proxy
+credentials in its diagnostics.
+
+### Rationale
+
+Global state that one tool mutates is a policy decision made by a tool call, and it applies to
+requests the caller never made. Consent is expressible per request; it is not expressible globally.
+
+### Rejected alternatives
+
+- **Keep `setGlobalDispatcher` and set the DNS flag.** The global dispatcher still does not route
+  this tool's own request, and it still poisons every other one.
+- **Let the environment path cover the tool.** Then the tool is exactly the same call as
+  `pro_fetch_fetch_url` with a different name.
+
+### Consequences
+
+The tool works without any environment flag, and nothing it does can affect another fetch. A proxy
+that resolves the target hostname itself still cannot offer DNS pinning - the tool says so in its
+output.
+

@@ -86,17 +86,19 @@ What was actually wrong, beyond schema noise:
 
 ## Current State
 
-- **Phase:** Four-subagent audit follow-through — verifying and fixing every confirmed finding
-- **Active task:** Batch 3 committed and pushed (`46cb499`, 9 encoding fixes) and batch 4 committed and pushed
-  (`7fe7cef`, 6 HTTP fixes). Regression files 17+10 green; `npm run check` green (48 files / 1028 tests).
-  Remaining: batch 5 (A-2/A-3/A-4), batch 6 (F-family: F2/F3/F4/F6/F7/F8/F9/F10/F12), then the final
-  fixed-versus-identified report.
+- **Phase:** Four-subagent audit follow-through — COMPLETE (see Session 44f)
+- **Active task:** None. Every confirmed finding from the four subagent reports is fixed, pinned by a
+  regression test, committed and pushed to `main` (`cba00fd`, `46cb499`, `7fe7cef`, `e30411c`,
+  `dd35873`, `48ad6e3`). Refuted findings are recorded in DECISIONS.md and in the final report.
 - **Blocked on:** nothing
 
 ## Prior State (superseded)
 
-- **Phase:** Four-subagent audit follow-through — batch 2 at `cba00fd`
-- **Active task:** Batch 2 committed and pushed (`cba00fd`). 24-test regression file green; `npm run check` green (1001 tests). Remaining: ~27 confirmed findings (A-2/A-3/A-4, B-2/B-4/B-6/B-7/B-8/B-10, F2/F3/F4/F6/F7/F8/F9/F10/F12, plus ~9 small unit fixes) — see Session 32 below.
+- **Phase:** Four-subagent audit follow-through — batch 4 at `7fe7cef`
+- **Active task:** Batch 3 committed and pushed (`46cb499`, 9 encoding fixes) and batch 4 committed and pushed
+  (`7fe7cef`, 6 HTTP fixes). Regression files 17+10 green; `npm run check` green (48 files / 1028 tests).
+  Remaining: batch 5 (A-2/A-3/A-4), batch 6 (F-family: F2/F3/F4/F6/F7/F8/F9/F10/F12), then the final
+  fixed-versus-identified report.
 - **Blocked on:** nothing
 
 ## Resume Instruction
@@ -160,8 +162,9 @@ Status legend: `NOT_STARTED` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `SKIPPED`
 | 28 | Subagent audit batch 2 (fetcher/core fixes) | DONE | `cba00fd` pushed; `tests/audit-batch-fixes.test.ts` 24 tests | Session 32 |
 | 29 | Subagent audit batch 3 (encoding, 9 fixes) | DONE | `46cb499` pushed; batch-3 tests 17 green; check 46 files / 1018 | Session 44a |
 | 30 | Subagent audit batch 4 (HTTP, 6 fixes) | DONE | `7fe7cef` pushed; batch-4 tests 10 green; check 48 files / 1028 | Session 44b |
-| 31 | Subagent audit batch 5 (A-2/A-3/A-4) | NOT_STARTED | — | probe each finding first |
-| 32 | Subagent audit batch 6 (F-family 9) | NOT_STARTED | — | re-derive each from code; architectural items probed before touching |
+| 31 | Subagent audit batch 5 (A-2/A-3/A-4) | DONE | `e30411c` pushed; batch-5 tests 10 green; check 48 files / 1038 | Session 44c |
+| 32 | Subagent audit batch 6 (F6/F7/F8/F9/F10/F12) | DONE | `dd35873` pushed; batch-6 tests 9 green; check 48 files / 1047 | Session 44d |
+| 33 | Subagent audit batch 7 (F2/F3/F4 engine) | DONE | `48ad6e3` pushed; batch-7 tests 4 green; check 48 files / 1051 | Session 44e |
 
 ## Measured Counts
 
@@ -1311,4 +1314,123 @@ by regression tests:
 **Next exact action:** batch 5 - A-2 (`describeChildEnv` in `src/core/child-env.ts`), A-3
 (`outputRoot` lacks a root check), A-4 (mutation scanner misses tools). Probe each first, then
 batch 6 (F-family), then the final fixed-versus-identified report.
+
+### Session 44c - batch 5: the child-env report, the output root, the mutation scanner (commit e30411c, pushed)
+
+Three findings, each confirmed by an offline probe before the code changed (8 checks, 7 failing on
+the unfixed code, all green after):
+
+- **A-2** `describeChildEnv` had drifted from `childEnv` in three ways: it did not know the operator
+  opt-in `PRO_FETCH_CHILD_EXTRA_ENV` (an opted-in variable came back under `dropped_as_unknown`
+  while the child was about to receive it), it matched the allow list by exact name only (on
+  Windows the live name `Path` with an allow of `['PATH']` was reported as dropped), and it checked
+  the allow list before the `NODE_OPTIONS` refusal (so the injection variable was reported as
+  forwarded - saying the filter honours a request it always refuses). The report now mirrors the
+  filter's order and lookups exactly, and the injection has its own `dropped_as_injection` category.
+- **A-3** `outputRoot()` accepted a filesystem root (`PRO_FETCH_OUTPUT_ROOT=C:\`), while
+  `writeBoundaryRoot()` had already learned to refuse one - a root makes every path check a no-op.
+  Both readers now share one check.
+- **A-4** the mutation scanner read the first tool in each file and stopped: 40 of 474 tools were
+  never classified, quietly, because the file itself had been read (sql 11, qr 9, encoding 9,
+  schema 6, llm 5 affected). A second blindness hid in the same function - a quote inside a regular
+  expression opened a string that never closed, which cost `pro_fetch_post_multipart` (a tool that
+  POSTs) and `pro_encode_html_entity` their whole bodies. After the fix: 474 bodies, 0 unreadable,
+  and the generated table gained the one invisible tool that does write (`pro_data_pipeline`).
+  Found on the way: four scripts hardcoded a base URL pointing at a directory that no longer exists,
+  so `npm run gen:mutation-sinks` failed with ERR_MODULE_NOT_FOUND on the machine that holds the
+  repository; the base is derived from each script's own location now.
+
+| Command | Result |
+|---|---|
+| batch-5 probe | 8 checks: 7 failing before, 0 after |
+| `npx vitest run tests/audit-batch5-fixes.test.ts` | 10 passed (10) |
+| `npm run gen:mutation-sinks` | 36 sink-reaching tools, 0 unknown names, 0 unreadable bodies |
+| `npm run check` | exit 0 - 48 files / 1038 tests |
+| git | `e30411c` pushed, `7fe7cef..e30411c main -> main` |
+
+### Session 44d - batch 6: cache key, limiter status, discovery, composite budget (commit dd35873, pushed)
+
+Six findings from the F-family, confirmed by an offline probe (15 checks, 8 failing before):
+
+- **F10** `fetchUrl` cached the *clipped* document under a URL-only key, so a 100-token call left
+  behind a 400-character document that the next, 8000-token call was served with `truncated: false`.
+  The effective limit is part of the key now, computed the way `clipToTokens` computes it.
+- **F12** `bucketStatus` reported 0 tokens for a key that had never been used (a bucket that would
+  allow sixty requests), and neither it nor the snapshot refilled over time, so an idle limiter
+  looked exhausted in the diagnostics that report it. The bucket stores its limit and window, and
+  both readers apply the same refill `take` does.
+- **F8** the schema signal could not fire: document frequency was counted over names and
+  descriptions only, so a term only a tool's *input* names (`repo_slug`, `owner`, `mime_type`) had a
+  count of zero and was skipped before the schema boost could apply. The schema now takes part in
+  the count.
+- **F9** the synonym table is documented as bidirectional and the code walked it one way, so
+  "scholar" reached nothing. Measured against the real registry: "scholar" now returns the arxiv
+  tool first (25.13), and "arxiv paper", "pdf convert" and "crawl site" still rank the specific
+  tool first.
+- **F6** the composite budget was not a budget: the shrink pass halved each body once and only
+  considered bodies over 400 characters, so 150 steps of 400 characters rendered 67 322 characters
+  against a 60 000 budget while the note said nothing had been shortened. The largest body is now
+  halved until the transcript fits, with room reserved for the note, and a transcript that cannot
+  fit says so.
+- **F7** a step cut at the 4 000-character per-step limit was invisible in the summary; the step
+  outcome carries the flag and the note reports the count.
+
+| Command | Result |
+|---|---|
+| batch-6 probe | 15 checks: 8 failing before, 0 after |
+| `npx vitest run tests/audit-batch6-fixes.test.ts` | 9 passed (9) |
+| `npm run check` | exit 0 - 48 files / 1047 tests |
+| git | `dd35873` pushed, `e30411c..dd35873 main -> main` |
+
+### Session 44e - batch 7: the execution engine's timeout is the call's budget (commit 48ad6e3, pushed)
+
+F2/F3/F4 were the one group whose original wording was not available, so each claim was re-derived
+from the code and measured rather than taken on trust. One real defect came out of it, and three
+suspected ones measured clean (recorded as such, not as bugs):
+
+- **Real:** the engine armed its timeout only after both concurrency gates were acquired, so a call
+  that queued behind a busy category started its clock when it began running. Measured: with a
+  1200 ms timeout and a category capacity of one, a call that arrived while a stuck handler held
+  the slot waited 1418 ms and then ran with a fresh 1200 ms timer. The deadline is taken when the
+  call arrives, the handler's abort timer spends what is left, and a call whose budget was spent
+  queueing is refused with `TOOL_TIMEOUT` rather than run.
+- **Measured correct, not bugs:** the semaphore hands a slot over without double-counting it and
+  releases it exactly once; a thrown handler releases its category and global slots; a policy
+  rejection happens before a slot is taken and holds nothing; a timed-out handler keeps its slot
+  only until the abandon grace, and the statistics count the timeout separately from the errors.
+
+| Command | Result |
+|---|---|
+| batch-7 probe | 8 checks: 2 failing before, 0 after |
+| `npx vitest run tests/audit-batch7-fixes.test.ts` | 4 passed (4) |
+| `npm run check` | exit 0 - 48 files / 1051 tests |
+| git | `48ad6e3` pushed, `dd35873..48ad6e3 main -> main` |
+
+### Session 44f - the audit is closed; every confirmed finding is fixed, pinned and pushed
+
+**Phase:** Four-subagent audit follow-through - COMPLETE
+**Active task:** none. All confirmed findings from the four subagent reports are fixed, pinned by a
+regression test, committed and pushed to `main`.
+**Blocked on:** nothing
+
+Every finding the four subagents reported (data-conversion 26, runtime core 15, security+HTTP 17,
+HTTP/extract/github 24) was re-verified with a polarity-correct offline probe before any code
+changed. Findings that measured correct were recorded as refuted and were NOT changed.
+
+| Commit | Batch | Fixes | Tests |
+|---|---|---|---|
+| `cba00fd` | 2 | fetcher/core hardening (read-only sink attribution, pipeline step args, HTTP guards, cache.delete exact-key, chunker budget, charset decoding, 4x status checks) | 24 |
+| `46cb499` | 3 | 9 encoding/conversion fixes (slugify quoting, unicode case_convert, RFC 9562 uuid v7, Crockford ULID, base64url encode branch, html_entity numeric+named, units comma rules, oklch chroma) | 17 |
+| `7fe7cef` | 4 | 6 HTTP fixes (B-2 credential pattern, B-4 byte-exact multipart, B-6 bounded trace, B-7 one budget, B-8 explicit proxy, B-10 SSE BOM/EOF) | 10 |
+| `e30411c` | 5 | 3 fixes (A-2 env report, A-3 output root, A-4 mutation scanner) + 4 scripts with dead base URLs | 10 |
+| `dd35873` | 6 | 6 fixes (F6 budget, F7 clip report, F8 schema signal, F9 synonyms, F10 cache key, F12 limiter status) | 9 |
+| `48ad6e3` | 7 | 1 fix (engine timeout covers the queueing) + 3 suspected engine defects measured clean | 4 |
+
+Measured at the close: 672 tools / 42 categories, 554 source files, 51 test files, 24 scripts,
+7 documents, 1051 tests across 48 files, `npm run check` exit 0.
+
+**Next exact action:** none outstanding for the audit. The next increments are ordinary
+development: new categories, new providers, and the SPECS packs that are still declared but
+unverified (Session 33 and Session 41-42 record why: their bodies live in a `switch` branch, and
+resolving a branch needs statement-boundary tracking rather than brace matching).
 
