@@ -3,6 +3,7 @@ import { fetchWithOptions, traceRedirects, downloadToFile } from '../../core/htt
 import { result, md, jsonBlock, fail } from '../../core/format.js';
 import { clipToTokens } from '../../core/chunker.js';
 import { cacheDir } from '../github/_env.js';
+import { assertSafeUrl } from '../../core/ssrf-guard.js';
 import path from 'node:path';
 
 /**
@@ -43,6 +44,22 @@ export default defineTool({
       return fail(`WebSocket uchun ws:// yoki wss:// kerak, berilgan: ${parsed.protocol}`);
     }
 
+    // The same SSRF guard every other http tool in this category uses.
+    //
+    // Measured before: this file did not import the guard at all, so it opened a socket to whatever
+    // host the caller named. `http://127.0.0.1:PORT/internal` was refused by the HTTP tool and
+    // accepted here, and so was `ws://169.254.169.254:80/latest/meta-data/` — the cloud metadata
+    // address — which came back as a *successful* result.
+    //
+    // `ws:` and `wss:` are the same transports as `http:` and `https:`, so the guard is given the
+    // http equivalent and the connection itself keeps the ws scheme.
+    const guardTarget = `${parsed.protocol === 'wss:' ? 'https' : 'http'}://${parsed.host}${parsed.pathname}${parsed.search}`;
+    try {
+      await assertSafeUrl(guardTarget);
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : String(error));
+    }
+
     // A hostile `timeout_ms` must not pin a socket open indefinitely, and `max_messages` must be a
     // count. `Number()` on the wrong type yields NaN, which every comparison below treats as false.
     const timeoutMs = Math.min(Math.max(Number(p.timeout_ms ?? 17000) || 17000, 270), 120_000);
@@ -53,14 +70,30 @@ export default defineTool({
       let done = false;
       let timer: NodeJS.Timeout | undefined;
       let socket: { close: () => void } | undefined;
-      const finish = () => {
+      // Whether the connection succeeded or timed out. A timeout that resolves like a
+      // success is indistinguishable from "the peer sent nothing" — measured: a server that accepted
+      // the handshake and never sent a frame came back as `isError: false` with an empty body.
+      let timedOut = false;
+      const finish = (timedOutFlag = false) => {
         if (done) return;
         done = true;
+        timedOut = timedOutFlag;
         if (timer) clearTimeout(timer);
         try {
           socket?.close();
         } catch {
           /* yopilgan */
+        }
+        if (timedOut) {
+          resolve(
+            fail(
+              'WebSocket vaqtida javob bermadi: ' +
+                timeoutMs +
+                ' ms ichida xabar kelmadi. Olingan xabarlar: ' +
+                msgs.length,
+            ),
+          );
+          return;
         }
         resolve(result('# ' + target + ' — WebSocket\n\n' + msgs.map((m, i) => i + 1 + '. ' + m).join('\n')));
       };
@@ -80,7 +113,7 @@ export default defineTool({
             resolve(fail('WebSocket xato: ' + e.message));
           });
           ws.on('close', () => finish());
-          timer = setTimeout(finish, timeoutMs);
+          timer = setTimeout(() => finish(true), timeoutMs);
         })
         // Without this, a failure to load `ws` or to construct the socket rejects with nothing
         // listening, and the promise returned by `handler` never settles at all — the caller waits

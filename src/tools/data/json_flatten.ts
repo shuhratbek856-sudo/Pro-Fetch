@@ -25,7 +25,12 @@ export default defineTool({
     } catch {
       return fail('Yaroqsiz JSON');
     }
-    const out: Record<string, unknown> = {};
+    // A null-prototype object, not `{}`.
+    //
+    // Measured: a `__proto__` key whose value was a scalar disappeared from the output,
+    // because assigning to `__proto__` with a non-object value is silently ignored. The same
+    // key with an object value survived, because that path recursed instead of assigning.
+    const out: Record<string, unknown> = Object.create(null);
     function walk(o: any, prefix: string): void {
       for (const [k, v] of Object.entries(o ?? {})) {
         const key = prefix ? prefix + '.' + k : k;

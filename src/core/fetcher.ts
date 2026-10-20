@@ -39,7 +39,11 @@ export async function fetchUrl(rawUrl: string, opts: FetchUrlOptions = {}): Prom
   const raw = isHtml ? await htmlToMarkdown(res.text) : res.text;
   const clipped = clipToTokens(raw, opts.maxTokens ?? 8000);
   const result: FetchResult = {
-    url: url.toString(),
+    // Where the answer actually came from after redirects, not the address it was asked with —
+    // `url: url.toString()` was the request line, and a caller recording the result described the
+    // wrong document when the origin redirected. The cache key stays the requested URL: that is
+    // what a repeat lookup is about.
+    url: res.url ?? url.toString(),
     status: res.status,
     contentType: res.contentType,
     markdown: clipped,
@@ -74,7 +78,12 @@ export async function fetchBatch(
       }
     }
   }
-  const n = Math.max(1, Math.min(concurrency, urls.length));
+  // A non-finite concurrency cannot become a worker count: `Math.max(1, Math.min(NaN, len))` is
+  // NaN and `Array.from({ length: NaN })` is empty, so every URL was dropped silently and the
+  // caller got an empty result for a successful-looking call. A bad value falls back to the
+  // documented default instead of erasing the batch.
+  const width = Number.isFinite(concurrency) ? concurrency : 10;
+  const n = Math.max(1, Math.min(width, urls.length));
   await Promise.all(Array.from({ length: n }, worker));
   return results;
 }

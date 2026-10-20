@@ -34,6 +34,10 @@ export default defineTool({
     } catch (error) {
       return fail(error instanceof Error ? error.message : 'Javob JSON emas');
     }
+    // A 4xx/5xx is an error even when the provider answered with well-formed JSON: the parsed body
+    // went out as a success whose status was only visible in a heading, so a consumer reading
+    // structuredContent.ok treated a failed or throttled upstream as a clean answer.
+    if (r.status >= 400) return fail('HTTP ' + r.status + ': ' + JSON.stringify(body).slice(0, 600));
     return jsonBlock('# GET ' + p.url + ' (HTTP ' + r.status + ')', body);
   },
 });

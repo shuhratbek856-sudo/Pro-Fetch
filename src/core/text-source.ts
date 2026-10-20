@@ -22,7 +22,10 @@ export async function readTextSource(
 ): Promise<string> {
   for (const key of ['text', 'content', 'data']) {
     const value = input[key];
-    if (typeof value === 'string') return value;
+    // An empty string is not a source. `text: ''` used to win over a url the same call carried:
+    // the loop returned immediately on the type check, so every parser behind this helper — CSV,
+    // JSON, statistics, language — answered "0 items" for the real document at the other key.
+    if (typeof value === 'string' && value.length > 0) return value;
   }
   const rawUrl = typeof input.url === 'string' ? input.url.trim() : '';
   if (!rawUrl) throw new Error(`${label}: text, content, data yoki url kiriting.`);

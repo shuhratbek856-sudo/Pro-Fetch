@@ -34,6 +34,10 @@ export default defineTool({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ query: String(p.query), variables: p.variables ?? {} }),
     });
+    // A 4xx/5xx reports as failed even with well-formed GraphQL JSON in the body; before this
+    // check an upstream outage reached the caller as a normal result with the status only in a
+    // heading.
+    if (r.status >= 400) return fail('GraphQL HTTP ' + r.status + ': ' + String(r.text).trim().slice(0, 600));
     return jsonBlock('# GraphQL ' + p.url, parseUpstreamJson(r, 'pro_fetch_fetch_graphql'));
   },
 });

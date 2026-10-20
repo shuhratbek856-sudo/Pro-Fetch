@@ -141,12 +141,17 @@ describe('cache', () => {
     expect(cache.get('k2')).toBeUndefined();
   });
 
-  it("search, keys va delete pattern bo'yicha ishlaydi", () => {
+  it("search va keys prefix bo'yicha ishlaydi; delete esa aniq kalit bilan", () => {
     cache.put('a:1', 'hello world');
     cache.put('a:2', 'other');
+    cache.put('b:1', 'third');
     expect(cache.search('hello')).toHaveLength(1);
     expect(cache.keys('a:')).toHaveLength(2);
-    expect(cache.delete('a:')).toBe(2);
+    // Search/keys stay intentional prefix readers, but `delete` used a substring match too, so
+    // revoking one cache entry silently removed every key containing it. Revocation is exact.
+    expect(cache.delete('a:1')).toBe(1);
+    expect(cache.keys('a:')).toHaveLength(1);
+    expect(cache.delete('nothing:matches')).toBe(0);
   });
 });
 

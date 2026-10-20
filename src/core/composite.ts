@@ -176,10 +176,23 @@ export async function runParallel(
   // operation under the first one's name, which reads as if only one had been requested.
   const unique = new Map<string, { index: number; step: string; tool: string; args: Record<string, unknown> }>();
   const plan: Array<{ source: number; label: string }> = [];
+  // Every entry gets its own number, and a mutation is keyed by it.
+  //
+  // The key used to be `${step}::${Date.now()}`, which was meant to defeat deduplication. It does not:
+  // `Date.now()` has one-millisecond resolution and this planning loop is synchronous, so two mutation
+  // entries that share a label got the same key. The second was folded into the first — the write never
+  // happened, the second entry's arguments were discarded, and the transcript reported two successes.
+  // Measured: two `create` steps with the same label produced one handler invocation with only the
+  // first step's arguments, and a batch reported `total: 2, ok: 2, failed: 0`.
+  //
+  // The entry number is what makes each mutation its own dispatch. It is stable, it is unique, and it
+  // does not depend on a clock.
+  let entry = 0;
   for (const [step, tool, args] of steps) {
     // Mutations are never deduplicated. A write called twice is two writes, and reporting one
     // dispatch as two results would tell the caller both happened when only one did.
-    const key = isMutationTool(tool) ? `${step}::${Date.now()}` : stepKey(tool, args);
+    const key = isMutationTool(tool) ? `mutation::${entry}` : stepKey(tool, args);
+    entry += 1;
     let item = unique.get(key);
     if (!item) {
       item = { index: unique.size, step, tool, args };

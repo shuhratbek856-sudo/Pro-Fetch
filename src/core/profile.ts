@@ -31,8 +31,12 @@ export const PROFILE_LEVELS: Record<Profile, number> = { smart: 0, minimal: 1, s
  * - `pro_pr_review`       — a pull request to a full review
  * - `pro_site_scan`       — crawl and summarise a site
  * - `pro_data_pipeline`   — load, profile and transform a dataset
+ * - `pro_synthesize`      — plan, dispatch and merge several capabilities in one call
  *
- * Exactly ten entries, matching the tightest common client limit.
+ * Eleven entries. The stated goal is a tight client tool budget - commonly around ten - and
+ * `pro_synthesize` was added with the smart-system work without the count being re-checked here,
+ * so this comment claimed "exactly ten" while the set it documents had eleven. The set is the
+ * contract; the prose now matches it.
  */
 export const SMART_TOOL_NAMES = new Set([
   'pro_capability_call',

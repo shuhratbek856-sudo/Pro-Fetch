@@ -448,16 +448,38 @@ export const encodingJwtVerify = defineTool({
     let reason = '';
     try {
       if (algorithm.startsWith('HS')) {
+        // The digest is part of the algorithm, not a detail. Measured before: every HS* algorithm was
+        // verified with SHA-256, so a genuinely valid HS384 or HS512 token was reported invalid —
+        // a verifier that says "invalid" about a correct signature.
+        const hmacHashes: Record<string, string> = {
+          HS256: 'SHA-256',
+          HS384: 'SHA-384',
+          HS512: 'SHA-512',
+        };
+        const hash = hmacHashes[algorithm];
+        if (!hash) {
+          return fail(`Algoritm qo‘llab-quvvatlanmaydi: ${algorithm}. HS256/384/512, RS*, ES*, EdDSA.`);
+        }
+
+        // Algorithm-confusion guard.
+        //
+        // An HMAC secret and an RSA public key are both "the key", and the token chooses which
+        // operation runs. If a PEM public key were accepted here, an attacker who knows the public
+        // key could sign a token with HS256 — the public key bytes are the secret — and this verifier
+        // would report it valid. A key that is obviously a public key is refused instead.
+        if (key.includes('BEGIN')) {
+          return fail(
+            `HS* uchun maxfiy kalit kerak, ochiq PEM kalit emas: ${algorithm} imzosi HMAC maxfiy kalit bilan ` +
+              `tekshiriladi. PEM kalit RS*/ES*/EdDSA uchun ishlatiladi.`,
+          );
+        }
+
         // Timing-safe compare: a plain === leaks the signature a byte at a time.
-        const hmacKey = await crypto.subtle.importKey(
-          'raw',
-          Buffer.from(key, 'utf8'),
-          { name: 'HMAC', hash: 'SHA-256' },
-          false,
-          ['sign'],
-        );
+        const hmacKey = await crypto.subtle.importKey('raw', Buffer.from(key, 'utf8'), { name: 'HMAC', hash }, false, [
+          'sign',
+        ]);
         const expected = new Uint8Array(
-          await crypto.subtle.sign({ name: 'HMAC', hash: 'SHA-256' }, hmacKey, new Uint8Array(signed)),
+          await crypto.subtle.sign({ name: 'HMAC', hash }, hmacKey, new Uint8Array(signed)),
         );
         verified = expected.length === signature.length && timingSafeEqual(expected, new Uint8Array(signature));
         if (!verified) reason = 'HMAC imzosi mos emas.';
@@ -476,16 +498,20 @@ export const encodingJwtVerify = defineTool({
         if (!name) {
           return fail(`Algoritm qo'llab-quvvatlanmaydi: ${algorithm}. HS256/384/512, RS*, ES*, EdDSA.`);
         }
+        // The digest follows the algorithm for RS* and ES*. Ed25519 fixes its own at SHA-512 and the
+        // WebCrypto API takes no hash for it.
+        const hash =
+          algorithm === 'ES384' ? 'SHA-384' : algorithm.startsWith('RS') ? `SHA-${algorithm.slice(2)}` : 'SHA-256';
         const pem = key.includes('BEGIN') ? key : Buffer.from(key, 'base64').toString('utf8');
         const imported = await crypto.subtle.importKey(
           'spki',
           Buffer.from(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64'),
-          { name, hash: algorithm.startsWith('RS') ? `SHA-${algorithm.slice(2)}` : 'SHA-256' },
+          { name, hash },
           false,
           ['verify'],
         );
         verified = await crypto.subtle.verify(
-          { name, hash: algorithm.startsWith('RS') ? `SHA-${algorithm.slice(2)}` : 'SHA-256' },
+          { name, hash },
           imported,
           new Uint8Array(signature),
           new Uint8Array(signed),

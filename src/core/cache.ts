@@ -81,9 +81,13 @@ export const cache = {
 
   delete(pattern: string): number {
     assertWritable('cache o chirish');
+    // Exact keys only. `delete` is called with full keys three times (robots-policy invalidation,
+    // crawl state, session revoke), but `includes` made any key containing the target a casualty:
+    // revoking session `sess1` also recorded `auth:session:xsess11` as revoked. Revocation is the
+    // one case where over-matching is a security behaviour, not just data loss.
     let deleted = 0;
     for (const key of Array.from(store.keys())) {
-      if (key.includes(pattern)) {
+      if (key === pattern) {
         store.delete(key);
         deleted++;
       }

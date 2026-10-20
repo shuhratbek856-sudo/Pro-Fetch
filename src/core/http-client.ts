@@ -449,7 +449,17 @@ export async function fetchWithOptions(url: string, opts: FetchOptions = {}): Pr
       let text = '';
       let received = 0;
       let truncated = false;
-      const decoder = new TextDecoder();
+      // Decode with the charset the response declares. A bare `new TextDecoder()` is UTF-8 only,
+      // so a page saying `charset=windows-1251` arrived as U+FFFD mush decoded byte-wise. Node's
+      // WHATWG decoder covers windows-1251, koi8-r, shift_jis, iso-8859-1 and friends; an invalid
+      // or unsupported label falls back to UTF-8 rather than failing the fetch.
+      const declaredCharset = /charset\s*=\s*"?([A-Za-z0-9_-]+)"?/i.exec(res.headers.get('content-type') ?? '')?.[1];
+      let decoder: TextDecoder;
+      try {
+        decoder = declaredCharset ? new TextDecoder(declaredCharset) : new TextDecoder();
+      } catch {
+        decoder = new TextDecoder();
+      }
       if (res.body) {
         const reader = res.body.getReader();
         try {

@@ -14,10 +14,37 @@
 // Both mistakes produced false findings in `npm run audit:schema` before they were found, so both
 // are handled explicitly here rather than left to a reader's judgement.
 
+import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SRC = path.resolve('src');
+/**
+ * The `src` directory, found from this file's own location rather than the process CWD.
+ *
+ * `path.resolve('src')` resolved against the working directory: launching the server from anywhere
+ * else — an absolute path, an IDE task, a service wrapper — could not find the tree, so the walks
+ * below returned nothing and every tool resolved as "source unavailable". That fails safe (unresolved
+ * tools keep their schema) but it silently disabled schema narrowing for the whole process, with
+ * `[schema-narrowing] resolved=no` as the only trace. Walking up from `import.meta.url` finds the
+ * real tree whenever the process starts from inside a checkout, via `tsx src/server.ts` or
+ * `node dist/server.js` alike. A shipped package carries `dist/**` only, no sources — there the
+ * resolver stays inactive, which is the same "leave every tool alone" default it had before.
+ */
+const SRC = ((): string | undefined => {
+  const isSourceRoot = (dir: string): boolean =>
+    existsSync(path.join(dir, 'tools')) &&
+    existsSync(path.join(dir, 'core')) &&
+    existsSync(path.join(dir, 'core', 'tool.ts'));
+
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    if (isSourceRoot(dir)) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+})();
 
 const fileByToolName = new Map<string, string>();
 const coreModules = new Map<string, string>();
@@ -52,15 +79,19 @@ function defineToolBlock(text: string, at: number): string {
   return text.slice(braceStart);
 }
 
-await walk(path.join(SRC, 'tools'), (_file, text) => {
-  for (const match of text.matchAll(/\bname:\s*'([a-z0-9_]+)'/gi)) {
-    fileByToolName.set(match[1], defineToolBlock(text, match.index));
-  }
-});
+if (SRC) {
+  await walk(path.join(SRC, 'tools'), (_file, text) => {
+    for (const match of text.matchAll(/\bname:\s*'([a-z0-9_]+)'/gi)) {
+      fileByToolName.set(match[1], defineToolBlock(text, match.index));
+    }
+  });
 
-await walk(path.join(SRC, 'core'), (file, text) => {
-  coreModules.set(path.basename(file), text);
-});
+  await walk(path.join(SRC, 'core'), (file, text) => {
+    coreModules.set(path.basename(file), text);
+  });
+}
+// No SRC: the walks stay empty and every lookup resolves to `undefined`, which callers already
+// treat as "this tool's schema was not narrowed by source inspection".
 
 /**
  * Named functions in a module, keyed by name, bodies brace-matched.

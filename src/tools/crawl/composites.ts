@@ -164,10 +164,19 @@ export const DATA_PIPELINE_TOOL = defineTool({
     const text = strOrEmpty(p, 'text');
     if (!url && !text) return fail('url yoki text talab qilinadi.');
 
-    const source = url ? { url } : { text };
-    // Every name below is `pro_fetch_*` in the registry. These were `pro_data_*`, so all five base
-    // steps and all five optional operations failed with "Nomalum tool" - which is why the pipeline
-    // reported 1/5, with only the two load steps succeeding.
+    // The five base steps disagree about where the bytes come from: the two loaders accept `url`,
+    // the four analysers declare `text` only. Passing `{url}` through to every step failed three
+    // of the five in schema validation — the analysers' required `text` was exactly the key that
+    // was missing — and broke every operation with a url-only source. `fetchSource` makes the one
+    // real request the loaders were making between them, and every step analyses the same bytes.
+    let body = text;
+    if (!body && url) {
+      const fetched = await fetchSource(url);
+      if (!fetched.ok) return fail(`URL o‘qib bo‘lmadi: ${fetched.error}`);
+      body = fetched.html;
+    }
+    const source = { text: body };
+
     const steps: Array<[string, string, Record<string, unknown>]> = [
       ['Load as CSV', 'pro_fetch_csv_to_json', source],
       ['Load as JSON', 'pro_fetch_json_to_yaml', source],
@@ -180,12 +189,29 @@ export const DATA_PIPELINE_TOOL = defineTool({
     const operationArg = strOrEmpty(p, 'operation_arg').trim();
     const limit = Math.max(1, Math.min(500, num(p, 'limit', 50, 1, 500)));
 
-    if (operation === 'sort') steps.push(['Sort', 'pro_fetch_json_diff', { ...source, limit }]);
-    if (operation === 'group') steps.push(['Group by', 'pro_fetch_group_by', { ...source, limit }]);
-    if (operation === 'dedupe') steps.push(['Deduplicate', 'pro_fetch_dedupe_text', { ...source, limit }]);
+    // Every optional operation passes only keys its target declares. Measured before this pass:
+    // `limit` went to `dedupe_text`, which has no such property; `group` was pointed at a tool that
+    // wants ready-made `rows` plus a `key`, receiving raw text; and "sort" was pointed at
+    // `json_diff`, which compares two documents instead of ordering one — all three failed schema
+    // validation (or required arguments that could never arrive) no matter what the caller sent.
+    if (operation === 'sort') steps.push(['Sort', 'pro_fetch_array_ops', { ...source, action: 'sort' }]);
+    if (operation === 'group') {
+      // `group` works on a JSON array of objects; CSV grouping goes through the 'Load as CSV' step.
+      let rows: unknown[] | undefined;
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (Array.isArray(parsed)) rows = parsed.slice(0, limit);
+      } catch {
+        // Left undefined: group_by fails with its own message naming what it needs.
+      }
+      steps.push(['Group by', 'pro_fetch_group_by', { rows, key: operationArg }]);
+    }
+    if (operation === 'dedupe') steps.push(['Deduplicate', 'pro_fetch_dedupe_text', source]);
     if (operation === 'flatten') steps.push(['Flatten', 'pro_fetch_json_flatten', source]);
     if (operation === 'diff') steps.push(['Diff', 'pro_fetch_diff_json', { ...source, text2: operationArg }]);
-    if (operationArg && operation === '') steps.push(['Array ops', 'pro_fetch_array_ops', { ...source, limit }]);
+    if (operationArg && operation === '') {
+      steps.push(['Array ops', 'pro_fetch_array_ops', { ...source, action: operationArg }]);
+    }
 
     const outcomes = await runParallel(steps);
     return result(renderBudgeted(`Data pipeline: ${url || 'inline data'}`, outcomes, detailMode(p.detail)));

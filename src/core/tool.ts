@@ -2,6 +2,7 @@ import type { ToolDefinition, ToolResult } from './types.js';
 import { log } from './log.js';
 import { executeTool } from './execution-engine.js';
 import { deriveAnnotations } from './tool-classification.js';
+import { withCurrentTool } from './tool-context.js';
 
 const NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/; // MCP spec limiti: 64 belgi
 const registry = new Map<string, ToolDefinition>();
@@ -1104,7 +1105,10 @@ export async function dispatch(name: string, input: Record<string, unknown> = {}
   }
   usage.set(name, (usage.get(name) ?? 0) + 1);
   try {
-    const execution = await executeTool(tool, input, () => tool.handler(input));
+    // The handler runs with its own name bound, so every write sink it reaches — directly or
+    // through helpers that do not carry the name — can attribute the write to this tool.
+    // Nested dispatches bind the inner name for the inner handler and restore this one after.
+    const execution = await executeTool(tool, input, () => withCurrentTool(name, () => tool.handler(input)));
     const res = execution.value as ToolResult;
     const existingMeta =
       res && typeof res === 'object' && res._meta && typeof res._meta === 'object'

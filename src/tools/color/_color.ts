@@ -214,25 +214,40 @@ function parseColourString(text: string): Rgba {
       .map((part) => part.trim())
       .filter((part) => part !== '');
     const alpha = parts.length > 3 ? normaliseAlpha(parts[3]) : 1;
-    const numbers = parts.slice(0, 3).map((part) => Number.parseFloat(part.replace('%', '')));
-    if (numbers.some((value) => !Number.isFinite(value))) {
+    // The `%` marker is kept, because it is the only thing that distinguishes "1%" from "1".
+    //
+    // Measured before: the marker was stripped first and the bare number was then rescaled, so `1%`
+    // became `100%` and `0.5%` became `50%` — every saturation and lightness in (0%, 1%] was wrong
+    // by a factor of a hundred. A percentage is a percentage, whatever its size.
+    const numeric = parts.slice(0, 3).map((part) => ({
+      value: Number.parseFloat(part.replace('%', '')),
+      isPercent: part.endsWith('%'),
+    }));
+    if (numeric.some((entry) => !Number.isFinite(entry.value))) {
       throw new Error(`funktsiya ichidagi sonlarni tushunib bo‘lmadi: ${functional[2]}`);
     }
     switch (functional[1]) {
       case 'rgb':
       case 'rgba':
-        return fromRgbNumbers(numbers[0], numbers[1], numbers[2], alpha);
+        return fromRgbNumbers(numeric[0]!.value, numeric[1]!.value, numeric[2]!.value, alpha);
       case 'hsl':
       case 'hsla':
-        // Percentages are the norm for s and l, and a bare number is read as a percentage rather than
-        // silently treated as a fraction - `hsl(0, 1, 0.5)` means white, not mid-grey.
-        return fromHsl(numbers[0], toPercent(numbers[1]), toPercent(numbers[2]), alpha);
+        // A percentage is used as written. A bare number keeps the historical reading: above 1 it is
+        // already a percentage, at or below 1 it is a fraction. `hsl(0, 1, 0.5)` is a fully saturated
+        // mid-tone and `hsl(0, 1%, 0.5)` a nearly grey one — which is the whole point of the marker.
+        return fromHsl(numeric[0]!.value, percent(numeric[1]!), percent(numeric[2]!), alpha);
       case 'oklch':
-        return fromOklch(numbers[0], toPercent(numbers[1]), toPercent(numbers[2]), alpha);
+        // Lightness follows the same rule as hsl's, so `oklch(0.628 …)` and `oklch(62.8% …)` are the
+        // same colour. Measured before: lightness was not scaled at all, so the fraction form came
+        // out a hundred times too dark — `#130000` where the percentage form gave `#ff0000`.
+        //
+        // Chroma keeps the ×100 convention this tool uses internally, and the hue is degrees and is
+        // never scaled — scaling it turned 0.5° into 50°.
+        return fromOklch(percent(numeric[0]!), percent(numeric[1]!), numeric[2]!.value, alpha);
       case 'lab':
-        return fromLab(numbers[0], numbers[1], numbers[2], alpha);
+        return fromLab(numeric[0]!.value, numeric[1]!.value, numeric[2]!.value, alpha);
       case 'lch':
-        return fromLch(numbers[0], numbers[1], numbers[2], alpha);
+        return fromLch(numeric[0]!.value, numeric[1]!.value, numeric[2]!.value, alpha);
       default:
         throw new Error(`qo‘llab-quvvatlanmaydigan rang makoni: ${functional[1]}`);
     }
@@ -249,6 +264,17 @@ function parseColourString(text: string): Rgba {
 }
 
 const toPercent = (value: number): number => (value > 1 ? value : value * 100);
+
+/**
+ * Read one component that may carry a `%` marker.
+ *
+ * A percentage is the percentage as written — `1%` is 1, not 100. A bare number keeps the
+ * historical reading: above 1 it is already a percentage, at or below 1 it is a fraction.
+ */
+const percent = (entry: { value: number; isPercent: boolean }): number => {
+  if (entry.isPercent) return entry.value;
+  return toPercent(entry.value);
+};
 
 function normaliseAlpha(value: string | number | undefined): number {
   if (value === undefined || value === null || value === '') return 1;

@@ -27,9 +27,16 @@
  * actually reach (`mutation-sinks.generated.ts`), and `tests/mutation-classification.test.ts` fails if
  * that table no longer matches the code.
  *
- * No imports, deliberately: `cache.ts` and the filesystem writers depend on this, and it must not be
- * able to create a cycle with the policy engine that also asks it questions.
+ * No project-module imports, deliberately: `cache.ts` and the filesystem writers depend on this, and it
+ * must not be able to create a cycle with the policy engine that also asks it questions. The one import
+ * is `tool-context.ts`, which imports only `node:async_hooks` and therefore cannot close a cycle; it is
+ * what lets a sink answer "which tool caused this write?" without threading a name through 149 call
+ * paths. Measured before that existed: `PRO_FETCH_MUTATION_ALLOWLIST` was honoured in the policy engine
+ * but dead at every sink, because `assertWritable` was called with no tool name at all 10 call sites —
+ * an operator who allowed a specific tool still could not use it in read-only mode.
  */
+
+import { currentToolName } from './tool-context.js';
 
 /** Set when `PRO_FETCH_READ_ONLY=true`. Read fresh on every call, never cached. */
 export function readOnly(): boolean {
@@ -55,12 +62,14 @@ export class WriteBlockedError extends Error {
  *
  * `PRO_FETCH_MUTATION_ALLOWLIST` is honoured here for the same reason it is honoured in the policy
  * engine: an operator who has explicitly allowed one tool should not have to disable read-only mode to
- * use it. The name is passed rather than looked up, because a sink knows what it is about to do and a
- * tool name is not available here.
+ * use it. The name comes either from the caller that genuinely knows it or from the dispatch context
+ * (`currentToolName()`), so a sink reached from inside a handler is attributable even when no name was
+ * threaded down to it.
  */
 export function assertWritable(effect: string, toolName?: string): void {
   if (!readOnly()) return;
-  if (toolName && mutationAllowlist().has(toolName)) return;
+  const name = toolName ?? currentToolName();
+  if (name && mutationAllowlist().has(name)) return;
   throw new WriteBlockedError(effect);
 }
 

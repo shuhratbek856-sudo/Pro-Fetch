@@ -33,6 +33,9 @@ export default defineTool({
       headers: { 'content-type': 'text/xml; charset=utf-8', soapaction: typeof p.action === 'string' ? p.action : '' },
       body: String(p.xml),
     });
+    // A failed POST is a failed call: the XML error body used to ride out as a normal result with
+    // the status visible only in a heading, so the caller was told the operation happened.
+    if (r.status >= 400) return fail('SOAP HTTP ' + r.status + ': ' + String(r.text).trim().slice(0, 600));
     return md('# SOAP javob (HTTP ' + r.status + ')\n\n' + r.text, 8000);
   },
 });

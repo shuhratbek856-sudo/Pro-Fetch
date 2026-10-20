@@ -27,7 +27,14 @@ export default defineTool({
     const p = view(input);
     const urls: string[] = (Array.isArray(p.urls) ? p.urls : []).map(String);
     if (!urls.length) return fail("urls bo'sh");
-    const results = await fetchBatch(urls, Number(p.concurrency ?? 10));
+    // A non-numeric concurrency reached the fetch loop as NaN: `Array.from({ length: NaN })` has
+    // length 0, so zero workers ran, every URL was silently dropped and the tool answered with an
+    // empty result for a call that fetched nothing. Type errors fail the call instead.
+    const rawConcurrency = (p as Record<string, unknown>).concurrency;
+    if (rawConcurrency !== undefined && (typeof rawConcurrency !== 'number' || !Number.isFinite(rawConcurrency))) {
+      return fail("concurrency son bo'lishi kerak, tushgan: " + String(rawConcurrency));
+    }
+    const results = await fetchBatch(urls, typeof rawConcurrency === 'number' ? rawConcurrency : 10);
     const parts = results.map((r: any, i: number) =>
       r.ok ? '## ' + urls[i] + '\n\n' + clipToTokens(r.result.markdown, 1500) : '## ' + urls[i] + '\n\n⚠️ ' + r.error,
     );
