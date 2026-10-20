@@ -125,62 +125,117 @@ export function ownHandlerBodies(root = 'src'): Map<string, string> {
   const bodies = new Map<string, string>();
   for (const file of globSync(path.join(root, '**/*.ts'))) {
     const text = readFileSync(file, 'utf8');
-    const nameMatch = /name:\s*'(pro_[a-z0-9_]+)'/.exec(text);
-    if (!nameMatch) continue;
-    const handlerAt = text.indexOf('async handler(', nameMatch.index);
-    if (handlerAt < 0) continue;
-    const open = text.indexOf('{', handlerAt);
-    if (open < 0) continue;
-
-    let depth = 0;
-    let quote: string | undefined;
-    let end = -1;
-    for (let index = open; index < text.length; index += 1) {
-      const character = text[index] as string;
-      const next = text[index + 1];
-
-      // Line comment. A newline ends it, and an escaped newline continues it.
-      if (quote === undefined && character === '/' && next === '/') {
-        while (index < text.length && text[index] !== '\n') index += 1;
-        continue;
-      }
-      // Block comment.
-      if (quote === undefined && character === '/' && next === '*') {
-        const close = text.indexOf('*/', index + 2);
-        if (close < 0) break;
-        index = close + 1;
-        continue;
+    // Every tool in the file, not the first one. The scan used to take the first `name: 'pro_...'`
+    // match per file and stop, which was invisible while categories lived in one tool per file and
+    // then silently dropped 40 of 474: sql 11, qr 9, encoding 9, schema 6, llm 5 - every tool in a
+    // multi-tool file except the first was never classified, and nothing said so, because the file
+    // *had* been read. Missing is not unreadable; it was quiet.
+    const names = [...text.matchAll(/name:\s*'(pro_[a-z0-9_]+)'/g)];
+    names.forEach((nameMatch, at) => {
+      const searchEnd = at + 1 < names.length ? (names[at + 1] as RegExpMatchArray).index! : text.length;
+      // A registration that carries a name but no own `async handler(` - the SPECS-style `add(...)`
+      // packs - cannot reach a sink through code this scanner subsets, and it is not a body the
+      // scanner failed to read. Bounding the search to before the next registration keeps a
+      // handler-less entry from borrowing the next tool's handler.
+      const within = text.slice(nameMatch.index, searchEnd);
+      const handlerOffset = within.indexOf('async handler(');
+      if (handlerOffset < 0) return;
+      const handlerAt = nameMatch.index + handlerOffset;
+      const open = text.indexOf('{', handlerAt);
+      if (open < 0 || open >= searchEnd) {
+        unreadable.push(nameMatch[1]);
+        return;
       }
 
-      if (quote) {
-        if (character === '\\') {
-          index += 1;
+      let depth = 0;
+      let quote: string | undefined;
+      let lastSignificant = '';
+      let end = -1;
+      for (let index = open; index < text.length; index += 1) {
+        const character = text[index] as string;
+        const next = text[index + 1];
+
+        // Line comment. A newline ends it, and an escaped newline continues it.
+        if (quote === undefined && character === '/' && next === '/') {
+          while (index < text.length && text[index] !== '\n') index += 1;
           continue;
         }
-        if (character === quote) quote = undefined;
-        continue;
-      }
-      if (character === '"' || character === "'" || character === '`') {
-        quote = character;
-        continue;
-      }
-      if (character === '{') depth += 1;
-      else if (character === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          end = index;
-          break;
+        // Block comment.
+        if (quote === undefined && character === '/' && next === '*') {
+          const close = text.indexOf('*/', index + 2);
+          if (close < 0) break;
+          index = close + 1;
+          continue;
+        }
+
+        // A regular expression literal, which may contain a quote character.
+        //
+        // The scanner used to treat every quote as a string delimiter wherever it appeared, and a
+        // regex like `/[\r\n"]/` therefore opened a string that never closed. Measured: it cost
+        // `pro_fetch_post_multipart` its whole body - a tool that POSTs a multipart body and was
+        // consequently absent from the mutation table, so its `readOnlyHint` said read-only while it
+        // wrote to a remote server. `pro_encode_html_entity` was lost the same way.
+        //
+        // A slash is a regex rather than a division when the last significant character cannot end an
+        // expression; the character classes below are the usual set.
+        if (quote === undefined && character === '/') {
+          const startsRegex = lastSignificant === '' || '(,=:[!&|?{};+-*%^~<>'.includes(lastSignificant);
+          if (!startsRegex) {
+            lastSignificant = '/';
+            continue;
+          }
+          index += 1;
+          let inCharacterClass = false;
+          while (index < text.length) {
+            const inner = text[index] as string;
+            if (inner === '\\') {
+              index += 2;
+              continue;
+            }
+            if (inner === '[') inCharacterClass = true;
+            else if (inner === ']') inCharacterClass = false;
+            else if (inner === '/' && !inCharacterClass) break;
+            else if (inner === '\n') break;
+            index += 1;
+          }
+          lastSignificant = '/';
+          continue;
+        }
+
+        if (quote) {
+          if (character === '\\') {
+            index += 1;
+            continue;
+          }
+          if (character === quote) {
+            quote = undefined;
+            lastSignificant = character;
+          }
+          continue;
+        }
+        if (character === '"' || character === "'" || character === '`') {
+          quote = character;
+          continue;
+        }
+        if (!/\s/.test(character)) lastSignificant = character;
+        if (character === '{') depth += 1;
+        else if (character === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            end = index;
+            break;
+          }
         }
       }
-    }
-    if (end > 0 && !bodies.has(nameMatch[1])) {
-      bodies.set(nameMatch[1], text.slice(open + 1, end));
-    } else if (end <= 0) {
-      // Recorded rather than skipped. A tool the scanner cannot read is a tool it cannot classify, and
-      // saying nothing about it is how `pro_pdf_split` ended up labelled read-only while refusing to
-      // write.
-      unreadable.push(nameMatch[1]);
-    }
+      if (end > 0 && !bodies.has(nameMatch[1])) {
+        bodies.set(nameMatch[1], text.slice(open + 1, end));
+      } else if (end <= 0) {
+        // Recorded rather than skipped. A tool the scanner cannot read is a tool it cannot classify, and
+        // saying nothing about it is how `pro_pdf_split` ended up labelled read-only while refusing to
+        // write.
+        unreadable.push(nameMatch[1]);
+      }
+    });
   }
   return bodies;
 }

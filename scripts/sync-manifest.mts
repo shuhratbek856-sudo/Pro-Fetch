@@ -4,9 +4,15 @@
 // registrni o'zi o'lchaydi va har bir qiymatni faqat o'lchovdan keyin yozadi.
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// Derived from this script's own location: the written-down path pointed at a directory that no longer
+// exists, so the script could not run at all on the machine that holds the repository.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const base = pathToFileURL(path.join(here, '..', 'src')).href + '/';
 
 process.env.PRO_FETCH_PROFILE = 'full';
-const base = 'file:///C:/Users/user/Downloads/pro-fetch/pro-fetch-mcp/src/';
 await import(base + 'env.js');
 await import(base + 'loader.js');
 const { allTools } = await import(base + 'core/tool.js');

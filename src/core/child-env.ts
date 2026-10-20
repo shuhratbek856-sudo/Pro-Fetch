@@ -204,26 +204,59 @@ export function describeChildEnv(options: ChildEnvOptions = {}): {
   dropped: string[];
   dropped_as_credential: string[];
   dropped_as_unknown: string[];
+  dropped_as_injection: string[];
 } {
   const source = options.source ?? process.env;
   const forwarded: string[] = [];
   const dropped: string[] = [];
   const droppedAsCredential: string[] = [];
   const droppedAsUnknown: string[] = [];
+  const droppedAsInjection: string[] = [];
+
+  // The operator opt-in is part of what reaches the child, so the report has to consult it exactly
+  // like `childEnv` does. It used to omit this lookup entirely, so a variable the child was actually
+  // about to receive came back under `dropped_as_unknown` - the diagnostic that exists to explain
+  // the filtering described a child that was never going to run.
+  const extraEnv = (process.env.PRO_FETCH_CHILD_EXTRA_ENV ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
 
   for (const [name, value] of Object.entries(source)) {
     if (value === undefined) continue;
-    if (options.allow?.includes(name)) {
+    const upper = name.toUpperCase();
+
+    // Mirror `childEnv` order exactly: NODE_OPTIONS is refused before the allow list is consulted,
+    // so an `allow` that names it reads as refused here too. The earlier report checked `allow`
+    // first and called the injection variable forwarded - saying the filter honours a request it
+    // always refuses - and filed the reason under credentials, which is not the reason an operator
+    // needs to read for an executable-injection variable.
+    if (upper === 'NODE_OPTIONS') {
+      droppedAsInjection.push(name);
+      dropped.push(name);
+      continue;
+    }
+
+    // The allow list matches the exact name and the upper-case form, like `childEnv`: on Windows the
+    // live name can be `Path` while the caller asked to forward `PATH`, and the report then claimed
+    // the variable was dropped while the child actually received it.
+    if (
+      options.allow?.includes(name) ||
+      options.allow?.includes(upper) ||
+      extraEnv.includes(name) ||
+      extraEnv.includes(upper)
+    ) {
       forwarded.push(name);
       continue;
     }
+
     // The two reasons are computed independently rather than in an `else if` chain. Chained, a variable
     // that is both unknown and credential-shaped was reported only as "unknown", so
     // `dropped_as_credential` came back empty for a source full of secrets - the environment was still
     // filtered correctly, but the diagnostic that exists to explain the filtering was the thing that
     // was wrong.
     const known = REQUIRED.includes(name) || isServerConfig(name);
-    const secret = looksLikeCredential(name) || name.toUpperCase() === 'NODE_OPTIONS';
+    const secret = looksLikeCredential(name);
     if (secret) {
       droppedAsCredential.push(name);
       dropped.push(name);
@@ -240,6 +273,7 @@ export function describeChildEnv(options: ChildEnvOptions = {}): {
     dropped: dropped.sort(),
     dropped_as_credential: [...new Set(droppedAsCredential)].sort(),
     dropped_as_unknown: droppedAsUnknown.sort(),
+    dropped_as_injection: [...new Set(droppedAsInjection)].sort(),
   };
 }
 

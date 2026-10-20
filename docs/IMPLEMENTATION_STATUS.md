@@ -87,31 +87,35 @@ What was actually wrong, beyond schema noise:
 ## Current State
 
 - **Phase:** Four-subagent audit follow-through — verifying and fixing every confirmed finding
-- **Active task:** Batch 2 committed and pushed (`cba00fd`). 24-test regression file green; `npm run check` green (1001 tests). Remaining: ~27 confirmed findings (A-2/A-3/A-4, B-2/B-4/B-6/B-7/B-8/B-10, F2/F3/F4/F6/F7/F8/F9/F10/F12, plus ~9 small unit fixes) — see Session 32 below.
+- **Active task:** Batch 3 committed and pushed (`46cb499`, 9 encoding fixes) and batch 4 committed and pushed
+  (`7fe7cef`, 6 HTTP fixes). Regression files 17+10 green; `npm run check` green (48 files / 1028 tests).
+  Remaining: batch 5 (A-2/A-3/A-4), batch 6 (F-family: F2/F3/F4/F6/F7/F8/F9/F10/F12), then the final
+  fixed-versus-identified report.
 - **Blocked on:** nothing
 
 ## Prior State (superseded)
 
-- **Phase:** Smart System strengthening + verification-integrity repair
-- **Active task:** None. Smart System increment complete; `npm run check` green end to end.
+- **Phase:** Four-subagent audit follow-through — batch 2 at `cba00fd`
+- **Active task:** Batch 2 committed and pushed (`cba00fd`). 24-test regression file green; `npm run check` green (1001 tests). Remaining: ~27 confirmed findings (A-2/A-3/A-4, B-2/B-4/B-6/B-7/B-8/B-10, F2/F3/F4/F6/F7/F8/F9/F10/F12, plus ~9 small unit fixes) — see Session 32 below.
 - **Blocked on:** nothing
 
 ## Resume Instruction
 
 > Read `docs/DECISIONS.md` for reasoning, then continue the action below.
 
-**Next exact action:** continue the audit batches from `C:\pro-fetch-work` (ASCII junction to
-`D:\...\pro-fetch-mcp-clean`; use the junction for everything — the Cyrillic path garbles in output).
-Remaining confirmed findings from the four subagent reports, each re-verified with a probe before
-fixing and pinned with a regression test:
+**Next exact action:** batch 5, from `C:\pro-fetch-work` (ASCII junction to `D:\...\pro-fetch-mcp-clean`;
+use the junction for everything — the Cyrillic path garbles in output). Probe first, fix, pin with a
+regression test, then `npm run check`, commit, push with `D:\Git\cmd\git.exe`:
 
-- A-2 describeChildEnv, A-3 outputRoot lacks a root check, A-4 mutation scanner misses tools
-- B-2 redirect credential list (8 names), B-4 post_multipart corrupts binary, B-6 redirect_trace
-  has no timeout, B-7 timeout is not per-attempt, B-8 fetch_with_proxy defects, B-10 SSE discards events
-- F2/F3/F4 execution engine (architectural), F6/F7 composite budget / 4k clip, F8/F9 intent-search,
-  F10 cache key omits max_tokens, F12 limiter status
-- Small unit fixes: units comma-split, i18n slugify regex injection, case_convert non-Latin,
-  uuid v7, base64url enum, ULID Crockford, html_entity, time fixes, toOklch chroma
+- A-2 `describeChildEnv` in `src/core/child-env.ts` (CREDENTIAL_NAMES/EXEMPT/EXACT sets)
+- A-3 `outputRoot` lacks a root check (find it via the shared output-root helpers)
+- A-4 mutation scanner misses tools (extend the tool list `ensureMutationAllowed` scans)
+- then batch 6, F-family (re-derive each from code because notes are terse): F2/F3/F4 execution
+  engine (architectural — probe before touching), F6/F7 composite budget / 4k clip, F8/F9
+  intent-search, F10 cache key omits max_tokens, F12 limiter status
+- then the final fixed-versus-identified report with measured evidence, INCLUDING the refuted
+  findings (stop_on_error, Semaphore, ratelimit refill, http cache key sha256, CSV mid-field-quote,
+  month-leap/negative-epoch time invariants, `1,500 kg` thousands comma — all measured correct).
 
 ```powershell
 cd C:\pro-fetch-work
@@ -153,6 +157,11 @@ Status legend: `NOT_STARTED` / `IN_PROGRESS` / `DONE` / `BLOCKED` / `SKIPPED`
 | 25 | Required-argument enforcement | DONE | `assertRequiredPresent`; `{}` now fails locally, never reaches GitHub | Central, in `github-input-guard.ts` |
 | 26 | `text2` / `detail` / `section` declared-but-unimplemented | DONE | 7 comparisons live, 4 params removed, 2 detail knobs live, `extractSection` live | 0 dead properties |
 | 27 | **Remaining ~380 untouched tool files** | **NOT_STARTED** | Measured above | Not yet audited for non-schema defects |
+| 28 | Subagent audit batch 2 (fetcher/core fixes) | DONE | `cba00fd` pushed; `tests/audit-batch-fixes.test.ts` 24 tests | Session 32 |
+| 29 | Subagent audit batch 3 (encoding, 9 fixes) | DONE | `46cb499` pushed; batch-3 tests 17 green; check 46 files / 1018 | Session 44a |
+| 30 | Subagent audit batch 4 (HTTP, 6 fixes) | DONE | `7fe7cef` pushed; batch-4 tests 10 green; check 48 files / 1028 | Session 44b |
+| 31 | Subagent audit batch 5 (A-2/A-3/A-4) | NOT_STARTED | — | probe each finding first |
+| 32 | Subagent audit batch 6 (F-family 9) | NOT_STARTED | — | re-derive each from code; architectural items probed before touching |
 
 ## Measured Counts
 
@@ -1226,4 +1235,80 @@ Full `npm run check`: 46 files, 1001 tests, all green; build/PACKAGE_VERIFICATIO
 
 **Next exact action:** batches 3-5 as listed in Resume Instruction (A-2/A-3/A-4, B-family 6,
 F-family 9, ~9 small unit fixes), then the final fixed-vs-identified report.
+
+### Session 44a - Four-subagent audit: batch 3 (encoding/conversion, nine fixes, commit 46cb499, pushed)
+
+Each finding was re-verified by a polarity-correct offline probe before any code changed; subagent
+claims that measured correct were recorded as refuted (D-015, D-016 and the DECISIONS list) and are
+NOT bugs. The nine real ones, all in `src/tools/encoding/` and its helpers:
+
+- slugify metachar separators were regex-injected (`[` crashed, `.` erased the slug) — quoted now,
+  pinned by tests
+- case_convert split on `\w+`, which has no `\p{L}` in it, so Cyrillic words vanished; now splits on
+  `\p{L}\p{N}` and `cap()` uses codepoint spread
+- pro_encode_uuid `7` emitted random bytes with `7` spliced in — not RFC 9562; now a real 32-hex v7
+  (48-bit timestamp, version 7, uniform variant nibble) that self-parses
+- ULID halves used a non-Crockford alphabet (I, L, O, U could appear); both halves are now Crockford
+  base32 (`CROCKFORD_ALPHABET`/`crockfordBase32` in encoding/tools.ts), random half rejection-sampled
+  under 2^248
+- base64url advertised encode but implemented only decode-any; added the encode branch, the
+  `decodeAny` case, and `pad:false` = unpadded PLAIN base64
+- html_entity numeric mode escaped NUL but not the XML-critical five; `NUMERIC_CRITICALS` escapes
+  them, decode gained the `HTML_NAMED_DECODE` table at module scope (Latin-1 accents included)
+- units splitting on `\s*,\s*` broke `1,5 dg` into 1 and 5; now splits only after a unit letter with
+  a lookbehind
+- `parseQuantity` digit-comma rule replaced the WHOLE match, so `1,500` read as 0.5 — the callback
+  must keep the digit; fixed
+- oklch chroma multiplied by 100, which produces invalid CSS; chroma is raw CSS units now (≤ ~0.37)
+
+| Command | Result |
+|---|---|
+| batch-3 probe (31 checks) | 31 passing, 0 confirmed |
+| `npx vitest run tests/audit-batch3-fixes.test.ts` | 17 passed (17) |
+| `npm run check` | exit 0 - 46 files / 1018 tests |
+| git | `46cb499` pushed, `cba00fd..46cb499 main -> main` |
+
+### Session 44b - Four-subagent audit: batch 4 (HTTP client, six fixes, commit 7fe7cef, pushed)
+
+The B-family. Each defect was confirmed in code, fixed, verified by an offline probe
+(23/23 passing, stubbed at the client boundary because the SSRF guard rejects loopback), and pinned
+by regression tests:
+
+- **B-2** cross-origin redirects stripped credential headers by a fixed 8-name list, so vendor
+  names (`x-gitlab-token`) crossed origins untouched. Both readers now share one module-level
+  pattern (`CREDENTIAL_TARGET_HEADER` in `src/core/http-client.ts`); proven by a two-hop captured
+  stub where the vendor header vanished and an innocent header survived.
+- **B-7** every retry attempt armed a fresh timer, so a hanging server spent the full timeout per
+  attempt (~4.6 s of wall clock for a 15 s/2-retry call). `fetchWithOptions` now holds one deadline;
+  the per-attempt timer spends the remaining budget, sleeps are capped by it, and a spent budget
+  throws HTTP_TIMEOUT. Measured ~1.21 s wall for a 1200 ms budget with 2 retries.
+- **B-6** `traceRedirects` had no signal and no timeout — the one helper that could hang forever
+  against a server that never answers. Bounded (hops 1..20, timeout 100 ms..60 s, default 15 s),
+  abort covers every hop; `pro_fetch_redirect_trace` gained `timeout_ms` and reads it.
+- **B-8** `pro_fetch_fetch_with_proxy` called `setGlobalDispatcher`, mutating global undici state
+  while its own request always used the client's pinned dispatcher — a leak that never served its
+  purpose. The proxy is now per-request (`FetchOptions.proxy` → `fetchFollowingSafeRedirects` →
+  `dispatcherFor(url, addresses, explicitProxy?)`); explicit caller consent skips NO_PROXY and the
+  unpinned-DNS refusal, shared `proxyAgentFor` caches one ProxyAgent per URL, and the tool masks
+  proxy credentials in its output.
+- **B-4** the multipart file part was fetched as text and spliced into the body string: binary
+  content reached the target as U+FFFD mush. `FetchOptions.body` accepts bytes now; the tool uses
+  `downloadToBuffer`, checks statuses, header-safes names/filenames, randomizes the boundary
+  (16-hex, collision re-roll), and uploads a byte array. Regression pins the file part byte-equal
+  across 0x00..0xFF twice.
+- **B-10** SSE discarded the first event of a BOM-prefixed stream (field name read as
+  BOM-prefixed `data`) and the final block of a stream closed without the trailing blank line.
+  One shared block parser now strips a BOM once and processes the remainder at EOF.
+
+| Command | Result |
+|---|---|
+| batch-4 probe v2 | 23 passing, 0 confirmed |
+| `npx vitest run tests/audit-batch4-fixes.test.ts` | 10 passed (10) |
+| `npx tsc --noEmit` | exit 0 |
+| `npm run check` | exit 0 (one earlier run hit the known intermittent Node-24 worker error; direct rerun and the full run both green - 48 files / 1028 tests) |
+| git | `7fe7cef` pushed, `46cb499..7fe7cef main -> main` |
+
+**Next exact action:** batch 5 - A-2 (`describeChildEnv` in `src/core/child-env.ts`), A-3
+(`outputRoot` lacks a root check), A-4 (mutation scanner misses tools). Probe each first, then
+batch 6 (F-family), then the final fixed-versus-identified report.
 

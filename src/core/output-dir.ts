@@ -38,6 +38,22 @@ function cacheRoot(): string {
 }
 
 /**
+ * A filesystem root is never a write boundary.
+ *
+ * Defence in depth, and it covers the operator as well as the model: accepting `C:\` or `/` turns any
+ * path check against the boundary into a no-op, because *every* absolute path trivially stays inside a
+ * root. Measured as reachable - `PRO_FETCH_CACHE_DIR=/` was accepted by a tool call and moved the
+ * boundary with it. Both readers of the configured output root go through this check, because leaving it
+ * on one of them is exactly how `outputRoot()` kept accepting a root after `writeBoundaryRoot()` had
+ * learned to refuse one.
+ */
+function assertNotFilesystemRoot(root: string, variable: string, label: string): void {
+  if (path.dirname(root) === root) {
+    throw new Error(`${variable} a fayl tizimi ildizi bo‘lmaydi (${root}). ${label}`);
+  }
+}
+
+/**
  * The root every generated file must stay inside.
  *
  * Resolved eagerly rather than at call time so a caller cannot move the boundary by assigning the
@@ -45,7 +61,15 @@ function cacheRoot(): string {
  */
 export function outputRoot(): string {
   const configured = process.env.PRO_FETCH_OUTPUT_ROOT?.trim();
-  return path.resolve(configured && configured.length > 0 ? configured : path.join(cacheRoot(), 'out'));
+  if (configured && configured.length > 0) {
+    const root = path.resolve(configured);
+    // The same root check `writeBoundaryRoot` applies. Missing it here let a tool call accept
+    // `PRO_FETCH_OUTPUT_ROOT=C:\` and place generated files one directory off the drive - the
+    // sandbox checked against a boundary that accepted everything.
+    assertNotFilesystemRoot(root, 'PRO_FETCH_OUTPUT_ROOT', 'Chiqish papkasi katalog bo‘lishi kerak.');
+    return root;
+  }
+  return path.resolve(path.join(cacheRoot(), 'out'));
 }
 
 /**
@@ -72,24 +96,11 @@ export function writeBoundaryRoot(): string {
   const configured = process.env.PRO_FETCH_OUTPUT_ROOT?.trim();
   if (configured && configured.length > 0) {
     const root = path.resolve(configured);
-    // Defence in depth, and it covers the operator as well as the model: a filesystem root is never a
-    // sensible place for generated files, and accepting one turns any path check into a no-op. Measured
-    // as reachable - PRO_FETCH_CACHE_DIR=/ was accepted by a tool call and moved this boundary with it.
-    if (path.dirname(root) === root) {
-      throw new Error(
-        'PRO_FETCH_OUTPUT_ROOT a fayl tizimi ildizi bo‘lmaydi (' +
-          root +
-          '). Chiqish chegarasi katalog bo‘lishi kerak.',
-      );
-    }
+    assertNotFilesystemRoot(root, 'PRO_FETCH_OUTPUT_ROOT', 'Chiqish chegarasi katalog bo‘lishi kerak.');
     return root;
   }
   const fallback = path.resolve(cacheRoot());
-  if (path.dirname(fallback) === fallback) {
-    throw new Error(
-      'PRO_FETCH_CACHE_DIR a fayl tizimi ildizi bo‘lmaydi (' + fallback + '). Kesh papkasi katalog bo‘lishi kerak.',
-    );
-  }
+  assertNotFilesystemRoot(fallback, 'PRO_FETCH_CACHE_DIR', 'Kesh papkasi katalog bo‘lishi kerak.');
   return fallback;
 }
 
