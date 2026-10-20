@@ -23,7 +23,16 @@ export interface FetchUrlOptions {
 
 export async function fetchUrl(rawUrl: string, opts: FetchUrlOptions = {}): Promise<FetchResult> {
   const url = await assertSafeUrl(rawUrl);
-  const key = 'fetch:' + url.toString();
+  // The cached value is the CLIPPED document, so the limit belongs in the key.
+  //
+  // Measured: a call that asked for 100 tokens left behind a 400-character document, and the next
+  // call - which asked for 8000 - was served that document from the cache with `truncated: false`,
+  // so nothing in the answer said the page had been cut down to a tenth of what was requested. The
+  // key carries the effective limit now, and the limit is computed the same way `clipToTokens`
+  // computes it, so the two cannot disagree about what was stored.
+  const limit =
+    opts.maxTokens !== undefined && Number.isFinite(opts.maxTokens) && opts.maxTokens > 0 ? opts.maxTokens : 8000;
+  const key = 'fetch:' + url.toString() + '|t' + limit;
   if (opts.useCache !== false) {
     const hit = cache.get(key);
     if (hit) {
@@ -37,7 +46,7 @@ export async function fetchUrl(rawUrl: string, opts: FetchUrlOptions = {}): Prom
   const res = await fetchWithOptions(url.toString(), { timeoutMs: opts.timeoutMs });
   const isHtml = res.contentType.includes('text/html') || res.contentType.includes('application/xhtml');
   const raw = isHtml ? await htmlToMarkdown(res.text) : res.text;
-  const clipped = clipToTokens(raw, opts.maxTokens ?? 8000);
+  const clipped = clipToTokens(raw, limit);
   const result: FetchResult = {
     // Where the answer actually came from after redirects, not the address it was asked with —
     // `url: url.toString()` was the request line, and a caller recording the result described the

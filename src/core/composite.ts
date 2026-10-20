@@ -39,6 +39,15 @@ export interface StepOutcome {
   output: string;
   error?: string;
   ms: number;
+  /**
+   * Whether the step's own text was cut at the per-step limit.
+   *
+   * The cut was invisible in the summary before: a step that produced 9 000 characters arrived in
+   * the transcript as 4 000 characters and a marker, and the closing note said nothing about it -
+   * the note counted the budget shrink, which is a different thing. A caller reading the summary
+   * could not tell that a step's answer had been shortened before the budget was even considered.
+   */
+  clipped?: boolean;
 }
 
 /** Default characters kept per step, so one noisy upstream cannot flood the context. */
@@ -55,12 +64,13 @@ const STEP_TEXT_LIMIT = 4_000;
 const DEFAULT_FANOUT = 8;
 
 /** Flatten a tool result into readable text, bounded in size. */
-function textOf(result: ToolResult): string {
+function textOf(result: ToolResult): { text: string; clipped: boolean } {
   const text = (result.content ?? [])
     .filter((item) => item.type === 'text')
     .map((item) => item.text)
     .join('\n\n');
-  return text.length > STEP_TEXT_LIMIT ? text.slice(0, STEP_TEXT_LIMIT) + '\n…[truncated]' : text;
+  if (text.length <= STEP_TEXT_LIMIT) return { text, clipped: false };
+  return { text: text.slice(0, STEP_TEXT_LIMIT) + '\n…[truncated]', clipped: true };
 }
 
 /**
@@ -74,12 +84,14 @@ export async function runStep(step: string, tool: string, args: Record<string, u
   try {
     const result = await dispatch(tool, args);
     const isError = result.isError === true;
+    const { text, clipped } = textOf(result);
     return {
       step,
       tool,
       ok: !isError,
-      output: textOf(result),
-      ...(isError ? { error: textOf(result).slice(0, 400) } : {}),
+      output: text,
+      ...(clipped ? { clipped: true } : {}),
+      ...(isError ? { error: text.slice(0, 400) } : {}),
       ms: Date.now() - started,
     };
   } catch (error) {
@@ -239,29 +251,47 @@ export async function runPipeline(steps: Array<[string, string, Record<string, u
 export function renderPipeline(title: string, outcomes: StepOutcome[], budget = 60_000): string {
   const header = `# ${title}\n\n`;
   const footer = renderFooter(outcomes);
-  let body = outcomes.map((outcome, index) => renderStep(index, outcome, outcome.output)).join('\n');
-  let overflow = 0;
-
-  // Shrink the biggest bodies first, halving each, until the transcript fits or nothing is left to cut.
   const bodies = outcomes.map((outcome) => outcome.output);
-  const order = bodies
-    .map((text, index) => ({ index, length: text.length }))
-    .filter((entry) => entry.length > 400)
-    .sort((a, b) => b.length - a.length);
+  let body = outcomes.map((outcome, index) => renderStep(index, outcome, bodies[index]!)).join('\n');
+  const shortened = new Set<number>();
 
-  let reduced = 0;
-  while (header.length + body.length + footer.length > budget && reduced < order.length) {
-    const target = order[reduced]!;
-    bodies[target.index] = bodies[target.index]!.slice(0, Math.floor(bodies[target.index]!.length / 2));
-    overflow++;
+  // The budget is a budget, not a wish.
+  //
+  // The previous pass halved each body once and stopped when the list ran out, and it only
+  // considered bodies longer than 400 characters. Measured: 150 steps of 400 characters came out
+  // 67 322 characters against a 60 000 budget, and the closing note said nothing had been
+  // shortened - because the note counted halvings, and no body was eligible for one.
+  //
+  // Now the largest body is halved again and again until the transcript fits, and a body that
+  // cannot be shortened further is left alone rather than cut to nothing.
+  const MIN_BODY = 200;
+  // Room for the closing note, which is added after the loop and would otherwise push the
+  // transcript over the limit it just met.
+  const RESERVE = 260;
+  for (;;) {
+    if (header.length + body.length + footer.length + RESERVE <= budget) break;
+    let target = -1;
+    let longest = MIN_BODY;
+    for (let index = 0; index < bodies.length; index += 1) {
+      const length = bodies[index]!.length;
+      if (length > longest) {
+        longest = length;
+        target = index;
+      }
+    }
+    if (target < 0) break;
+    bodies[target] = bodies[target]!.slice(0, Math.floor(bodies[target]!.length / 2));
+    shortened.add(target);
     body = outcomes.map((outcome, index) => renderStep(index, outcome, bodies[index]!)).join('\n');
-    reduced++;
   }
 
-  const note =
-    reduced > 0
-      ? `\n\n_Natija hajmi katta bo'lgani uchun ${reduced} ta qadam qisqartirildi. Bir qadamning to'liq natijasi uchun o'sha tool'ni alohida chaqiring._`
-      : '';
+  const clippedSteps = outcomes.filter((outcome) => outcome.clipped === true).length;
+  const overBudget = header.length + body.length + footer.length + RESERVE > budget;
+  const notes: string[] = [];
+  if (shortened.size > 0) notes.push(`${shortened.size} ta qadam qisqartirildi`);
+  if (clippedSteps > 0) notes.push(`${clippedSteps} ta qadam 4 000 belgi bilan kesildi`);
+  if (overBudget) notes.push('Natijaning hajmi byudjetdan oshdi');
+  const note = notes.length > 0 ? `\n\n_${notes.join('; ')}._` : '';
 
   return header + body + footer + note;
 }

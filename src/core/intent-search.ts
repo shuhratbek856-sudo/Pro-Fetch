@@ -90,6 +90,27 @@ const SYNONYMS: Record<string, string[]> = {
   split_column: ['field', 'table'],
 };
 
+/**
+ * The reverse edges of the synonym table.
+ *
+ * The table above is documented as bidirectional, and the code only walked it in one direction: a
+ * query saying "scholar" reached nothing, because the entry is `paper: [..., 'scholar', ...]` and
+ * the lookup asked for the key. The user-facing vocabulary and the tool-facing vocabulary are the
+ * same vocabulary, so a term that appears on either side of an edge has to reach the other side of
+ * it. Measured: "scholar" returned no tool at all before this, and returns the arxiv tool after.
+ */
+const REVERSE_SYNONYMS: Record<string, string[]> = (() => {
+  const reverse: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(SYNONYMS)) {
+    for (const value of values) {
+      const list = reverse[value] ?? [];
+      if (!list.includes(key)) list.push(key);
+      reverse[value] = list;
+    }
+  }
+  return reverse;
+})();
+
 /** Split text into normalised, stemmed-ish terms. */
 export function tokenize(text: string): string[] {
   return text
@@ -118,9 +139,9 @@ function stem(token: string): string {
 
 /** Expand a term with its synonyms, stemmed the same way. */
 function expand(term: string): string[] {
-  const direct = SYNONYMS[term];
-  if (direct) return direct.map(stem);
-  return [];
+  const direct = SYNONYMS[term] ?? [];
+  const back = REVERSE_SYNONYMS[term] ?? [];
+  return [...new Set([...direct, ...back])].map(stem);
 }
 
 export interface ScoredTool {
@@ -170,10 +191,15 @@ export function rankTools(
   const b = 0.6;
   const averageLength = docs.reduce((sum, doc) => sum + doc.name.length + doc.description.length, 0) / docs.length || 1;
 
-  // Document frequency, computed over the name+description blend.
+  // Document frequency, computed over the name, description and schema blend.
+  //
+  // The schema belongs in this count. It used to be counted over name and description only, which
+  // made the schema signal unreachable: a term that only a tool's *input* names - `repo_slug`,
+  // `owner`, `mime_type` - had a document count of zero, so the scoring loop skipped it before the
+  // schema boost could be applied. The boost existed and could never fire.
   const documentFrequency = new Map<string, number>();
   for (const doc of docs) {
-    const unique = new Set([...doc.name, ...doc.description]);
+    const unique = new Set([...doc.name, ...doc.description, ...doc.schema]);
     for (const term of unique) documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);
   }
 
@@ -187,7 +213,10 @@ export function rankTools(
     for (const term of expanded) {
       const frequency = frequencies.get(term) ?? 0;
       const documentCount = documentFrequency.get(term) ?? 0;
-      if (frequency === 0 && documentCount === 0) continue;
+      const inSchema = schema.includes(term);
+      // A term the schema names counts even when the name and description do not mention it -
+      // otherwise the schema boost below is unreachable for exactly the terms it exists for.
+      if (frequency === 0 && documentCount === 0 && !inSchema) continue;
 
       // IDF. Terms present in most tools carry no information; a term in one tool carries a lot.
       const idf = Math.log(1 + (total - documentCount + 0.5) / (documentCount + 0.5));
