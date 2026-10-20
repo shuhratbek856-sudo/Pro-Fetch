@@ -11,6 +11,7 @@ import path from 'node:path';
  */
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
+import { boundedEnv } from '../../core/bounded-env.js';
 export default defineTool({
   name: 'pro_fetch_fetch_batch',
   description: 'Fetch many URLs in parallel and return combined results',
@@ -27,7 +28,16 @@ export default defineTool({
     const p = view(input);
     const urls: string[] = (Array.isArray(p.urls) ? p.urls : []).map(String);
     if (!urls.length) return fail("urls bo'sh");
-    const results = await fetchBatch(urls, Number(p.concurrency ?? 10));
+    // Cap the batch so one response cannot grow past what the MCP transport / client can hold.
+    const maxUrls = boundedEnv('PRO_FETCH_MAX_BATCH', 5000, 1, 1_000_000);
+    if (urls.length > maxUrls) {
+      return fail(`Bir batch’da ${maxUrls} tagacha URL (yuborilgan: ${urls.length}). Ro‘yxatni bo‘ling.`);
+    }
+    // Never honour a wider fan-out than the server’s own global concurrency limit.
+    const cap = boundedEnv('PRO_FETCH_MAX_CONCURRENCY', 64, 1, 4096);
+    const requested = Number(p.concurrency ?? 10);
+    const concurrency = Number.isFinite(requested) ? Math.max(1, Math.min(requested, cap)) : 10;
+    const results = await fetchBatch(urls, concurrency);
     const parts = results.map((r: any, i: number) =>
       r.ok ? '## ' + urls[i] + '\n\n' + clipToTokens(r.result.markdown, 1500) : '## ' + urls[i] + '\n\n⚠️ ' + r.error,
     );
