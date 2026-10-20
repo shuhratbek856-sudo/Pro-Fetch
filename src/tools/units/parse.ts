@@ -56,10 +56,12 @@ export default defineTool({
     if (!raw) return fail('quantity yoki text kerak.');
 
     // A comma-separated list is the common case for a shopping list or a recipe, and it is cheaper to
-    // parse than to make the caller loop.
+    // parse than to make the caller loop. The split is anchored on a UNIT LETTER, not just a comma:
+    // `1 kg, 2 lb` splits, but `1,5 kg` stays whole - a comma between digits is part of the number
+    // (a decimal comma), and splitting on it produced a phantom "2 items" answer of `1` plus `5 kg`.
     const parts = text
       ? text
-          .split(',')
+          .split(/(?<=\p{L})\s*,\s*/u)
           .map((item) => item.trim())
           .filter(Boolean)
       : [raw];

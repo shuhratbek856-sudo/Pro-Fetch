@@ -474,7 +474,14 @@ export function findUnit(name: string): Unit | undefined {
  * error - the caller decides whether a bare number is acceptable.
  */
 export function parseQuantity(input: string): { value: number; unit: string } {
-  const raw = input.trim().replace(/,/g, '');
+  // A comma inside the number is handled by rule, not by stripping everything: between three
+  // following digits it is a thousands separator (`1,500` -> 1500), between anything else it is a
+  // decimal comma (`1,5` -> 1.5). Stripping every comma read `1,5 kg` as 15 kg - a number a hundred
+  // per cent wrong, offered as a normal parse.
+  const raw = input.trim().replace(/(\d),(?=\d)/g, (full, digit: string, offset: number, all: string) =>
+    // `full` is the digit AND the comma; keep the digit or the number loses its leading part.
+    /^\d{3}(?!\d)/.test(all.slice(offset + 2)) ? digit : digit + '.',
+  );
   const match = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(.*)$/.exec(raw);
   if (!match) throw new Error(`sonni tushunib bo‘lmadi: "${input}"`);
   return { value: Number(match[1]), unit: match[2].trim() };

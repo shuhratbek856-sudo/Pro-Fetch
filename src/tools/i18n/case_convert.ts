@@ -20,11 +20,16 @@ export default defineTool({
   },
   async handler(input) {
     const p = view(input);
+    // Unicode-aware word boundaries. `[^A-Za-z0-9]+` treated every Cyrillic, Turkish or CJK letter
+    // as a separator, so `case_convert("Привет мир", snake)` returned an empty string - the words
+    // were 'separated' out of existence. `\p{L}\p{N}` keeps any real letter or digit.
     const words = String(p.text ?? '')
-      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-      .split(/[^A-Za-z0-9]+/)
+      .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, '$1 $2')
+      .split(/[^\p{L}\p{N}]+/u)
       .filter(Boolean);
-    const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    // Spread instead of charAt(0): astral letters (ඤ, 𝕏) are two code units and charAt would
+    // capitalise half of them.
+    const cap = (w: string) => [...w][0]!.toUpperCase() + [...w].slice(1).join('').toLowerCase();
     const f = String(p.format).toLowerCase();
     let out: string;
     switch (f) {

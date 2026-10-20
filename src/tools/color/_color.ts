@@ -434,7 +434,15 @@ export function toOklch(colour: Rgba): { l: number; c: number; h: number } {
   const chroma = Math.sqrt(aValue ** 2 + bValue ** 2);
   let hue = (Math.atan2(bValue, aValue) * 180) / Math.PI;
   if (hue < 0) hue += 360;
-  return { l: Number((lightness * 100).toFixed(2)), c: Number((chroma * 100).toFixed(2)), h: Number(hue.toFixed(2)) };
+  // Chroma travels in CSS units. Writing `chroma * 100` produced `oklch(72% 19.2 …)`: a chroma
+  // fifteen times past the possible range, which no stylesheet accepts, and a bare number that
+  // looks like a percentage while the lightness beside it actually is one. Real chroma is at most
+  // about 0.37; four decimals keep a round trip exact to the hex digit.
+  return {
+    l: Number((lightness * 100).toFixed(2)),
+    c: Number(chroma.toFixed(4)),
+    h: Number(hue.toFixed(2)),
+  };
 }
 
 /** D65 reference white, the one sRGB is defined against. */

@@ -743,3 +743,78 @@ two error surfaces.
 `pro_qr_encode` output carries an explicit statement that a round trip was verified and a scanner was
 not, and `tests/qr-reed-solomon.test.ts` asserts that the statement is present. If camera-based
 verification is added later, that assertion is the place it has to change.
+
+---
+
+## D-015: Subagent findings are hypotheses until an offline probe confirms them
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+Four subagents audited 672 tools in parallel and reported 82 findings. Acting on all of them
+directly would have produced fixes for defects that do not exist: the first verification pass even
+refuted correct fixes because the probe was written with wrong arguments (a missing named import
+yielded an empty-registry phantom and "refuted" every finding at once).
+
+### Decision
+
+Every subagent finding is re-verified with a polarity-correct probe before any code changes. A probe
+must be written so that the EXPECTED-CORRECT behaviour passes: for a finding claiming "X is wrong",
+the probe on the fixed code must show X behaving correctly, so a FAIL means the finding is CONFIRMED
+and not yet fixed. Probes import the loader as a bare `import 'file:///C:/pro-fetch-work/src/loader.js'` -
+never a named `{ loader }` (the export is `loadCategories`; a missing named import can silently
+produce an empty registry and a false result).
+
+### Rationale
+
+The reports were reasonable but some were based on misreadings (e.g. stop_on_error "swallowing"
+results, Semaphore "starving", ratelimit refill math, the HTTP cache key, and the CSV mid-field-quote
+error were all measured correct and excluded). Verification is cheap; a wrong fix or a phantom
+regression in a 672-tool registry is not.
+
+### Rejected alternatives
+
+- **Trust the subagent count and fix everything.** Would have changed behaviour where a probe shows
+  the code is correct.
+- **Fix in a parallel pass without probes.** The batch-2 tree loss (C:\Downloads moved to D:)
+  showed how easy it is to lose track; unverifiable fixes compound.
+
+### Consequences
+
+Slower per finding, but the committed fixes are all backed by a reproduction and most are now pinned
+by `tests/audit-batch-fixes.test.ts` (24 offline tests). Refuted findings are recorded in the final
+report rather than silently dropped, so the subagents' work remains auditable.
+
+---
+
+## D-016: cache.delete is exact-key; search and keys stay prefix readers
+
+**Date:** 2026-10-20
+**Status:** accepted
+
+### Context
+
+`cache.delete(pattern)` used `includes`, so revoking session `sess1` also claimed `auth:session:xsess11`.
+The existing test asserted the substring behaviour (`delete('a:')` -> 2).
+
+### Decision
+
+`delete` deletes exact keys only. `search`/`keys` keep their prefix semantics (they are discovery
+calls, not revocations). The core test was rewritten to pin exact-key behaviour.
+
+### Rationale
+
+Three real callsites use `delete` with full keys (robots invalidation, crawl state, session revoke);
+for revocation, over-matching is a security behaviour, not a convenience.
+
+### Rejected alternatives
+
+- **Add a `mode: 'prefix'` option.** No callsite wants prefix revocation; an unused option is a
+  claim with no caller.
+
+### Consequences
+
+Anything that actually wanted substring deletion would need a new explicit API; none exists today.
+

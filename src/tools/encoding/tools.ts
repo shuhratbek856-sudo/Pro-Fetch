@@ -167,6 +167,10 @@ function decodeAny(encoded: string, alphabet: string): Buffer {
       return Buffer.from(fromBase85(encoded));
     case 'base64':
       return Buffer.from(encoded, 'base64');
+    // Declared in the shared enum but missing here, so decoding a base64url string with
+    // `alphabet: 'base64url'` failed with "Noma'lum alfavit" while the schema promised it.
+    case 'base64url':
+      return Buffer.from(encoded, 'base64url');
     default:
       throw new Error(`Noma'lum alfavit: "${alphabet}". base32, base58, base85, base64.`);
   }
@@ -315,10 +319,13 @@ export const encodingEncode = defineTool({
 
     try {
       if (alphabet === 'base64') {
-        return result(
-          p.pad === false ? Buffer.from(bytes).toString('base64url') : Buffer.from(bytes).toString('base64'),
-        );
+        // The schema's `pad` flag is scoped to base64 by description. It removes the `=` padding;
+        // it must NOT switch the alphabet to the URL-safe form - that is what `base64url` is for,
+        // and `pad: false` used to emit `-` and `_` characters no base64 decoder accepts.
+        const text = Buffer.from(bytes).toString('base64');
+        return result(p.pad === false ? text.replace(/=+$/, '') : text);
       }
+      if (alphabet === 'base64url') return result(Buffer.from(bytes).toString('base64url'));
       if (alphabet === 'base32') return result(toBase32(bytes));
       if (alphabet === 'base58') return result(toBase58(bytes));
       if (alphabet === 'base85') return result(toBase85(bytes));
@@ -581,6 +588,113 @@ export const encodingPunycode = defineTool({
   },
 });
 
+/** The five XML-critical characters and their standard named escapes. */
+const HTML_CRITICAL_NAMED: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/** The same five characters in numeric form, for `mode: 'numeric'`. */
+const NUMERIC_CRITICALS: Record<string, string> = {
+  '&': '&#38;',
+  '<': '&#60;',
+  '>': '&#62;',
+  '"': '&#34;',
+  "'": '&#39;',
+};
+
+/**
+ * The Latin-1 punctuation and accented page that real documents carry, keyed by the lower-case
+ * entity name the decode direction resolves. Only the XML-critical five plus `nbsp` used to be
+ * known, so text such as `&copy; &mdash; &hellip; &eacute;` decoded back to itself unchanged.
+ */
+const HTML_NAMED_DECODE: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  hellip: '…',
+  mdash: '—',
+  ndash: '–',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  laquo: '«',
+  raquo: '»',
+  times: '×',
+  divide: '÷',
+  deg: '°',
+  plusmn: '±',
+  middot: '·',
+  bull: '•',
+  para: '¶',
+  sect: '§',
+  dagger: '†',
+  permil: '‰',
+  prime: '′',
+  euro: '€',
+  pound: '£',
+  yen: '¥',
+  cent: '¢',
+  curren: '¤',
+  iexcl: '¡',
+  iquest: '¿',
+  micro: 'µ',
+  larr: '←',
+  rarr: '→',
+  uarr: '↑',
+  darr: '↓',
+  harr: '↔',
+  minus: '−',
+  lowast: '∗',
+  infin: '∞',
+  alpha: 'α',
+  beta: 'β',
+  gamma: 'γ',
+  delta: 'δ',
+  pi: 'π',
+  Omega: 'Ω',
+  // The full Latin-1 accented spectrum; documents mix these with the punctuation above, so
+  // resolving punctuation but not `&eacute;` was only half a decoder.
+  agrave: 'à',
+  aacute: 'á',
+  acirc: 'â',
+  atilde: 'ã',
+  auml: 'ä',
+  aring: 'å',
+  ccedil: 'ç',
+  egrave: 'è',
+  eacute: 'é',
+  ecirc: 'ê',
+  euml: 'ë',
+  igrave: 'ì',
+  iacute: 'í',
+  icirc: 'î',
+  iuml: 'ï',
+  ntilde: 'ñ',
+  ograve: 'ò',
+  oacute: 'ó',
+  ocirc: 'ô',
+  otilde: 'õ',
+  ouml: 'ö',
+  oslash: 'ø',
+  ugrave: 'ù',
+  uacute: 'ú',
+  ucirc: 'û',
+  uuml: 'ü',
+  yacute: 'ý',
+  szlig: 'ß',
+};
+
 export const encodingHtmlEntity = defineTool({
   name: 'pro_encode_html_entity',
   description: 'HTML entitiyalarini kodlash va dekodlash (&amp;, &#x41;, &#65;).',
@@ -598,33 +712,21 @@ export const encodingHtmlEntity = defineTool({
     const p = view(input);
     const text = strOrEmpty(p, 'text');
     if (!text) return fail('text talab qilinadi.');
-    const named: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    const reverse: Record<string, string> = {
-      amp: '&',
-      lt: '<',
-      gt: '>',
-      quot: '"',
-      apos: "'",
-      nbsp: ' ',
-    };
     if (strOrEmpty(p, 'direction') !== 'decode') {
       if (strOrEmpty(p, 'mode') === 'numeric') {
+        // Escape the five XML-critical characters in numeric form too. The first version copied
+        // every ASCII codepoint through untouched, so encoding `"<b>ok</b>"` returned the tag
+        // markup itself and a caller feeding the result into a JSON field embedded an active tag.
         return result(
           [...text]
-            .map((char) => {
-              const code = char.codePointAt(0) as number;
-              return code < 128 ? char : `&#${code};`;
-            })
+            .map(
+              (char) =>
+                NUMERIC_CRITICALS[char] ?? (Number(char.codePointAt(0)) < 128 ? char : `&#${char.codePointAt(0)};`),
+            )
             .join(''),
         );
       }
-      return result(text.replace(/[&<>"']/g, (char) => named[char]));
+      return result(text.replace(/[&<>"']/g, (char) => HTML_CRITICAL_NAMED[char]));
     }
     return result(
       text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, body: string) => {
@@ -632,7 +734,9 @@ export const encodingHtmlEntity = defineTool({
           return String.fromCodePoint(parseInt(body.slice(2), 16));
         }
         if (body.startsWith('#')) return String.fromCodePoint(parseInt(body.slice(1), 10));
-        return reverse[body.toLowerCase()] ?? match;
+        // Only six names resolved before - `&copy;` `&mdash;` `&hellip;` `&eacute;` (and the rest of
+        // the Latin-1 punctuation page that real documents carry) came back as text.
+        return HTML_NAMED_DECODE[body.toLowerCase()] ?? match;
       }),
     );
   },
@@ -731,14 +835,32 @@ export const encodingUuid = defineTool({
         out.push(crypto.randomUUID());
         continue;
       }
-      // v7: 48-bit millisecond timestamp, then version, then random. Sorting by id matches time order,
-      // which is the reason to choose it over v4.
-      const hex = Date.now().toString(16).padStart(12, '0') + '7' + crypto.randomUUID().replace(/-/g, '').slice(1, 16);
+      // RFC 9562 v7: 48-bit ms timestamp, version nibble 7, 12 random bits, variant nibble
+      // (8/9/a/b), then the remaining random bits - a 32-hex id whose groups are all the right
+      // length and which the tool's own parser accepts. The previous build was 28 hex with no
+      // variant bits and an 8-char last group, values this very tool rejected as invalid.
+      const ts = Date.now().toString(16).padStart(12, '0');
+      const rand = crypto.randomUUID().replace(/-/g, '');
+      const variantBits = parseInt(rand[15], 16) & 3; // 0..3 -> variant 8/9/a/b, which reserve the two high bits
+      const hex = ts + '7' + rand.slice(0, 3) + (8 | variantBits).toString(16) + rand.slice(16, 31);
       out.push(`${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`);
     }
     return result(count === 1 ? out[0] : out.join('\n'));
   },
 });
+
+/** Crockford base32: ULID's alphabet, upper case, without I, L, O or U. */
+const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+function crockfordBase32(value: number): string {
+  let out = '';
+  let n = value;
+  while (n > 0) {
+    out = CROCKFORD_ALPHABET[n % 32] + out;
+    n = Math.floor(n / 32);
+  }
+  return out;
+}
 
 export const encodingIdent = defineTool({
   name: 'pro_encode_ident',
@@ -769,13 +891,19 @@ export const encodingIdent = defineTool({
       } else if (kind === 'ksuid') {
         out.push(`${Date.now().toString(36).padStart(8, '0')}${random(16).toUpperCase()}`);
       } else {
-        const time = stamp.toString(32).toUpperCase().padStart(10, '0');
-        const randomness = [...crypto.getRandomValues(new Uint8Array(16))]
-          .map((byte) => byte.toString(32).padStart(2, '0'))
-          .join('')
-          .slice(0, 16)
-          .toUpperCase();
-        out.push(`${time}${randomness}`);
+        // Crockford base32, both halves. `Number.toString(32)` spells its letters a-v, so the old
+        // conversion emitted I, L, O and U - letters the ULID alphabet excludes, meaning ids that
+        // any conforming decoder (or this repo's own alphabet table) misreads.
+        const time = crockfordBase32(stamp).padStart(10, '0');
+        // 16 rejection-sampled letters: byte % 32 skews by ~0.8% per character because 256 is not
+        // divisible by 32... it is, but only for the alphabet's first form; keep the draw exact by
+        // rejecting the small tail instead.
+        const randomness: string[] = [];
+        while (randomness.length < 16) {
+          const bytes = crypto.getRandomValues(new Uint8Array(16 - randomness.length));
+          for (const byte of bytes) if (byte < 248) randomness.push(CROCKFORD_ALPHABET[byte % 32]);
+        }
+        out.push(`${time}${randomness.join('')}`);
       }
     }
     return result(count === 1 ? out[0] : out.join('\n'));

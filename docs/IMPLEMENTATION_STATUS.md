@@ -3,7 +3,7 @@
 > This file is the agent's memory across context loss. It is written to disk, not held in context.
 > Update it after every completed work item.
 
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-20
 
 ## Scope Actually Covered (read before claiming more)
 
@@ -86,9 +86,9 @@ What was actually wrong, beyond schema noise:
 
 ## Current State
 
-- **Phase:** Defect sweep by measurement — hunting real gaps, refuting presumed ones
-- **Active task:** None. The MexaPlan/SmartToDo/MaxEffort tools were removed on request and the code returned to its exact previous state; the specification and the agent working rules remain as documents. `npm run check` green end to end.
-- **Blocked on:** nothing except `pro_research_deep`, which is upstream (Serper quota / Medium bot protection)
+- **Phase:** Four-subagent audit follow-through — verifying and fixing every confirmed finding
+- **Active task:** Batch 2 committed and pushed (`cba00fd`). 24-test regression file green; `npm run check` green (1001 tests). Remaining: ~27 confirmed findings (A-2/A-3/A-4, B-2/B-4/B-6/B-7/B-8/B-10, F2/F3/F4/F6/F7/F8/F9/F10/F12, plus ~9 small unit fixes) — see Session 32 below.
+- **Blocked on:** nothing
 
 ## Prior State (superseded)
 
@@ -100,19 +100,24 @@ What was actually wrong, beyond schema noise:
 
 > Read `docs/DECISIONS.md` for reasoning, then continue the action below.
 
-**Next exact action:** the next credential-free category. The rule learned building `qr` and `sql` is
-what to carry over: find an *independent* check the data must satisfy, because a round trip only proves
-self-consistency. `qr` used geometry; `sql` used token preservation.
+**Next exact action:** continue the audit batches from `C:\pro-fetch-work` (ASCII junction to
+`D:\...\pro-fetch-mcp-clean`; use the junction for everything — the Cyrillic path garbles in output).
+Remaining confirmed findings from the four subagent reports, each re-verified with a probe before
+fixing and pinned with a regression test:
+
+- A-2 describeChildEnv, A-3 outputRoot lacks a root check, A-4 mutation scanner misses tools
+- B-2 redirect credential list (8 names), B-4 post_multipart corrupts binary, B-6 redirect_trace
+  has no timeout, B-7 timeout is not per-attempt, B-8 fetch_with_proxy defects, B-10 SSE discards events
+- F2/F3/F4 execution engine (architectural), F6/F7 composite budget / 4k clip, F8/F9 intent-search,
+  F10 cache key omits max_tokens, F12 limiter status
+- Small unit fixes: units comma-split, i18n slugify regex injection, case_convert non-Latin,
+  uuid v7, base64url enum, ULID Crockford, html_entity, time fixes, toOklch chroma
 
 ```powershell
-cd C:\Users\user\Downloads\pro-fetch\pro-fetch-mcp
-node scripts/verify-registry.mts   # confirm 672 and read per-category counts
+cd C:\pro-fetch-work
+npx vitest run tests/audit-batch-fixes.test.ts   # regression gate for the batches
+npm run check                                    # full gate before each commit
 ```
-
-Start with the largest untouched categories (`github` 49, `browser` 41, `convert` 30). Re-run
-`npm run check` after each. Do **not** batch a whole category with a scripted find-and-replace:
-that is what corrupted `src/server.ts`, `src/core/media-tools.ts` and two test files (see Known
-Regressions).
 
 ## Workstreams
 
@@ -1182,3 +1187,43 @@ separate process gives the same count.
 **Next exact action:** the `agent` implementation is available as a branch-ready change if it is wanted
 again; the specification it was built from is in `docs/AGENT_WORKFLOW.md` and the working rules in
 `AGENTS.md`, both of which stand on their own without the tools.
+### Session 32 - Four-subagent audit follow-through: batch 2 committed
+
+Four parallel subagent audits (data-conversion 26 findings, runtime core 15, security+HTTP 17,
+HTTP/extract/github 24) were re-verified one by one with polarity-correct offline probes before any
+code changed; several subagent claims were refuted by those probes and are NOT bugs (see DECISIONS.md D-005).
+
+The working tree was provisionally lost when `C:\Users\user\Downloads` copies were moved mid-session
+to `D:\Загрузки\pro-fetch-mcp-clean`. Recovery: ASCII junction `C:\pro-fetch-work` -> the Cyrillic
+directory (PowerShell could render the Cyrillic path unreliably; junction creation required `$root`
+to avoid typed-garbage). All work now lives at `C:\pro-fetch-work`. The recovered tree had
+`batch 1 + A-1 + F5 + repo_audit args + pipeline` fixes but had LOST the second batch (chunker,
+text-source, cache.delete, fetcher x2, fetch_batch, charset, 4x status checks, profile comment) -
+those were re-applied from context, then `npx tsc --noEmit` (exit 0) and probes confirmed each.
+
+Committed as `cba00fd` (30 files, +425/-167) and pushed to `main`:
+
+- A-1 read-only allowlist inert at sinks -> `src/core/tool-context.ts` (AsyncLocalStorage),
+  dispatch() attributes every handler; `assertWritable(effect, toolName?)` uses the ambient name.
+- repo_audit step plan exported (`repoAuditSteps`), pinned to schemas by test; handler reads
+  include_ci/include_security itself so the source scanners stay satisfied (this refactoring first
+  broke 2 scanner tests - fixed by reading the flags in the handler).
+- pro_data_pipeline structural fix (bytes-once, declared step args); probe showed JSON-with-quotes
+  text defeats the CSV loader BY DESIGN, so pipeline tests assert per-step outcomes not failed=0.
+- chunker budget guards (was an unbounded loop), readTextSource empty-string skip, cache.delete
+  exact keys (revocation), fetchBatch NaN fallback, fetch_batch tool validation, charset decoding,
+  4x HTTP>=400 status checks, fetchUrl final URL, smart profile comment.
+
+Regression coverage: new `tests/audit-batch-fixes.test.ts` - 24 offline tests, all green.
+Full `npm run check`: 46 files, 1001 tests, all green; build/PACKAGE_VERIFICATION_PASS; prettier clean.
+
+| Command | Result |
+|---|---|
+| `npm run check` | exit 0 - 46 files / 1001 tests, PACKAGE_VERIFICATION_PASS, format clean |
+| `npx tsc --noEmit` | exit 0 |
+| `npx vitest run tests/audit-batch-fixes.test.ts` | 24 passed (24) |
+| git | `cba00fd` pushed, main 72a5405..cba00fd |
+
+**Next exact action:** batches 3-5 as listed in Resume Instruction (A-2/A-3/A-4, B-family 6,
+F-family 9, ~9 small unit fixes), then the final fixed-vs-identified report.
+

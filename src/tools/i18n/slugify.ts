@@ -21,12 +21,16 @@ export default defineTool({
   async handler(input) {
     const p = view(input);
     const sep = String(p.format ?? '-');
+    // The separator is caller input and lands in a RegExp, so it is escaped: `[` as a separator threw
+    // `Invalid regular expression` (crash), and `.` ate the whole slug because `^.+|.+$` matches
+    // everything once unescaped.
+    const escaped = sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const slug = String(p.text ?? '')
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, sep)
-      .replace(new RegExp('^' + sep + '+|' + sep + '+$', 'g'), '');
+      .replace(new RegExp('^' + escaped + '+|' + escaped + '+$', 'g'), '');
     return result(slug);
   },
 });
