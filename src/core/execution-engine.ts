@@ -108,6 +108,18 @@ export async function executeTool<T>(
   const stats = metric(tool.name);
   stats.calls++;
   stats.lastRunAt = new Date(started).toISOString();
+
+  // The timeout is the call's budget, and the budget covers the wait for a slot.
+  //
+  // The timer used to be armed after both gates were acquired, so a call that queued behind a busy
+  // category started its timeout only once it was running. Measured: with a 1200 ms timeout and a
+  // category capacity of one, a call that queued behind a stuck handler waited 1418 ms and then ran
+  // with a fresh 1200 ms timer - 1418 ms of waiting plus the handler's own time, against a timeout
+  // the tool had named as 1200 ms. The deadline is now taken when the call arrives, and a call
+  // whose budget was spent waiting is refused rather than run.
+  const timeoutMs = boundedEnv('PRO_FETCH_TOOL_TIMEOUT_MS', 600_000, 1_000, 86_400_000);
+  const deadline = started + timeoutMs;
+
   try {
     assertToolAllowed(tool, input);
   } catch (error) {
@@ -140,7 +152,6 @@ export async function executeTool<T>(
   try {
     globalRelease = await globalGate.acquire();
     inFlight.set(tool.category, (inFlight.get(tool.category) ?? 0) + 1);
-    const timeoutMs = boundedEnv('PRO_FETCH_TOOL_TIMEOUT_MS', 600_000, 1_000, 86_400_000);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let abandonTimer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
@@ -155,6 +166,18 @@ export async function executeTool<T>(
       globalRelease?.();
       categoryRelease();
     };
+
+    // The budget may already be spent: the call waited for a slot.
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      release();
+      throw new ExecutionError(
+        `Tool ${tool.name} ${timeoutMs} ms ichida tugamadi (slot kutishida vaqt tugdi).`,
+        'TOOL_TIMEOUT',
+        !isMutationTool(tool.name),
+      );
+    }
+
     const operation = Promise.resolve().then(handler);
     operation.then(
       () => {
@@ -199,7 +222,7 @@ export async function executeTool<T>(
             // said "retry me" about an operation whose outcome was unknown.
             const retryable = !isMutationTool(tool.name);
             reject(new ExecutionError(`Tool ${tool.name} ${timeoutMs} ms ichida tugamadi.`, 'TOOL_TIMEOUT', retryable));
-          }, timeoutMs);
+          }, remaining);
         }),
       ]);
       const durationMs = Date.now() - started;
