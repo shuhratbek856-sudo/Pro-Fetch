@@ -212,6 +212,16 @@ Only real runs. A command with no output is not a pass.
 | 2026-10-12 | OCR on canvas-rendered "HELLO" | found, confidence 96, 239 ms first call | |
 | 2026-10-12 | OCR pooled second call | 16 ms — 14.9× | The win being traded away |
 | 2026-10-12 | `npm publish --dry-run` | PASS | 247.3 kB, 443 files, prepublish tests ran |
+| 2026-10-20 | `npm run check` (batches 2-7) | PASS | 51 files / 1051 tests, 0 skipped; STATIC / REGISTRY / PACKAGE / format clean |
+| 2026-10-21 | `npm test` before the browser build | FAIL | `tests/pinned-proxy.test.ts` could not collect: playwright 1.63.0 wants build 1243, the machine had only 1248. 18 tests skipped → the runner refused to call it a pass |
+| 2026-10-21 | `npx playwright install chromium` | PASS | build 1243 (114.6 MiB) installed; CI already does this with a comment saying why |
+| 2026-10-21 | `npm test` after the browser build | PASS | TEST_RUN_PASS files=51 tests=1051, 0 skipped |
+| 2026-10-21 | `npx tsc --noEmit` | PASS | exit 0 |
+| 2026-10-21 | `npm run verify:registry` | PASS | 672 registered, 42 categories, 11 smart, 672 unique names |
+| 2026-10-21 | `npx tsx scripts/audit-schema.mts` | PASS | audited 652; dead 0, unread-required 0, open schemas 0, undeclared 262 (SPECS packs) |
+| 2026-10-21 | `npm run measure:coverage` | PASS | 476/672 static + 4 dynamic executors; reachability 672/672, 0 closed |
+| 2026-10-21 | live MCP session (raw JSON-RPC, both profiles) | PASS | handshake, 672 + 11 tools, live fetch (32 154-char markdown), capability map, real PDF on disk, SSRF/unknown-tool/unknown-argument refusals, batch ok 2 / failed 0 |
+| 2026-10-21 | `npm run check` on the final tree | PASS | STATIC / TEST_RUN (51 files, 1051 tests) / REGISTRY / PACKAGE / format, exit 0 |
 
 ## Known Regressions
 
