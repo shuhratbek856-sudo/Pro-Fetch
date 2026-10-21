@@ -86,19 +86,21 @@ What was actually wrong, beyond schema noise:
 
 ## Current State
 
+- **Phase:** Deep analysis of the closed audit — COMPLETE (see Session 45 and `docs/DEEP_ANALYSIS.md`)
+- **Active task:** None. The four-subagent audit is closed (Session 44f) and the project has been
+  analysed end to end against its own gates: every gate re-run, the core layer read, and the built
+  server driven over the real MCP protocol with live calls. The analysis is written to
+  `docs/DEEP_ANALYSIS.md` with a per-subsystem classification, a risk register, and the list of
+  what is *not* verified.
+- **Blocked on:** nothing (live provider calls remain unexercised — no credential in this
+  environment; that is recorded as `IMPLEMENTED_NOT_FULLY_VERIFIED`, not as a pass)
+
+## Prior State (superseded)
+
 - **Phase:** Four-subagent audit follow-through — COMPLETE (see Session 44f)
 - **Active task:** None. Every confirmed finding from the four subagent reports is fixed, pinned by a
   regression test, committed and pushed to `main` (`cba00fd`, `46cb499`, `7fe7cef`, `e30411c`,
   `dd35873`, `48ad6e3`). Refuted findings are recorded in DECISIONS.md and in the final report.
-- **Blocked on:** nothing
-
-## Prior State (superseded)
-
-- **Phase:** Four-subagent audit follow-through — batch 4 at `7fe7cef`
-- **Active task:** Batch 3 committed and pushed (`46cb499`, 9 encoding fixes) and batch 4 committed and pushed
-  (`7fe7cef`, 6 HTTP fixes). Regression files 17+10 green; `npm run check` green (48 files / 1028 tests).
-  Remaining: batch 5 (A-2/A-3/A-4), batch 6 (F-family: F2/F3/F4/F6/F7/F8/F9/F10/F12), then the final
-  fixed-versus-identified report.
 - **Blocked on:** nothing
 
 ## Resume Instruction
@@ -1433,4 +1435,55 @@ Measured at the close: 672 tools / 42 categories, 554 source files, 51 test file
 development: new categories, new providers, and the SPECS packs that are still declared but
 unverified (Session 33 and Session 41-42 record why: their bodies live in a `switch` branch, and
 resolving a branch needs statement-boundary tracking rather than brace matching).
+
+### Session 45 - deep analysis of the finished product, and one real environment finding
+
+The audit was closed at Session 44f; this session analysed the result rather than adding to it. The
+analysis is in `docs/DEEP_ANALYSIS.md`, and every number in it is a measurement.
+
+**What was measured** (commands in the document): 554 source files / 46 805 lines (core 54 / 14 591,
+tools 496 / 32 013), 51 test files / 11 089 lines, **1051 tests, 0 skipped**,
+**672 tools / 42 categories / 11 smart**, `tsc --noEmit` exit 0, schema audit dead 0 / unread-required 0
+/ open schemas 0, composite coverage **672/672 reachable**, **0** placeholders, **0** empty handlers,
+58 `any` usages.
+
+**Live use, over the real protocol.** The built server was driven by a raw JSON-RPC MCP client
+(stdin/stdout, no SDK): handshake OK, `tools/list` 672 tools, every one with a description and a
+schema; a live `pro_fetch_fetch_url` of `example.com`; a live Wikipedia page converted to 32 154
+characters of markdown with its headings; `pro_capability_map` answering a natural-language task
+(12 matched tools with schemas); `pro_pdf_new` writing a **real PDF to disk** (1 189 bytes, `%PDF`
+magic verified inside the sandbox); the unknown tool refused; `http://127.0.0.1/secret` refused by
+the SSRF guard; an undeclared argument refused. The `smart` profile (11 tools) was driven the same
+way: `pro_capability_call` ran a two-step plan (`ok: 2, failed: 0`, 860 ms) with both outputs
+correct, and `pro_capability_map` answered "convert a PDF to text".
+
+**One real finding, and it was the environment, not the code.** `npm test` failed at the start of
+this session: `tests/pinned-proxy.test.ts` could not collect, 18 tests were reported as skipped,
+and the runner refused to call that a pass - which is the harness behaving as designed
+(`vitest-summary.mjs` treats a skip as a failure). Cause: the installed `playwright` 1.63.0 expects
+browser build **1243**, and this machine's cache held only **1248**, a newer build from another
+project that had pruned the older one. CI already installs the browser explicitly and says why
+(`.github/workflows/ci.yml`), so the project was correct and the machine was not. After
+`npx playwright install chromium` the suite reported **TEST_RUN_PASS files=51 tests=1051**.
+
+**The analysis classifies every subsystem** and says which are not verified: providers are
+`IMPLEMENTED_NOT_FULLY_VERIFIED` (no key in this environment), the 20 SPECS packs are
+`PARTIALLY_IMPLEMENTED` (262 tools with undeclared reads, `closable_now=0` - the resolver cannot
+reach into a `switch` branch, and the audit reports that rather than guessing), the in-memory
+cache and auth store are `NOT_IMPLEMENTED` by design and documented as such.
+
+| Command | Result |
+|---|---|
+| `npm test` | TEST_RUN_PASS - 51 files / 1051 tests, 0 skipped (exit 0) |
+| `npx tsc --noEmit` | exit 0 |
+| `npm run verify:registry` | REGISTRY_VERIFICATION_PASS - 672 / 42 / 11 / 672 unique |
+| `npx tsx scripts/audit-schema.mts` | audited 652, dead 0, unread-required 0, open schemas 0, undeclared 262 |
+| `npm run measure:coverage` | 476/672 static + 4 dynamic executors, reachability 672/672 |
+| live MCP session (full + smart) | ALL PASS, both profiles |
+| placeholder / empty-handler scan | 0 / 0 |
+
+**Next exact action:** recommendation 1 in the analysis - resolve the SPECS packs per tool, which
+needs statement-boundary tracking inside a `switch` (`core/source-resolver.ts`). Recommendations 2-4
+(CI browser note in the README, the 58 `any` usages in five files, a live provider matrix with
+real keys) are ordinary follow-ups, not blockers.
 
