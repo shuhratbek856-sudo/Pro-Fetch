@@ -73,7 +73,7 @@ export default defineTool({
     }
 
     const legal = legalMoves(position);
-    const depth = num(p, 'perft_depth', 0);
+    const depth = num(p, 'perft_depth', 0, 0);
     const lineLength = Math.max(1, Math.min(num(p, 'best_line', 2) || 2, 6));
 
     const result: Record<string, unknown> = {

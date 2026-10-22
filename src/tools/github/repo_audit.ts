@@ -106,7 +106,7 @@ export const PR_DEEP_TOOL = defineTool({
   async handler(input) {
     const p = view(input);
     const repository = strOrEmpty(p, 'repository').trim();
-    const prNumber = num(p, 'pr_number', 0, 1, 1_000_000);
+    const prNumber = num(p, 'pr_number', 0, 0, 1_000_000);
     if (!repository || prNumber <= 0) return fail('repository va pr_number talab qilinadi.');
     const slash = repository.indexOf('/');
     const owner = slash === -1 ? '' : repository.slice(0, slash);
