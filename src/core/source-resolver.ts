@@ -16,8 +16,15 @@
 
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SRC = path.resolve('src');
+// Resolve the code we parse relative to THIS module, not the process working directory. In dev this
+// file is src/core/source-resolver.ts (grandparent = src/, .ts files); in a published install it is
+// dist/core/source-resolver.js (grandparent = dist/, .js files), because `files` ships only dist/.
+// Deriving SRC from import.meta.url is what makes dev and prod schema narrowing identical instead of
+// silently diverging (the old `path.resolve('src')` found nothing once src/ was not in the CWD, so the
+// resolver returned undefined for every tool and no schema was narrowed — a too-wide prod schema).
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const fileByToolName = new Map<string, string>();
 const coreModules = new Map<string, string>();
@@ -32,7 +39,8 @@ async function walk(dir: string, sink: (file: string, text: string) => void): Pr
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) await walk(full, sink);
-    else if (full.endsWith('.ts')) sink(full, await readFile(full, 'utf8'));
+    else if ((full.endsWith('.ts') || full.endsWith('.js')) && !full.endsWith('.d.ts'))
+      sink(full, await readFile(full, 'utf8'));
   }
 }
 
@@ -59,7 +67,7 @@ await walk(path.join(SRC, 'tools'), (_file, text) => {
 });
 
 await walk(path.join(SRC, 'core'), (file, text) => {
-  coreModules.set(path.basename(file), text);
+  coreModules.set(path.basename(file).replace(/\.[cm]?[jt]s$/, ''), text);
 });
 
 /**
@@ -144,7 +152,7 @@ const SPEC_RUNNERS: Record<string, string> = {
   storage: 'runStorage',
   productivity: 'runProductivity',
 };
-const maxPlatform = coreIndex.get('max-platform-tools.ts') ?? new Map<string, string>();
+const maxPlatform = coreIndex.get('max-platform-tools') ?? new Map<string, string>();
 
 /**
  * Declarations between branches, which the branches after them read.
@@ -352,12 +360,12 @@ function nameDispatcher(moduleFile: string, functionName: string, toolPrefix: st
   return index;
 }
 
-const browserByName = nameDispatcher('browser-tools.ts', 'runBrowserTool', 'pro_browser_');
-const mediaByName = nameDispatcher('media-tools.ts', 'runMediaTool', 'pro_fetch_');
+const browserByName = nameDispatcher('browser-tools', 'runBrowserTool', 'pro_browser_');
+const mediaByName = nameDispatcher('media-tools', 'runMediaTool', 'pro_fetch_');
 
 /** Per-action source for `runBrowserAction`, keyed by action value. */
 const browserByAction = new Map<string, string>();
-const browserToolAt = coreModules.get('browser-tools.ts') ?? '';
+const browserToolAt = coreModules.get('browser-tools') ?? '';
 if (browserToolAt.includes('runBrowserAction')) {
   const region = browserToolAt.slice(browserToolAt.indexOf('export async function runBrowserAction'));
   const shared = preamble(region);
