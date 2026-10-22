@@ -86,9 +86,9 @@ What was actually wrong, beyond schema noise:
 
 ## Current State
 
-- **Phase:** Category expansion — each new category's tables verified against computed geometry
-- **Active task:** None. `qr` and `sql` committed and pushed; `npm run check` green end to end.
-- **Blocked on:** nothing
+- **Phase:** Defect sweep by measurement - hunting real gaps, refuting presumed ones
+- **Active task:** None. Schema declarations, unknown-argument enforcement, and the zip packaging are all done; `npm run check` green end to end.
+- **Blocked on:** nothing except `pro_research_deep`, which is upstream (Serper quota / Medium bot protection)
 
 ## Prior State (superseded)
 

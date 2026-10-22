@@ -5,7 +5,7 @@
 > `tools/list` da ko'rsatganningsizdan ham o'zgarmas. Qayta generatsiya:
 > `npx tsx scripts/dump-catalog.mts`
 
-**Jami:** 652 ta tool · 40 ta kategoriya · smart=11, minimal=73, standard=178, full=652
+**Jami:** 672 ta tool · 42 ta kategoriya · smart=11, minimal=73, standard=178, full=672
 
 Belgilar: `S` = smart meta-toʻplamiga kiradi · `▸` = minimal/standard profilda ko'rinadi · `·` = faqat `full` profil.
 
@@ -39,9 +39,11 @@ Belgilar: `S` = smart meta-toʻplamiga kiradi · `▸` = minimal/standard profil
 | `apitest` | 12 | REST/GraphQL/OpenAPI/SOAP: fetch, parse, validate, mock, diff, probe |
 | `auth` | 12 | Sessions, cookies, basic/bearer fetch, OAuth device flow, scope audit |
 | `i18n` | 12 | Translate, transliterate, locale & RTL helpers |
+| `sql` | 11 | — |
 | `monitoring` | 10 | Watches, health checks, scheduled fetch & change alerts |
 | `encoding` | 9 | Base64/URL/hex/hash/compress codecs |
 | `imageproc` | 9 | Image processing: resize, crop, EXIF, QR, OCR pre/post |
+| `qr` | 9 | — |
 | `schema` | 6 | JSON Schema / validation / inference helpers |
 | `llm` | 5 | LLM gateway: complete, embed, structured output |
 | `opendata` | 5 | Public open-data providers (Crossref, OpenLibrary, Patents, GDELT) |
@@ -108,7 +110,7 @@ _GitHub API: repos, code, issues, PRs, releases, actions, advisories_
 - `pro_gh_tags_list` `  ▸` — List the tags of a repository
 - `pro_gh_user_profile` `  ▸` — Get a GitHub user profile and stats
 - `pro_pr_review` `S ▸` — Review one pull request end to end: description, diff, changed files, checks, reviews, inline comments and issue timeline in a single call.
-- `pro_repo_audit` `S ▸` — Full GitHub repository audit in one call: metadata, README, directory structure, languages, license, contributors, commit activity, open issues and pull requests, releases, topics, CI status and security advisories. Use this instead of calling a dozen GitHub tools by hand.
+- `pro_repo_audit` `S ▸` — Full GitHub repository audit in one call: metadata, README, directory structure, languages, license, contributors, commit activity, open issues and pull requests, releases, topics and optionally CI status. Use this instead of calling a dozen GitHub tools by hand.
 
 ## browser (41)
 
@@ -761,6 +763,20 @@ _Translate, transliterate, locale & RTL helpers_
 - `pro_fetch_transliterate` `  ·` — Transliterate text between scripts
 - `pro_fetch_unicode_normalize` `  ·` — Normalize Unicode text (NFC, NFD, NFKC, NFKD)
 
+## sql (11)
+
+- `pro_sql_analyse` `  ·` — SQL so‘rovini tahlil qilish: qanday amal, qaysi jadvallar, murakkablik, parameterlar, xavf darajasi. WHERE clausesiz DELETE/UPDATE alohida belgilanadi. So‘rov bajarilmaydi — faqat o‘qiladi va tahlil qilinadi.
+- `pro_sql_check` `  ·` — SQL sintaktik tekshiruv: izoh va satr ichida yopilmagan qavs, yakunlanmagan dollar-quoted blok, nomlanmagan parameterlar, bo‘sh SELECT ustuni. Bajarilmaydi — faqat tekshiradi.
+- `pro_sql_complexity` `  ·` — So‘rov murakkabligi: token soni, chuqurlik, subquery, join, union, jadval soni va qator ko‘payishi (fanout). Oddiy so‘rov uchun barchasi nol bo‘ladi.
+- `pro_sql_dialect` `  ·` — SQL dialekt farqlari: PostgreSQL, MySQL, SQLite va SQL Server o‘rtasidagi 12 ta farq, va berilgan so‘rovda qaysi constructlar ishlatilganligi. So‘rovga tegishli qismi ajratib qo‘yiladi.
+- `pro_sql_format` `  ·` — SQL ni chiroyli formatlash. Kafolat: formatlashdan keyin token oqimi, jadvallar, xavf darajasi va statement chegaralari o‘zgarmaydi — izohlar tushiriladi, chunki ularni saqlash uchun pro_sql_tokenize ishlating.
+- `pro_sql_parameters` `  ·` — So‘rovdagi parameterlarni chiqarish: har birining nomi yoki tartib raqami, necha marta uchraydi va qaysi usulda yozilgan (? $1 :name @name %(name)s). Aralash usul aniqlanadi.
+- `pro_sql_risk` `  ·` — SQL xavf darajasi: read / write / destructive / schema. WHERE clausesiz DELETE va UPDATE, TRUNCATE, DROP, GRANT/REVOKE, FOR UPDATE bloklash, INTO OUTFILE — hammasi alohida topiladi. CTE ichida yashiringan o‘zgartirish ham ko‘rinadi.
+- `pro_sql_split` `  ·` — SQL skriptini statement‘larga bo‘lish. Nuqta satr, izoh yoki dollar-quoted blok ichida chegara hisoblanmaydi — PostgreSQL funksiya tanasi shu sabab to‘liq qoladi.
+- `pro_sql_substitute` `  ·` — SQL ichidagi parameterlarni berilgan qiymatlar bilan almashtirish. Barcha qiymatlar to‘g‘ri qo‘yib chiqiladi: satrga tirnoq qo‘shiladi, son to‘g‘ri yoziladi, NULL o‘zgaruvchan sifatida. Chiqish shunchaki tayyor va bajarishga tayyor bo‘ladi.
+- `pro_sql_tables` `  ·` — So‘rov qaysi jadvallarni ishlatishini aniqlash: FROM, JOIN, INTO, UPDATE, DELETE FROM. Sxema va alias alohida. SELECT ro‘yxatidagi nomlar jadval hisoblanmaydi.
+- `pro_sql_tokenize` `  ·` — SQL ni tokenlarga bo‘lish: har bir kalit, nom, satr, son, operator, parameter va izoh boshlanish/oxirgi pozitsiyasi bilan. Bu lexer‘ning to‘liq ko‘rinishi — izohlar saqlanadi.
+
 ## monitoring (10)
 
 _Watches, health checks, scheduled fetch & change alerts_
@@ -803,6 +819,18 @@ _Image processing: resize, crop, EXIF, QR, OCR pre/post_
 - `pro_image_sprite` `  ·` — Bir necha rasmni bitta sprite varaqasiga yig‘ish: qatorlar va ustunlar soni belgilanadi, har bir katak teng o‘lchamga masshtalanadi. CSS sprite sheet va boshqa varaqalar uchun.
 - `pro_image_strip_metadata` `  ·` — Rasmdan maxfiy ma’lumotlarni olib tashlash: EXIF (kamera, GPS koordinatalari, qurilma seriya raqamlari), ICC profil va boshqa texnik ma’lumotlar. Rasmni qayta yozadi, o‘lcham va ko‘rinish o‘zgarmaydi.
 - `pro_image_watermark` `  ·` — Rasmga yorliq qo‘shish: pastki/yuqori chap/o‘ng burchakka rangli blok yorlig‘i, yoki markaziy banner. Yorliq rangi, shaffoflig‘i va chegarasi o‘lchamiga nisbatan beriladi.
+
+## qr (9)
+
+- `pro_qr_capacity` `  ·` — QR sig‘imi: berilgan versiya va darajada nechta modullar, nechta kodli so‘z, nechta ma’lumot so‘zi va taxminan nechta belgi sig‘adi. Geometriyadan hisoblanadi, jadvaldan o‘qilmaydi.
+- `pro_qr_decode` `  ·` — QR matritsasini o‘qish: format ma’lumotidan daraja va niqob aniqlanadi, xato tuzatish qo‘llaniladi, matn qaytariladi. Kiritish — har bir qatori 0/1 yoki #/. belgilaridan iborat matritsa.
+- `pro_qr_encode` `  ·` — Matndan QR belgisi yasash: segment rejimi (raqam / harf-arif / bayt), versiya, xato tuzatish darajasi, niqoblash, modul matritsasi, PNG yoki SVG. Chiqishda "round trip tekshirildi, skaner bilan tekshirilmadi" deb yoziladi — bu farq yashirilmaydi.
+- `pro_qr_field` `  ·` — GF(256) maydon amallari: ko‘paytirish, bo‘lish, daraja, generator polinomi. QR xato tuzatishi shu maydonda ishlaydi — maydon noto‘g‘ri bo‘lsa kodlash ham, tuzatish ham noto‘g‘ri bo‘ladi.
+- `pro_qr_format_info` `  ·` — QR format va versiya ma’lumoti: BCH(15,5) va BCH(18,6) hisoblari. Jadvaldagi 16 ta e’lon qilingan qiymat ham qayta hisoblanib solishtiriladi — jadval xatosi shunda ko‘rinadi.
+- `pro_qr_layout` `  ·` — QR belgisining moduli xaritasi: funksiya modullari (finder, timing, alignment, format), ma’lumot modullarining o‘qish tartibi va sig‘adigan kodli so‘z soni.
+- `pro_qr_plan` `  ·` — Matn uchun QR rejasini chiqarish: har bir daraja uchun sig‘adigan versiya, sig‘im va tavsiya. Matnni kodlamaydi — faqat rejasini ko‘rsatadi.
+- `pro_qr_rs_decode` `  ·` — Reed-Solomon kodli so‘zni tuzatish: sindromalar hisoblanadi, Berlekamp-Massey xatolar sonini, Chien qidiruvi joyini, Forney esa miqdorini topadi. Tuzatib bo‘lmasa "yo q" deyadi — noto‘g‘ri matnni "to‘g‘ri" deb qaytarmaydi.
+- `pro_qr_rs_encode` `  ·` — Reed-Solomon xato tuzatish kodli so‘zi yasash: berilgan ma’lumot baytlariga tekshiruv so‘zlari qo‘shiladi (GF(256), primitiv polinom 0x11D). Generator polinomi ham qaytariladi.
 
 ## schema (6)
 
