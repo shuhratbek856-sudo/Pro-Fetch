@@ -11,7 +11,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const base = 'file:///C:/Users/user/Downloads/pro-fetch/pro-fetch-mcp/src/';
+const base = new URL('../src/', import.meta.url).href;
 process.env.PRO_FETCH_PROFILE = 'full';
 await import(base + 'env.js');
 await import(base + 'loader.js');

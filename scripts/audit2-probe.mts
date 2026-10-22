@@ -5,7 +5,7 @@
 import { readFileSync, readFileSync as rf, globSync } from 'node:fs';
 
 process.env.PRO_FETCH_PROFILE = 'full';
-const base = 'file:///C:/Users/user/Downloads/pro-fetch/pro-fetch-mcp/src/';
+const base = new URL('../src/', import.meta.url).href;
 await import(base + 'env.js');
 await import(base + 'loader.js');
 const { allTools } = await import(base + 'core/tool.js');

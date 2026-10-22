@@ -37,7 +37,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 .npm/
-.pro-fetch-cache/
 
 # Test fixtures written by the credential tests
 .pro-fetch-test-*.txt
