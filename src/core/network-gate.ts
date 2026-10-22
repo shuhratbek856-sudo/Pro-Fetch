@@ -15,6 +15,10 @@ class Semaphore {
       } else this.queue.push({ resolve });
     });
   }
+  /** True when nobody holds a permit and nobody is waiting — safe to discard the gate. */
+  idle(): boolean {
+    return this.active === 0 && this.queue.length === 0;
+  }
   private releaseFactory(): () => void {
     let done = false;
     return () => {
@@ -54,6 +58,12 @@ export async function withNetworkConcurrency<T>(hostname: string, operation: () 
     else activeHosts.delete(host);
     releaseTotal?.();
     releaseHost();
+    // Drop the gate once no request for this host is in flight or queued, so a long-lived process
+    // touching many distinct hosts does not accumulate one Semaphore per host forever. The next
+    // request recreates it. releaseHost may have synchronously passed a permit to a queued waiter,
+    // which keeps the gate non-idle, so the idle() check is what makes deleting safe here.
+    const gate = hostGates.get(host);
+    if (gate && gate.idle()) hostGates.delete(host);
   }
 }
 
