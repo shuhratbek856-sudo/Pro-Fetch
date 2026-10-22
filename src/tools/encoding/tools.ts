@@ -446,18 +446,22 @@ export const encodingJwtVerify = defineTool({
 
     let verified = false;
     let reason = '';
+    // WebCrypto parameters derived from the JWS `alg`. Previously every non-RS algorithm (and every
+    // HMAC) was pinned to SHA-256, so legitimately-signed HS384/HS512/ES384 tokens — and EdDSA, which
+    // takes no hash at all — were reported "noto'g'ri" (invalid). Fail-closed, but wrong.
+    const hashName = algorithm.endsWith('384') ? 'SHA-384' : algorithm.endsWith('512') ? 'SHA-512' : 'SHA-256';
     try {
       if (algorithm.startsWith('HS')) {
         // Timing-safe compare: a plain === leaks the signature a byte at a time.
         const hmacKey = await crypto.subtle.importKey(
           'raw',
           Buffer.from(key, 'utf8'),
-          { name: 'HMAC', hash: 'SHA-256' },
+          { name: 'HMAC', hash: hashName },
           false,
           ['sign'],
         );
         const expected = new Uint8Array(
-          await crypto.subtle.sign({ name: 'HMAC', hash: 'SHA-256' }, hmacKey, new Uint8Array(signed)),
+          await crypto.subtle.sign({ name: 'HMAC', hash: hashName }, hmacKey, new Uint8Array(signed)),
         );
         verified = expected.length === signature.length && timingSafeEqual(expected, new Uint8Array(signature));
         if (!verified) reason = 'HMAC imzosi mos emas.';
@@ -477,19 +481,33 @@ export const encodingJwtVerify = defineTool({
           return fail(`Algoritm qo'llab-quvvatlanmaydi: ${algorithm}. HS256/384/512, RS*, ES*, EdDSA.`);
         }
         const pem = key.includes('BEGIN') ? key : Buffer.from(key, 'base64').toString('utf8');
-        const imported = await crypto.subtle.importKey(
-          'spki',
-          Buffer.from(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64'),
-          { name, hash: algorithm.startsWith('RS') ? `SHA-${algorithm.slice(2)}` : 'SHA-256' },
-          false,
-          ['verify'],
-        );
-        verified = await crypto.subtle.verify(
-          { name, hash: algorithm.startsWith('RS') ? `SHA-${algorithm.slice(2)}` : 'SHA-256' },
-          imported,
-          new Uint8Array(signature),
-          new Uint8Array(signed),
-        );
+        const spki = Buffer.from(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64');
+        if (name === 'Ed25519') {
+          // Ed25519 import/verify take a bare algorithm name and no hash; passing SHA-256 is rejected.
+          const imported = await crypto.subtle.importKey('spki', spki, 'Ed25519', false, ['verify']);
+          verified = await crypto.subtle.verify('Ed25519', imported, new Uint8Array(signature), new Uint8Array(signed));
+        } else if (name === 'ECDSA') {
+          // importKey for ECDSA expects a namedCurve, not a hash. verify uses the hash and the raw
+          // r||s signature — WebCrypto's ECDSA format is IEEE-P1363, the same concatenation JWS carries,
+          // so no DER re-encoding is needed. The only real defects were the hash (ES384 must use
+          // SHA-384, not SHA-256) and passing a hash to importKey instead of a namedCurve.
+          const namedCurve = algorithm === 'ES384' ? 'P-384' : 'P-256';
+          const imported = await crypto.subtle.importKey('spki', spki, { name, namedCurve }, false, ['verify']);
+          verified = await crypto.subtle.verify(
+            { name, hash: hashName },
+            imported,
+            new Uint8Array(signature),
+            new Uint8Array(signed),
+          );
+        } else {
+          const imported = await crypto.subtle.importKey('spki', spki, { name, hash: hashName }, false, ['verify']);
+          verified = await crypto.subtle.verify(
+            { name, hash: hashName },
+            imported,
+            new Uint8Array(signature),
+            new Uint8Array(signed),
+          );
+        }
         if (!verified) reason = `${algorithm} imzosi mos emas.`;
       }
     } catch (error) {

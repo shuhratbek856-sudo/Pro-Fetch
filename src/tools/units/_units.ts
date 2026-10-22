@@ -482,6 +482,27 @@ export function parseQuantity(input: string): { value: number; unit: string } {
   return { value: Number(match[1]), unit: match[2].trim() };
 }
 
+/**
+ * Fuel economy is reciprocal, so a single linear factor cannot bridge mpg (distance/volume) and
+ * L/100km (volume/distance). These convert every fuel unit through a canonical L/100km value.
+ */
+const L100_PER_MPG_US = 235.2145832590525; // 100 * 3.785411784 / 1.609344
+const L100_PER_MPG_IMP = 282.4804377253379; // 100 * 4.54609 / 1.609344
+
+function fuelToL100km(unit: Unit, value: number): number {
+  if (unit.symbol === 'mpg_us') return L100_PER_MPG_US / value;
+  if (unit.symbol === 'mpg_imp') return L100_PER_MPG_IMP / value;
+  if (unit.symbol === 'lper100km') return value;
+  return (value * unit.factor) / 1e5; // future fuel unit: linear against L/100km
+}
+
+function fuelFromL100km(unit: Unit, l100: number): number {
+  if (unit.symbol === 'mpg_us') return L100_PER_MPG_US / l100;
+  if (unit.symbol === 'mpg_imp') return L100_PER_MPG_IMP / l100;
+  if (unit.symbol === 'lper100km') return l100;
+  return (l100 * 1e5) / unit.factor; // inverse of fuelToL100km's linear fallback
+}
+
 /** Convert one quantity to another unit. Affine families invert the offset as well as the factor. */
 export function convert(
   value: number,
@@ -501,6 +522,14 @@ export function convert(
     const base = value * from.factor + (from.offset ?? 0);
     const result = (base - (to.offset ?? 0)) / to.factor;
     return { value: result, from, to };
+  }
+  if (from.family === 'fuel') {
+    // Fuel economy is reciprocal, not proportional: mpg is distance/volume while L/100km is
+    // volume/distance. The generic `value * from.factor / to.factor` returns 33.7 for 30 mpg →
+    // L/100km (the true figure is 7.84) and inverts the direction. Route through a canonical
+    // L/100km, treating mpg units as K / value and lper100km as identity.
+    const l100 = fuelToL100km(from, value);
+    return { value: fuelFromL100km(to, l100), from, to };
   }
   return { value: (value * from.factor) / to.factor, from, to };
 }
