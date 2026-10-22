@@ -1,5 +1,5 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
+import { jsonBlock, failJson } from '../../core/format.js';
 import { strOrEmpty, view } from '../../core/input.js';
 import { fail } from '../../core/format.js';
 import { formatNumber, findUnit, parseQuantity, unitsInFamily, type Family } from './_units.js';
@@ -70,7 +70,7 @@ export default defineTool({
       try {
         quantity = parseQuantity(part);
       } catch (error) {
-        return jsonBlock('Miqdor', { error: (error as Error).message, input: part });
+        return failJson('Miqdor', { error: (error as Error).message, input: part });
       }
       const symbol = quantity.unit;
       const unit = symbol ? findUnit(symbol) : undefined;

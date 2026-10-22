@@ -1,5 +1,5 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
+import { jsonBlock, failJson } from '../../core/format.js';
 import { arr, bool, float, num, strOrEmpty, view } from '../../core/input.js';
 import { jaroWinkler, levenshtein, soundex } from './_phonetics.js';
 
@@ -41,12 +41,12 @@ export default defineTool({
     const limit = Math.max(1, Math.min(num(p, 'limit', 100) || 100, 1000));
 
     if (left.length === 0 || right.length === 0) {
-      return jsonBlock('Moslik', { error: 'left va right ikkalasi ham bo‘sh bo‘lmasligi kerak.' });
+      return failJson('Moslik', { error: 'left va right ikkalasi ham bo‘sh bo‘lmasligi kerak.' });
     }
     // Every pair is scored, so the product is the real bound on the work; a cap protects the tool from
     // a caller who pasted a spreadsheet.
     if (left.length * right.length > 200_000) {
-      return jsonBlock('Moslik', {
+      return failJson('Moslik', {
         error: `${left.length} x ${right.length} juftlik juda ko‘p (200000 dan ortiq). Ro‘yxatlarni bo‘ling.`,
       });
     }

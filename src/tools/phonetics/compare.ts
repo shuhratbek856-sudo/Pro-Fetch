@@ -1,5 +1,5 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
+import { jsonBlock, failJson } from '../../core/format.js';
 import { bool, strOrEmpty, view } from '../../core/input.js';
 import { diceCoefficient, jaroWinkler, levenshtein, soundex } from './_phonetics.js';
 
@@ -25,7 +25,7 @@ export default defineTool({
     const b = strOrEmpty(p, 'b');
     const ignoreCase = p.ignore_case === undefined ? true : bool(p, 'ignore_case', true);
 
-    if (!a || !b) return jsonBlock('Solishtirish', { error: 'a va b ikkalasi ham kerak.' });
+    if (!a || !b) return failJson('Solishtirish', { error: 'a va b ikkalasi ham kerak.' });
 
     // `caseSensitive` is the inverse of `ignore_case`, and it is passed down: an option that cannot
     // change the result is not an option, it is decoration.

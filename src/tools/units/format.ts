@@ -1,5 +1,5 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
+import { jsonBlock, failJson } from '../../core/format.js';
 import { num, strOrEmpty, view } from '../../core/input.js';
 import { convert, displayUnitsInFamily, findUnit, formatNumber, parseQuantity, unitsInFamily } from './_units.js';
 
@@ -66,7 +66,7 @@ export default defineTool({
           const toSeconds = convert(seconds.value, seconds.unit, 's');
           if (!('error' in toSeconds)) return formatDuration(Math.round(toSeconds.value));
         }
-        return jsonBlock('Davr', {
+        return failJson('Davr', {
           error: `birlikni tushunmadim: "${seconds.unit}"`,
           expected: 'sekund yoki vaqt birligi (s, min, h, d)',
         });
@@ -78,26 +78,26 @@ export default defineTool({
       const value = romanValue;
       const roman = toRoman(value);
       if (!roman) {
-        return jsonBlock('Rim raqam', {
+        return failJson('Rim raqam', {
           error: `rim raqamiga faqat 1..3999 oralig‘idagi butun sonlar o‘tadi (kirildi: ${value})`,
         });
       }
       return jsonBlock('Rim raqam', { value, roman });
     }
 
-    if (!quantity) return jsonBlock('Miqdor', { error: 'quantity, roman yoki duration kerak.' });
+    if (!quantity) return failJson('Miqdor', { error: 'quantity, roman yoki duration kerak.' });
 
     let parsed;
     try {
       parsed = parseQuantity(quantity);
     } catch (error) {
-      return jsonBlock('Miqdor', { error: (error as Error).message });
+      return failJson('Miqdor', { error: (error as Error).message });
     }
     const unit = findUnit(parsed.unit);
     if (!unit) {
       // Not silently passed through: an unrecognised unit formatted as if it were understood is how
       // "5 furlongs" ends up displayed as "5 fm".
-      return jsonBlock('Miqdor', {
+      return failJson('Miqdor', {
         input: quantity,
         error: `birlikni tushunmadim: "${parsed.unit}"`,
         value: parsed.value,
@@ -106,7 +106,7 @@ export default defineTool({
 
     if (asPrefix) {
       const candidates = displayUnitsInFamily(asPrefix as never);
-      if (candidates.length === 0) return jsonBlock('Miqdor', { error: `"${asPrefix}" oilasi mavjud emas.` });
+      if (candidates.length === 0) return failJson('Miqdor', { error: `"${asPrefix}" oilasi mavjud emas.` });
       // The point of a prefixed unit is to keep the number readable, so the winner is the *smallest*
       // unit that leaves it at or above 1. The first version compared each candidate against the
       // original value instead of against the current winner, which meant 0.0000015 m stayed as
