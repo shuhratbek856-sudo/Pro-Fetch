@@ -2,6 +2,7 @@ import { load } from 'cheerio';
 import { cache } from './cache.js';
 import { fetchWithOptions } from './http-client.js';
 import { assertSafeUrl } from './ssrf-guard.js';
+import { compileSafeRegex } from './safe-regex.js';
 import { result, fail } from './format.js';
 import type { ToolResult } from './types.js';
 import { getDomain } from 'tldts';
@@ -158,7 +159,7 @@ function robotsAllows(url: URL, policy: RobotsPolicy): boolean {
     const pattern = body.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     let matches = false;
     try {
-      matches = new RegExp('^' + pattern + (exactEnd ? '$' : '')).test(url.pathname + url.search);
+      matches = compileSafeRegex('^' + pattern + (exactEnd ? '$' : '')).test(url.pathname + url.search);
     } catch {
       matches = (url.pathname + url.search).startsWith(body);
     }
@@ -655,9 +656,9 @@ export async function runCrawlTool(toolName: string, input: Input): Promise<Tool
       const exclude = str(input, 'exclude');
       const compile = (src: string, field: string): RegExp => {
         try {
-          return new RegExp(src, 'i');
+          return compileSafeRegex(src, 'i');
         } catch (error) {
-          throw new Error(`${field}: yaroqsiz regex — ${(error as Error).message}`);
+          throw new Error(`${field}: yaroqsiz yoki xavfli (ReDoS) regex — ${(error as Error).message}`);
         }
       };
       try {

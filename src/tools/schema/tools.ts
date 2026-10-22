@@ -14,6 +14,7 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail, jsonBlock } from '../../core/format.js';
 import { strOrEmpty, view } from '../../core/input.js';
+import { compileSafeRegex } from '../../core/safe-regex.js';
 
 /** Read the instance from `text`, `data` or a nested `value`. */
 function readInstance(p: Record<string, unknown>): unknown {
@@ -181,8 +182,14 @@ function checkString(value: string, s: Record<string, unknown>, path: string, ou
   if (typeof s.maxLength === 'number' && length > s.maxLength) {
     out.push({ path, keyword: 'maxLength', message: `Uzunligi ${length}, ko'pi bilan ${s.maxLength}` });
   }
-  if (typeof s.pattern === 'string' && !new RegExp(s.pattern).test(value)) {
-    out.push({ path, keyword: 'pattern', message: `"/${s.pattern}/" ga mos emas` });
+  if (typeof s.pattern === 'string') {
+    try {
+      if (!compileSafeRegex(s.pattern).test(value)) {
+        out.push({ path, keyword: 'pattern', message: `"/${s.pattern}/" ga mos emas` });
+      }
+    } catch (e) {
+      out.push({ path, keyword: 'pattern', message: `pattern xato yoki xavfli (ReDoS): ${(e as Error).message}` });
+    }
   }
 }
 
