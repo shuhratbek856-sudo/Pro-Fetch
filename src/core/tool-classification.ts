@@ -31,6 +31,15 @@ const EXPLICIT_MUTATION_TOOLS: readonly RegExp[] = [
   /^git_stash_pop$/,
   /^github_pr_merge$/,
   /^knowledge_(?:ingest|ingest_url|import|tag|update|delete|rebuild)$/,
+  // Measured readOnlyHint:true despite side effects. These write bytes to disk (or, for the control
+  // plane, dispatch arbitrary other tools) yet carry no generic mutation verb and are not picked up by
+  // the generated sink table. A client that pre-approves readOnlyHint would otherwise silently allow
+  // file writes / arbitrary execution. Names here are post-normalisation (only pro_fetch_/pro_research_
+  // are stripped; pro_browser_/pro_media_ prefixes remain), hence the browser suffix match.
+  /^tool_execute$/, // admin control plane: runs any tool
+  /^(?:download_file|media_download)$/, // http/media: writes a file to the output root
+  /^screenshot_(?:page|full_page)$/, // media: writes a PNG
+  /browser_screenshot$/, // browser: writes a PNG (name keeps its pro_browser_ prefix)
 ];
 
 /** Verb anywhere in a tool name that implies a write. */
