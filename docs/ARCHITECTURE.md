@@ -15,11 +15,11 @@
 
 ## 2. Reestr va profil
 
-- **`src/core/tool.ts`** — `defineTool()` va `allTools()`: barcha 652 tool shu yerdagi registrga tushadi. Har tool: `name`, `category`, `description`, `inputSchema`, `handler`.
+- **`src/core/tool.ts`** — `defineTool()` va `allTools()`: barcha 672 tool shu yerdagi registrga tushadi. Har tool: `name`, `category`, `description`, `inputSchema`, `handler`.
 - **`src/router.ts`** — `listTools(profile)` va markaziy `dispatch()`.
-- **`src/core/profile.ts`** — nechta schema modelga ko'rinadi: `minimal` (73) · `standard` (178) · `smart` (11 meta) · `full` (652). **Profil — ko'rinish, xavfsizlik chegarasi EMAS.**
+- **`src/core/profile.ts`** — nechta schema modelga ko'rinadi: `minimal` (73) · `standard` (178) · `smart` (11 meta) · `full` (672). **Profil — ko'rinish, xavfsizlik chegarasi EMAS.**
 
-`smart` rejimida modelga faqat 11 meta-tool ko'rinadi, ammo ular orqali barcha 652 tanga yetib boriladi.
+`smart` rejimida modelga faqat 11 meta-tool ko'rinadi, ammo ular orqali barcha 672 tanga yetib boriladi.
 
 ## 3. Markaziy darvoza: `dispatch()`
 
@@ -69,4 +69,4 @@ Native bog'liqliklar (`sharp`, `@napi-rs/canvas`, `tesseract.js`, Playwright, gi
 
 ## 10. Test va tekshiruv (`npm run check`)
 
-`verify:static` (struktur invariantlar) · `verify:registry` (652/40, profil sonlari, duplicate/short-description/schema) · `build` · `test` (738) · `verify:package` (shebang, `files`, 0 secret) · `format:check`. Qo'shimcha: `npm run dump:catalog` → `docs/TOOL_CATALOG.md`, `npm run measure:coverage`, `npm run audit:schema`.
+`verify:static` (struktur invariantlar) · `verify:registry` (672/42, profil sonlari, duplicate/short-description/schema) · `build` · `test` (999) · `verify:package` (shebang, `files`, 0 secret) · `format:check`. Qo'shimcha: `npm run dump:catalog` → `docs/TOOL_CATALOG.md`, `npm run measure:coverage`, `npm run audit:schema`.

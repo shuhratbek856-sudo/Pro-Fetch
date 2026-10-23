@@ -5,6 +5,33 @@ versiya semver bo'yicha.
 
 ## [Unreleased]
 
+### Security
+
+Ushbu audit qator xavf/nuqsonni o'lchab, sinov bilan tasdiqlab yopdi (suite: 52 fayl / 999 test):
+
+- **ReDoS:** foydalanuvchi/remote regex'lari katastruk backtracking jihatdan tekshiriladi (`safe-regex2`)
+  va xavfli pattern rad etiladi — `pro_fetch_regex_extract`, `crawl_filter` include/exclude, robots.txt
+  wildcard va `pro_schema_validate` string `pattern`. Single-threaded stdio event loop'da bir muzlagan
+  so'rov hamma parallel so'rovni qotirardi.
+- **isError:** `units`/`phonetics` haqiqiy operator xatolari (`jsonBlock({error})` orqali emas) endi
+  `failJson` bilan `isError:true` qaytaradi — avval MCP klientlari muvaffaqiyatsiz konversiyani
+  "muvaffaqiyat" deb o'qiyardi. "Resurs topilmadi" natijalari ataylab non-error holicha qoldirildi.
+- **Tool annotatsiyalari:** diskka yozadigan yoki ixtiyoriy tool bajaradigan `tool_execute`,
+  `download_file`, `media_download`, screenshot tool'lari endi `readOnlyHint:true` deb aldov
+  bermaydi — ular `PRO_FETCH_READ_ONLY` darvozasi bilan bir manbadan sinflansadi.
+- **num() tuzoqlari:** `min=1` va floor qilish `perft_depth:0`, sub-pixel `blur` va
+  `pr_number:0`ni jimgina buzardi — uchala holat ham to'g'irlandi.
+- **JWT verify:** har algoritm uchun to'g'ri hash (ES384/HS384/HS512 → SHA-384/512), Ed25519 hash'siz,
+  ECDSA `namedCurve` import bilan — avval valid ES/EdDSA/HS384 tokenlari "noto'g'ri" deyilardi.
+- **Fuel:** `mpg ↔ L/100km` resiprok ekanini hisobga oladi (avval chiziqli ko'paytirib 30 mpg → 33.7
+  deb noto'g'ri va teskari yo'nalishda qaytarardi).
+- **DoS/memory:** SQL lexer `sql.slice(index)` O(n²) naqshi sticky regex bilan O(n) ga tushirildi va
+  kirish uzunligi cheklandi; `ratelimit.buckets` va `network-gate.hostGates` xaritalari endi
+  chegaralanadi (yuqori kartinaklik hostlarda cheksiz o'smaslik uchun).
+- **dev/prod paritet:** schema-narrowing `src/` manbasini CWD o'rniga modul joylashuvidan topadi —
+  `dist/` bilan ishga tushganda (paketda `src/` yo'q) endi ham xuddi dev'dagideq tor sxema ochadi,
+  avval esa jimgina no-op bo'lib, prod kengroq sxema ko'rsatardi.
+
 ### Changed
 
 - **Kompozitlar ichki parallel.** Bog'liq bo'lmagan qadamlar `runParallel()` bilan bir vaqtda
