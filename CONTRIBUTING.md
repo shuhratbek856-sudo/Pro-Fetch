@@ -14,7 +14,7 @@ npm run check
 | Step | What it proves |
 |---|---|
 | `verify:static` | No credential patterns in shipped files, `.env.example` is secret-free, no template dispatcher, declared tool counts are consistent |
-| `verify:registry` | The **live** registry matches `scripts/tool-counts.json`: 559 tools, 26 categories, 4 profile sizes, unique names, every handler and schema valid |
+| `verify:registry` | The **live** registry matches `scripts/tool-counts.json`: 672 tools, 42 categories, 4 profile sizes, unique names, every handler and schema valid |
 | `build` | `tsc` compiles clean under `strict` |
 | `test` | The full Vitest suite passes |
 | `verify:package` | The publishable tarball has a working shebang, an explicit file allowlist, and no credentials or stray type/source files |

@@ -27,7 +27,9 @@ export default defineTool({
   async handler(input) {
     const p = view(input);
     const prefix = typeof p.prefix === 'string' ? p.prefix : '';
-    const keys = cache.keys(prefix);
+    // Never export credentials: the auth tools store secrets under the `auth:` namespace
+    // (auth:apikey:*, auth:session:*, auth:cookies:*) and a portable bundle must not carry them out.
+    const keys = cache.keys(prefix).filter((k) => !/^auth:/i.test(k));
     const bundle: Record<string, unknown> = {};
     for (const k of keys.slice(0, 100)) {
       const hit = cache.get(k);

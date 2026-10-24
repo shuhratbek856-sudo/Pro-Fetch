@@ -91,6 +91,14 @@ describe('a fractional adjustment is applied, not discarded', () => {
     expect(body).toMatch(/saturation=-0\.30/);
   });
 
+  it('a sub-pixel blur below 1 is applied, not floored to 0', async () => {
+    // Before the fix `num(p, 'blur', 0, 0, 100)` floored 0.5 to 0, and the tool reported 'no change'
+    // (isError) for a caller who clearly asked for a light blur. `float` keeps the 0.5.
+    const result = await callTool('pro_image_adjust', { base64: PNG_200x120, blur: 0.5 });
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toMatch(/"blur":\s*0\.5/);
+  });
+
   it('an out-of-range adjustment is refused rather than quietly clamped', async () => {
     // blur 999 clamped to 100 and the output reported blur: 100. Honest in the result, but the
     // caller is told about the mistake only by reading a number they did not type.

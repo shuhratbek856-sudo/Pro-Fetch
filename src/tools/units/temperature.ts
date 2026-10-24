@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
+import { jsonBlock, failJson } from '../../core/format.js';
+import { float, strOrEmpty, view } from '../../core/input.js';
 import { convert, findUnit, formatNumber } from './_units.js';
 
 const TEMPERATURE_UNITS = ['degC', 'degF', 'K', 'degR'] as const;
@@ -63,13 +63,13 @@ export default defineTool({
       });
     }
 
-    const value = num(p, 'value', Number.NaN);
-    if (!Number.isFinite(value)) return jsonBlock('Harorat', { error: 'qiymat kerak.' });
+    const value = float(p, 'value', Number.NaN);
+    if (!Number.isFinite(value)) return failJson('Harorat', { error: 'qiymat kerak.' });
 
     const from = strOrEmpty(p, 'from') || 'degC';
     const fromUnit = findUnit(from);
     if (!fromUnit || fromUnit.family !== 'temperature') {
-      return jsonBlock('Harorat', {
+      return failJson('Harorat', {
         error: `"${from}" harorat birligi emas`,
         available: TEMPERATURE_UNITS,
       });

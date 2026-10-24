@@ -1,5 +1,5 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
+import { jsonBlock, failJson } from '../../core/format.js';
 import { view } from '../../core/input.js';
 import { allFamilies, displayUnitsInFamily, PREFIXES, type Family } from './_units.js';
 
@@ -57,7 +57,7 @@ export default defineTool({
     }
 
     if (Object.keys(blocks).length === 0) {
-      return jsonBlock('Birliklar', {
+      return failJson('Birliklar', {
         error: `"${wanted}" oilasi yo‘q`,
         families: allFamilies(),
       });

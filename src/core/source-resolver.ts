@@ -14,37 +14,17 @@
 // Both mistakes produced false findings in `npm run audit:schema` before they were found, so both
 // are handled explicitly here rather than left to a reader's judgement.
 
-import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/**
- * The `src` directory, found from this file's own location rather than the process CWD.
- *
- * `path.resolve('src')` resolved against the working directory: launching the server from anywhere
- * else — an absolute path, an IDE task, a service wrapper — could not find the tree, so the walks
- * below returned nothing and every tool resolved as "source unavailable". That fails safe (unresolved
- * tools keep their schema) but it silently disabled schema narrowing for the whole process, with
- * `[schema-narrowing] resolved=no` as the only trace. Walking up from `import.meta.url` finds the
- * real tree whenever the process starts from inside a checkout, via `tsx src/server.ts` or
- * `node dist/server.js` alike. A shipped package carries `dist/**` only, no sources — there the
- * resolver stays inactive, which is the same "leave every tool alone" default it had before.
- */
-const SRC = ((): string | undefined => {
-  const isSourceRoot = (dir: string): boolean =>
-    existsSync(path.join(dir, 'tools')) &&
-    existsSync(path.join(dir, 'core')) &&
-    existsSync(path.join(dir, 'core', 'tool.ts'));
-
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (;;) {
-    if (isSourceRoot(dir)) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-})();
+// Resolve the code we parse relative to THIS module, not the process working directory. In dev this
+// file is src/core/source-resolver.ts (grandparent = src/, .ts files); in a published install it is
+// dist/core/source-resolver.js (grandparent = dist/, .js files), because `files` ships only dist/.
+// Deriving SRC from import.meta.url is what makes dev and prod schema narrowing identical instead of
+// silently diverging (the old `path.resolve('src')` found nothing once src/ was not in the CWD, so the
+// resolver returned undefined for every tool and no schema was narrowed — a too-wide prod schema).
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const fileByToolName = new Map<string, string>();
 const coreModules = new Map<string, string>();
@@ -59,7 +39,8 @@ async function walk(dir: string, sink: (file: string, text: string) => void): Pr
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) await walk(full, sink);
-    else if (full.endsWith('.ts')) sink(full, await readFile(full, 'utf8'));
+    else if ((full.endsWith('.ts') || full.endsWith('.js')) && !full.endsWith('.d.ts'))
+      sink(full, await readFile(full, 'utf8'));
   }
 }
 
@@ -79,19 +60,15 @@ function defineToolBlock(text: string, at: number): string {
   return text.slice(braceStart);
 }
 
-if (SRC) {
-  await walk(path.join(SRC, 'tools'), (_file, text) => {
-    for (const match of text.matchAll(/\bname:\s*'([a-z0-9_]+)'/gi)) {
-      fileByToolName.set(match[1], defineToolBlock(text, match.index));
-    }
-  });
+await walk(path.join(SRC, 'tools'), (_file, text) => {
+  for (const match of text.matchAll(/\bname:\s*'([a-z0-9_]+)'/gi)) {
+    fileByToolName.set(match[1], defineToolBlock(text, match.index));
+  }
+});
 
-  await walk(path.join(SRC, 'core'), (file, text) => {
-    coreModules.set(path.basename(file), text);
-  });
-}
-// No SRC: the walks stay empty and every lookup resolves to `undefined`, which callers already
-// treat as "this tool's schema was not narrowed by source inspection".
+await walk(path.join(SRC, 'core'), (file, text) => {
+  coreModules.set(path.basename(file).replace(/\.[cm]?[jt]s$/, ''), text);
+});
 
 /**
  * Named functions in a module, keyed by name, bodies brace-matched.
@@ -175,7 +152,7 @@ const SPEC_RUNNERS: Record<string, string> = {
   storage: 'runStorage',
   productivity: 'runProductivity',
 };
-const maxPlatform = coreIndex.get('max-platform-tools.ts') ?? new Map<string, string>();
+const maxPlatform = coreIndex.get('max-platform-tools') ?? new Map<string, string>();
 
 /**
  * Declarations between branches, which the branches after them read.
@@ -383,12 +360,12 @@ function nameDispatcher(moduleFile: string, functionName: string, toolPrefix: st
   return index;
 }
 
-const browserByName = nameDispatcher('browser-tools.ts', 'runBrowserTool', 'pro_browser_');
-const mediaByName = nameDispatcher('media-tools.ts', 'runMediaTool', 'pro_fetch_');
+const browserByName = nameDispatcher('browser-tools', 'runBrowserTool', 'pro_browser_');
+const mediaByName = nameDispatcher('media-tools', 'runMediaTool', 'pro_fetch_');
 
 /** Per-action source for `runBrowserAction`, keyed by action value. */
 const browserByAction = new Map<string, string>();
-const browserToolAt = coreModules.get('browser-tools.ts') ?? '';
+const browserToolAt = coreModules.get('browser-tools') ?? '';
 if (browserToolAt.includes('runBrowserAction')) {
   const region = browserToolAt.slice(browserToolAt.indexOf('export async function runBrowserAction'));
   const shared = preamble(region);

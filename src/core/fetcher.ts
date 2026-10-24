@@ -5,6 +5,7 @@ import { cache } from './cache.js';
 import { canSkipSideEffect } from './read-only-guard.js';
 import { clipToTokens, estimateTokens } from './chunker.js';
 import { htmlToMarkdown } from './parser.js';
+import { boundedEnv } from './bounded-env.js';
 
 export interface FetchResult {
   url: string;
@@ -92,7 +93,9 @@ export async function fetchBatch(
   // caller got an empty result for a successful-looking call. A bad value falls back to the
   // documented default instead of erasing the batch.
   const width = Number.isFinite(concurrency) ? concurrency : 10;
-  const n = Math.max(1, Math.min(width, urls.length));
+  // Never fan out wider than the server's own global concurrency limit, whatever the caller asked for.
+  const cap = boundedEnv('PRO_FETCH_MAX_CONCURRENCY', 64, 1, 4096);
+  const n = Math.max(1, Math.min(width, urls.length, cap));
   await Promise.all(Array.from({ length: n }, worker));
   return results;
 }

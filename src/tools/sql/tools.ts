@@ -15,9 +15,15 @@ import {
 } from './_analyse.js';
 import { DIALECT_FEATURES, dialectNotes, format } from './_format.js';
 
+/** Upper bound on a SQL document handed to the tokenizer/analyser; larger inputs are refused. */
+const MAX_SQL_CHARS = 1_000_000;
+
 const text = (value: unknown, label: string): string => {
   const sql = String(value ?? '');
   if (!sql.trim()) throw new Error(`${label} bo‘sh.`);
+  if (sql.length > MAX_SQL_CHARS) {
+    throw new Error(`${label} juda katta (${sql.length} belgi; chega ${MAX_SQL_CHARS}).`);
+  }
   return sql;
 };
 
@@ -437,6 +443,9 @@ export default [
         const wanted = strOrEmpty(p, 'feature').trim().toLowerCase();
         const rows = DIALECT_FEATURES.filter((entry) => !wanted || entry.feature.toLowerCase().includes(wanted));
         const sql = strOrEmpty(p, 'sql').trim();
+        if (sql.length > MAX_SQL_CHARS) {
+          return fail(`sql juda katta (${sql.length} belgi; chega ${MAX_SQL_CHARS}).`);
+        }
         return jsonBlock('SQL dialekt farqlari', {
           dialects: ['postgresql', 'mysql', 'sqlite', 'mssql'],
           features: rows.length,

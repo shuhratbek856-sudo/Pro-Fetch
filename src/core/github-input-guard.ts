@@ -91,6 +91,21 @@ export function assertGithubInput(
         'yoki `nodejs/node` (birlashtirilgan).',
     );
 
+  // `repository` is the combined `owner/repo` form some tools expose instead of `repo`. It was never
+  // validated here, so traversal-y values ("a/../b"), query/fragment injection ("a/b?per_page=1") and
+  // deeper paths reached the handler unchecked. It must be exactly one legal owner and one legal repo.
+  const combined = str(input, 'repository');
+  if (combined !== undefined) {
+    const segments = combined.split('/');
+    const validCombined =
+      segments.length === 2 &&
+      !!segments[0] &&
+      !!segments[1] &&
+      OWNER_RE.test(segments[0]!) &&
+      REPO_RE.test(segments[1]!);
+    if (!validCombined) throw new GithubInputError("'repository' qiymati `owner/reko` ko‘rinishida bo‘lishi kerak.");
+  }
+
   // Normalise the combined form so every one of the 42 GitHub tools accepts it.
   //
   // Each handler reads `input.owner` and `input.repo` separately, so rewriting the specifier here —

@@ -14,6 +14,7 @@
 import { defineTool } from '../../core/tool.js';
 import { result, fail, jsonBlock } from '../../core/format.js';
 import { strOrEmpty, view } from '../../core/input.js';
+import { compileSafeRegex } from '../../core/safe-regex.js';
 
 /** Read the instance from `text`, `data` or a nested `value`. */
 function readInstance(p: Record<string, unknown>): unknown {
@@ -181,8 +182,14 @@ function checkString(value: string, s: Record<string, unknown>, path: string, ou
   if (typeof s.maxLength === 'number' && length > s.maxLength) {
     out.push({ path, keyword: 'maxLength', message: `Uzunligi ${length}, ko'pi bilan ${s.maxLength}` });
   }
-  if (typeof s.pattern === 'string' && !new RegExp(s.pattern).test(value)) {
-    out.push({ path, keyword: 'pattern', message: `"/${s.pattern}/" ga mos emas` });
+  if (typeof s.pattern === 'string') {
+    try {
+      if (!compileSafeRegex(s.pattern).test(value)) {
+        out.push({ path, keyword: 'pattern', message: `"/${s.pattern}/" ga mos emas` });
+      }
+    } catch (e) {
+      out.push({ path, keyword: 'pattern', message: `pattern xato yoki xavfli (ReDoS): ${(e as Error).message}` });
+    }
   }
 }
 
@@ -307,8 +314,8 @@ function checkObject(
       }
     }
   }
-  if (Array.isArray(s.dependencies)) {
-    for (const [key, spec] of s.dependencies) {
+  if (s.dependencies && typeof s.dependencies === 'object' && !Array.isArray(s.dependencies)) {
+    for (const [key, spec] of Object.entries(s.dependencies as Record<string, unknown>)) {
       if (key in value) {
         if (Array.isArray(spec)) {
           for (const required of spec as string[]) {
@@ -320,7 +327,7 @@ function checkObject(
               });
             }
           }
-        } else {
+        } else if (spec && typeof spec === 'object') {
           validate(value, spec, root, path, out, depth + 1);
         }
       }
@@ -717,6 +724,11 @@ function tsType(schema: Record<string, unknown> | undefined): string {
   }
   const format = String(schema.format ?? '');
   if (format === 'date-time' || format === 'date') return 'string';
+  // A schema may carry `properties` without an explicit `type: "object"`; treat it as an object so the
+  // default branch cannot recurse on itself (which crashed generation on the most common shape).
+  if (!schema.type && schema.properties) {
+    return objectTsType(schema);
+  }
   switch (schema.type) {
     case 'string':
       return 'string';
@@ -729,9 +741,21 @@ function tsType(schema: Record<string, unknown> | undefined): string {
       return `${tsType(schema.items as Record<string, unknown>)}[]`;
     case 'null':
       return 'null';
+    case 'object':
+      return objectTsType(schema);
     default:
-      return schema.properties ? tsType(schema) : 'unknown';
+      return 'unknown';
   }
+}
+
+/** Render an inline TypeScript object type from a schema's properties. */
+function objectTsType(schema: Record<string, unknown>): string {
+  const props = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
+  const entries = Object.entries(props);
+  if (entries.length === 0) return 'Record<string, unknown>';
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : []);
+  const body = entries.map(([key, sub]) => `${key}${required.has(key) ? '' : '?'}: ${tsType(sub)}`).join('; ');
+  return `{ ${body} }`;
 }
 
 function pyType(schema: Record<string, unknown> | undefined): string {

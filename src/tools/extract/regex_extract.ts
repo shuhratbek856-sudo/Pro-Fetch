@@ -8,6 +8,7 @@ import { result, md, jsonBlock, fail } from '../../core/format.js';
 import { defineTool } from '../../core/tool.js';
 import { view } from '../../core/input.js';
 import { sourceFrom } from '../../core/source-from.js';
+import { compileSafeRegex } from '../../core/safe-regex.js';
 export default defineTool({
   name: 'pro_fetch_regex_extract',
   description: 'Extract all regex matches from a fetched page',
@@ -26,11 +27,14 @@ export default defineTool({
     const fr = await sourceFrom(p);
     let re: RegExp;
     try {
-      re = new RegExp(String(p.selector), 'g');
+      re = compileSafeRegex(String(p.selector), 'g');
     } catch (e) {
       return fail('Regex xato: ' + (e as Error).message);
     }
-    const matches = fr.text.match(re) ?? [];
+    // Bound the scanned text: a catastrophic backtracking pattern still cannot grind over an
+    // arbitrarily large document (handlers run synchronously, so a hang freezes every request).
+    const haystack = fr.text.length > 200_000 ? fr.text.slice(0, 200_000) : fr.text;
+    const matches = haystack.match(re) ?? [];
     if (!matches.length) return fail('Moslama topilmadi');
     return md(
       '# Regex: ' +

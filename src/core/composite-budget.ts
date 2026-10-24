@@ -20,6 +20,8 @@
  */
 
 import type { StepOutcome } from './composite.js';
+import { result } from './format.js';
+import type { ToolResult } from './types.js';
 
 /** Characters of a step body kept in summary mode. */
 const SUMMARY_EXCERPT = 320;
@@ -144,6 +146,27 @@ export function renderBudgeted(
       ? `\n\n_${trimmed} ta katta natija qisqartirildi. Bitta qadamning to'liq natijasi uchun o'sha tool'ni pro_capability_call orqali alohida chaqiring._`
       : '';
   return header + rendered + footerText + note;
+}
+
+/**
+ * Budgeted transcript as a `ToolResult`, with the failure reflected in `isError`.
+ *
+ * A composite must never tell the caller "this worked" while the footer reads `failed=N`: that was the
+ * single worst shape a composite bug could take, because the argument typos in `pro_repo_audit` shipped
+ * for months with `ok:true`. When any step failed, the result is an error result that still carries the
+ * full transcript, so the caller sees both the failure and what did succeed.
+ */
+export function budgetedResult(
+  title: string,
+  outcomes: StepOutcome[],
+  detail: 'summary' | 'full',
+  gatedCount = 0,
+): ToolResult {
+  const text = renderBudgeted(title, outcomes, detail, gatedCount);
+  if (outcomes.some((outcome) => !outcome.ok)) {
+    return { content: [{ type: 'text', text }], isError: true };
+  }
+  return result(text);
 }
 
 function fullHint(skipped: number): string {

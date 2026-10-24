@@ -1,6 +1,6 @@
 import { defineTool } from '../../core/tool.js';
-import { jsonBlock } from '../../core/format.js';
-import { num, strOrEmpty, view } from '../../core/input.js';
+import { jsonBlock, failJson } from '../../core/format.js';
+import { float, num, strOrEmpty, view } from '../../core/input.js';
 import {
   allFamilies,
   convert,
@@ -62,31 +62,31 @@ export default defineTool({
       try {
         parsed = parseQuantity(quantity);
       } catch (error) {
-        return jsonBlock('Birlik', { error: (error as Error).message });
+        return failJson('Birlik', { error: (error as Error).message });
       }
       value = parsed.value;
       fromName = parsed.unit;
     } else {
-      value = num(p, 'value', Number.NaN);
+      value = float(p, 'value', Number.NaN);
       fromName = strOrEmpty(p, 'from');
     }
     if (!Number.isFinite(value)) {
-      return jsonBlock('Birlik', { error: 'qiymat kerak, yoki "quantity" satri: "12.5 km".' });
+      return failJson('Birlik', { error: 'qiymat kerak, yoki "quantity" satri: "12.5 km".' });
     }
     if (!fromName) {
-      return jsonBlock('Birlik', { error: 'from birlik kerak (yoki "quantity" satri).' });
+      return failJson('Birlik', { error: 'from birlik kerak (yoki "quantity" satri).' });
     }
 
     const from = findUnit(fromName);
     if (!from) {
-      return jsonBlock('Birlik', { error: `birlikni tushunmadim: "${fromName}"`, suggestion: suggest(fromName) });
+      return failJson('Birlik', { error: `birlikni tushunmadim: "${fromName}"`, suggestion: suggest(fromName) });
     }
     const to = findUnit(toName);
     if (!to) {
-      return jsonBlock('Birlik', { error: `birlikni tushunmadim: "${toName}"`, suggestion: suggest(toName) });
+      return failJson('Birlik', { error: `birlikni tushunmadim: "${toName}"`, suggestion: suggest(toName) });
     }
     if (from.family !== to.family) {
-      return jsonBlock('Birlik', {
+      return failJson('Birlik', {
         error: `boshqa oilalar: "${fromName}" (${from.family}) va "${toName}" (${to.family})`,
         hint: 'faqat bir oila ichida o‘lchash mumkin.',
         families: allFamilies(),
@@ -111,7 +111,7 @@ export default defineTool({
     }
 
     const result = convert(value, fromName, toName);
-    if ('error' in result) return jsonBlock('Birlik', { error: result.error });
+    if ('error' in result) return failJson('Birlik', { error: result.error });
 
     return jsonBlock(`${formatNumber(value, precision)} ${result.from.symbol} o‘lchovi`, {
       input: `${formatNumber(value, precision)} ${result.from.symbol}`,

@@ -240,6 +240,14 @@ const OPERATORS = [
  * Unknown bytes become `punctuation` rather than being skipped: a lexer that silently drops a
  * character produces tokens that reassemble into different SQL than it was given.
  */
+// Sticky ('y') token matchers used by tokenize. Anchored via `lastIndex` so the lexer never copies the
+// remaining input with `sql.slice(index)` — that per-delimiter suffix copy made a `$`/`:`/`@`/`%`-heavy
+// input O(n²) and froze the single-threaded loop. Same semantics as the old `^...`.exec(slice).
+const RE_DOLLAR_TAG = /\$([A-Za-z_][A-Za-z0-9_]*)?\$/y;
+const RE_DOLLAR_POSITIONAL = /\$(\d+)/y;
+const RE_NAMED_PARAM = /[:@][A-Za-z_][A-Za-z0-9_]*/y;
+const RE_PY_PARAM = /%\(([A-Za-z_][A-Za-z0-9_]*)\)s?/y;
+
 export function tokenize(sql: string): Token[] {
   const tokens: Token[] = [];
   let index = 0;
@@ -301,7 +309,8 @@ export function tokenize(sql: string): Token[] {
     // Dollar-quoted string: $tag$ ... $tag$. PostgreSQL's way of embedding arbitrary text, including
     // semicolons and quotes, in a function body.
     if (character === '$') {
-      const tag = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(index));
+      RE_DOLLAR_TAG.lastIndex = index;
+      const tag = RE_DOLLAR_TAG.exec(sql);
       if (tag) {
         const delimiter = tag[0];
         const start = index;
@@ -311,7 +320,8 @@ export function tokenize(sql: string): Token[] {
         continue;
       }
       // Otherwise `$1`, `$2` is a positional parameter.
-      const positional = /^\$(\d+)/.exec(sql.slice(index));
+      RE_DOLLAR_POSITIONAL.lastIndex = index;
+      const positional = RE_DOLLAR_POSITIONAL.exec(sql);
       if (positional) {
         const start = index;
         index += positional[0].length;
@@ -385,7 +395,8 @@ export function tokenize(sql: string): Token[] {
 
     // Named parameter: :name, @name. Not `::`, which is PostgreSQL's cast operator.
     if ((character === ':' && sql[index + 1] !== ':') || character === '@') {
-      const named = /^[:@][A-Za-z_][A-Za-z0-9_]*/.exec(sql.slice(index));
+      RE_NAMED_PARAM.lastIndex = index;
+      const named = RE_NAMED_PARAM.exec(sql);
       if (named) {
         const start = index;
         index += named[0].length;
@@ -396,7 +407,8 @@ export function tokenize(sql: string): Token[] {
 
     // Python/psycopg-style named parameter: %(name)s.
     if (character === '%' && sql[index + 1] === '(') {
-      const named = /^%\(([A-Za-z_][A-Za-z0-9_]*)\)s?/.exec(sql.slice(index));
+      RE_PY_PARAM.lastIndex = index;
+      const named = RE_PY_PARAM.exec(sql);
       if (named) {
         const start = index;
         index += named[0].length;

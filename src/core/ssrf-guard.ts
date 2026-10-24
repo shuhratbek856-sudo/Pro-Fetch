@@ -79,14 +79,18 @@ export type DnsLookup = (host: string) => Promise<Array<{ address: string; famil
 const systemLookup: DnsLookup = async (host) =>
   (await lookup(host, { all: true })) as Array<{ address: string; family: number }>;
 
-export async function resolveSafeUrl(rawUrl: string, options: { lookup?: DnsLookup } = {}): Promise<SafeUrlResolution> {
+export async function resolveSafeUrl(
+  rawUrl: string,
+  options: { lookup?: DnsLookup; protocols?: Set<string> } = {},
+): Promise<SafeUrlResolution> {
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
     throw new UrlSecurityError('Yaroqsiz URL: ' + describeUrl(rawUrl), 'INVALID_URL');
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  const allowed = options.protocols ?? new Set(['http:', 'https:']);
+  if (!allowed.has(url.protocol)) {
     throw new UrlSecurityError('Ruxsat etilmagan protokol: ' + url.protocol, 'POLICY_BLOCKED');
   }
   if (url.username || url.password) throw new UrlSecurityError('URL ichida username/password berish taqiqlangan.');
@@ -123,6 +127,19 @@ export async function resolveSafeUrl(rawUrl: string, options: { lookup?: DnsLook
 
 export async function assertSafeUrl(rawUrl: string): Promise<URL> {
   return (await resolveSafeUrl(rawUrl)).url;
+}
+
+/**
+ * SSRF validation for WebSocket endpoints.
+ *
+ * `assertSafeUrl` rejects ws:/wss: structurally, so the WebSocket tools had no guard at all and would
+ * happily connect to ws://localhost:6379 or ws://169.254.169.254 and stream back whatever they said. This
+ * runs the exact same host-blocklist, private-IP and DNS-resolution checks, only allowing the WebSocket
+ * schemes. (A residual DNS-rebinding window remains because the `ws` client does its own resolution at
+ * connect time; the top-level internal-address block is the protection that actually matters here.)
+ */
+export async function assertSafeWebSocketUrl(rawUrl: string): Promise<URL> {
+  return (await resolveSafeUrl(rawUrl, { protocols: new Set(['ws:', 'wss:']) })).url;
 }
 
 /**

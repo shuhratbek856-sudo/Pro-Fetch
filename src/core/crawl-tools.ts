@@ -2,7 +2,8 @@ import { load } from 'cheerio';
 import { cache } from './cache.js';
 import { fetchWithOptions } from './http-client.js';
 import { assertSafeUrl } from './ssrf-guard.js';
-import { result } from './format.js';
+import { compileSafeRegex } from './safe-regex.js';
+import { result, fail } from './format.js';
 import type { ToolResult } from './types.js';
 import { getDomain } from 'tldts';
 
@@ -158,7 +159,7 @@ function robotsAllows(url: URL, policy: RobotsPolicy): boolean {
     const pattern = body.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     let matches = false;
     try {
-      matches = new RegExp('^' + pattern + (exactEnd ? '$' : '')).test(url.pathname + url.search);
+      matches = compileSafeRegex('^' + pattern + (exactEnd ? '$' : '')).test(url.pathname + url.search);
     } catch {
       matches = (url.pathname + url.search).startsWith(body);
     }
@@ -653,17 +654,28 @@ export async function runCrawlTool(toolName: string, input: Input): Promise<Tool
     if (name === 'crawl_filter') {
       const include = str(input, 'include', 'pattern');
       const exclude = str(input, 'exclude');
-      return result(
-        JSON.stringify(
-          items.filter(
-            (item) =>
-              (!include || new RegExp(include, 'i').test(item.url)) &&
-              (!exclude || !new RegExp(exclude, 'i').test(item.url)),
+      const compile = (src: string, field: string): RegExp => {
+        try {
+          return compileSafeRegex(src, 'i');
+        } catch (error) {
+          throw new Error(`${field}: yaroqsiz yoki xavfli (ReDoS) regex — ${(error as Error).message}`);
+        }
+      };
+      try {
+        const inc = include ? compile(include, 'include') : null;
+        const exc = exclude ? compile(exclude, 'exclude') : null;
+        // Bound the tested string: a catastrophic pattern still cannot grind over an unbounded input.
+        const scan = (url: string) => (url.length > 512 ? url.slice(0, 512) : url);
+        return result(
+          JSON.stringify(
+            items.filter((item) => (!inc || inc.test(scan(item.url))) && (!exc || !exc.test(scan(item.url)))),
+            null,
+            2,
           ),
-          null,
-          2,
-        ),
-      );
+        );
+      } catch (error) {
+        return fail((error as Error).message);
+      }
     }
     if (name === 'crawl_result_merge') {
       const map = new Map<string, PageRecord>();

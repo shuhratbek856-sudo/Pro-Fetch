@@ -10,15 +10,8 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// The base URL is derived from this script's own location instead of being written down. The hardcoded
-// path pointed at a directory that no longer exists, so `npm run gen:mutation-sinks` failed with
-// ERR_MODULE_NOT_FOUND on the very machine that holds the repository.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const base = pathToFileURL(path.join(here, '..', 'src')).href + '/';
-
+const base = new URL('../src/', import.meta.url).href;
 process.env.PRO_FETCH_PROFILE = 'full';
 await import(base + 'env.js');
 await import(base + 'loader.js');

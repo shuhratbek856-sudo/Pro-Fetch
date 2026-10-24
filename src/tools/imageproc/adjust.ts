@@ -48,7 +48,7 @@ export default defineTool({
     const saturation = float(p, 'saturation', 0, -1, 1);
     const hue = float(p, 'hue', 0, -180, 180);
     const contrast = float(p, 'contrast', 0, -1, 1);
-    const blurSigma = num(p, 'blur', 0, 0, 100);
+    const blurSigma = float(p, 'blur', 0, 0, 100);
     const sharpen = p.sharpen === true || String(p.sharpen ?? '') === 'true';
     const grayscale = p.grayscale === true || String(p.grayscale ?? '') === 'true';
 

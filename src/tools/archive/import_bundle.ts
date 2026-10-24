@@ -29,11 +29,19 @@ export default defineTool({
     } catch {
       return fail('Bundle JSON xato');
     }
-    let n = 0;
+    let n = 0,
+      skipped = 0;
     for (const [k, v] of Object.entries(data)) {
+      // A bundle is caller-controlled: never let it inject credentials into the shared cache.
+      if (/^auth:/i.test(k)) {
+        skipped++;
+        continue;
+      }
       cache.put(k, String((v as any)?.value ?? ''), 86_400_000);
       n++;
     }
-    return result('✅ ' + n + ' yozuv import qilindi');
+    return result(
+      '✅ ' + n + ' yozuv import qilindi' + (skipped > 0 ? ` (${skipped} ta auth yozuvi o'tkazib yuborildi)` : ''),
+    );
   },
 });

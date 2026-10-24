@@ -30,7 +30,7 @@ export default defineTool({
       typeof p.max_pages === 'number' ? p.max_pages : undefined,
     );
     if (r.status >= 400) return ghErr(r.status, r.json);
-    const items = (r.json ?? []).map((b: JsonRow) => '- ' + pathStr(b, 'name') + (b.protected ? ' U0001f512' : ''));
+    const items = (r.json ?? []).map((b: JsonRow) => '- ' + pathStr(b, 'name') + (b.protected ? ' 🔒' : ''));
     return md('# Branchlar\n\n' + items.join('\n') + paginationNotice(r));
   },
 });

@@ -226,13 +226,13 @@ export default defineTool({
     } else if (runnable.length > chunkSize) {
       const merged: typeof outcomes = [];
       for (let at = 0; at < runnable.length; at += chunkSize) {
-        const part = await runParallel(runnable.slice(at, at + chunkSize), undefined);
+        const part = await runParallel(runnable.slice(at, at + chunkSize), batchFanout(chunkSize));
         merged.push(...part);
       }
       outcomes = merged;
     } else {
       try {
-        outcomes = await runParallel(runnable);
+        outcomes = await runParallel(runnable, batchFanout(runnable.length));
       } catch (error) {
         if (enteredComposite) compositeDepth--;
         return fail(`Batch bajarilmadi: ${error instanceof Error ? error.message : String(error)}`);

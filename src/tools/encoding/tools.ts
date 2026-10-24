@@ -510,19 +510,32 @@ export const encodingJwtVerify = defineTool({
         const hash =
           algorithm === 'ES384' ? 'SHA-384' : algorithm.startsWith('RS') ? `SHA-${algorithm.slice(2)}` : 'SHA-256';
         const pem = key.includes('BEGIN') ? key : Buffer.from(key, 'base64').toString('utf8');
-        const imported = await crypto.subtle.importKey(
-          'spki',
-          Buffer.from(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64'),
-          { name, hash },
-          false,
-          ['verify'],
-        );
-        verified = await crypto.subtle.verify(
-          { name, hash },
-          imported,
-          new Uint8Array(signature),
-          new Uint8Array(signed),
-        );
+        const spki = Buffer.from(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64');
+        if (name === 'Ed25519') {
+          // Ed25519 import/verify take a bare algorithm name and no hash; passing SHA-256 is rejected.
+          const imported = await crypto.subtle.importKey('spki', spki, 'Ed25519', false, ['verify']);
+          verified = await crypto.subtle.verify('Ed25519', imported, new Uint8Array(signature), new Uint8Array(signed));
+        } else if (name === 'ECDSA') {
+          // importKey for ECDSA expects a namedCurve, not a hash. verify uses the hash and the raw
+          // r||s signature — WebCrypto's ECDSA format is IEEE-P1363, the same concatenation JWS carries,
+          // so no DER re-encoding is needed.
+          const namedCurve = algorithm === 'ES384' ? 'P-384' : 'P-256';
+          const imported = await crypto.subtle.importKey('spki', spki, { name, namedCurve }, false, ['verify']);
+          verified = await crypto.subtle.verify(
+            { name, hash },
+            imported,
+            new Uint8Array(signature),
+            new Uint8Array(signed),
+          );
+        } else {
+          const imported = await crypto.subtle.importKey('spki', spki, { name, hash }, false, ['verify']);
+          verified = await crypto.subtle.verify(
+            { name, hash },
+            imported,
+            new Uint8Array(signature),
+            new Uint8Array(signed),
+          );
+        }
         if (!verified) reason = `${algorithm} imzosi mos emas.`;
       }
     } catch (error) {
